@@ -1,0 +1,35 @@
+# Core web framework
+fastapi>=0.109.0,<1.0.0
+uvicorn[standard]>=0.27.0,<1.0.0
+pydantic>=2.5.0,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
+
+# Eclipse BaSyx Python SDK for AAS handling
+basyx-python-sdk>=2.0.0,<3.0.0
+
+# HTTP client for GitHub API
+httpx>=0.26.0,<1.0.0
+
+# Authentication
+PyJWT>=2.8.0,<3.0.0
+cryptography>=41.0.0,<43.0.0
+
+# PDF generation (optional)
+weasyprint>=60.0,<62.0
+jinja2>=3.1.0,<4.0.0
+
+# Rate limiting
+slowapi>=0.1.8,<1.0.0
+
+# Development dependencies
+python-multipart>=0.0.6,<1.0.0
+
+# Testing
+pytest>=7.4.0,<9.0.0
+pytest-asyncio>=0.23.0,<1.0.0
+pytest-cov>=4.1.0,<6.0.0
+httpx>=0.26.0,<1.0.0
+
+# Type checking
+mypy>=1.8.0,<2.0.0
+types-PyJWT>=1.7.1

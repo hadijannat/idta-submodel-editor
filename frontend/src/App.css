@@ -1,0 +1,853 @@
+/**
+ * IDTA Submodel Editor Styles
+ */
+
+/* ============================================================================
+   CSS Variables
+   ============================================================================ */
+
+:root {
+  --color-primary: #2c5282;
+  --color-primary-light: #4299e1;
+  --color-primary-dark: #1a365d;
+  --color-secondary: #718096;
+  --color-success: #38a169;
+  --color-warning: #dd6b20;
+  --color-danger: #e53e3e;
+  --color-info: #3182ce;
+
+  --color-bg: #f7fafc;
+  --color-bg-alt: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text: #2d3748;
+  --color-text-light: #718096;
+  --color-text-muted: #a0aec0;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================================================
+   Base Styles
+   ============================================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+}
+
+/* ============================================================================
+   App Layout
+   ============================================================================ */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+  padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.app-subtitle {
+  margin: var(--spacing-xs) 0 0;
+  opacity: 0.8;
+  font-size: 0.875rem;
+}
+
+.app-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.app-sidebar {
+  width: 320px;
+  background: var(--color-bg-alt);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.app-main {
+  flex: 1;
+  padding: var(--spacing-xl);
+  overflow-y: auto;
+}
+
+.app-export-sidebar {
+  width: 280px;
+  background: var(--color-bg-alt);
+  border-left: 1px solid var(--color-border);
+  padding: var(--spacing-lg);
+  overflow-y: auto;
+}
+
+.app-footer {
+  background: var(--color-bg-alt);
+  border-top: 1px solid var(--color-border);
+  padding: var(--spacing-md) var(--spacing-xl);
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+}
+
+.app-footer a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.app-footer a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================================
+   Welcome Screen
+   ============================================================================ */
+
+.app-welcome {
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.app-welcome h2 {
+  color: var(--color-primary);
+}
+
+.app-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-lg);
+  margin-top: var(--spacing-xl);
+  text-align: left;
+}
+
+.feature {
+  background: var(--color-bg-alt);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.feature h3 {
+  margin: 0 0 var(--spacing-sm);
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.feature p {
+  margin: 0;
+  color: var(--color-text-light);
+  font-size: 0.875rem;
+}
+
+/* ============================================================================
+   Loading & Error States
+   ============================================================================ */
+
+.app-loading,
+.app-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  text-align: center;
+}
+
+.spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app-error {
+  color: var(--color-danger);
+}
+
+/* ============================================================================
+   Template Selector
+   ============================================================================ */
+
+.template-selector {
+  padding: var(--spacing-md);
+}
+
+.template-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.template-selector-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.template-selector-search {
+  margin-bottom: var(--spacing-md);
+}
+
+.search-input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.template-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.template-item {
+  padding: var(--spacing-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.template-item:hover {
+  border-color: var(--color-primary-light);
+  background: white;
+}
+
+.template-item.selected {
+  border-color: var(--color-primary);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.template-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.template-idta-number {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: rgba(66, 153, 225, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.template-title {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.template-item-name {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+  word-break: break-all;
+}
+
+/* ============================================================================
+   Submodel Form
+   ============================================================================ */
+
+.submodel-form {
+  max-width: 900px;
+}
+
+.submodel-header {
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 2px solid var(--color-primary);
+}
+
+.submodel-header h2 {
+  margin: 0 0 var(--spacing-xs);
+  color: var(--color-primary);
+}
+
+.submodel-semantic-id {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.submodel-description {
+  margin: var(--spacing-sm) 0 0;
+  color: var(--color-text-light);
+}
+
+.submodel-elements {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* ============================================================================
+   AAS Field Styles
+   ============================================================================ */
+
+.aas-field {
+  margin-bottom: var(--spacing-md);
+}
+
+.aas-label {
+  display: block;
+  font-weight: 500;
+  color: var(--color-text);
+  margin-bottom: var(--spacing-xs);
+}
+
+.aas-sublabel {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-bottom: var(--spacing-xs);
+}
+
+.aas-required {
+  color: var(--color-danger);
+  margin-left: 2px;
+}
+
+.aas-unit {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-left: var(--spacing-xs);
+}
+
+.aas-input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.aas-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+.aas-input-error {
+  border-color: var(--color-danger);
+}
+
+.aas-input-error:focus {
+  box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.2);
+}
+
+.aas-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.aas-error-message {
+  display: block;
+  color: var(--color-danger);
+  font-size: 0.75rem;
+  margin-top: var(--spacing-xs);
+}
+
+.aas-description {
+  color: var(--color-text-light);
+  font-size: 0.75rem;
+  margin: var(--spacing-xs) 0 0;
+}
+
+.aas-help-text {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  margin: var(--spacing-xs) 0 0;
+  font-style: italic;
+}
+
+/* ============================================================================
+   Collection Styles
+   ============================================================================ */
+
+.aas-collection {
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.aas-collection-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  cursor: pointer;
+  user-select: none;
+}
+
+.aas-collection-header:hover {
+  background: var(--color-bg);
+}
+
+.aas-expand-icon {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  transition: transform 0.15s ease;
+}
+
+.aas-expand-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.aas-collection-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.aas-collection-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.aas-cardinality {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+}
+
+.aas-collection-content {
+  padding: var(--spacing-md);
+  padding-top: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.aas-collection-content.collapsed {
+  display: none;
+}
+
+/* ============================================================================
+   List Styles
+   ============================================================================ */
+
+.aas-list {
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.aas-list-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.aas-list-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.aas-list-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.aas-list-items {
+  padding: var(--spacing-md);
+}
+
+.aas-list-empty {
+  text-align: center;
+  padding: var(--spacing-lg);
+  color: var(--color-text-muted);
+}
+
+.aas-list-item {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.aas-list-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.aas-list-item-index {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-light);
+}
+
+.aas-list-item-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.aas-list-item-content {
+  padding: var(--spacing-md);
+}
+
+/* ============================================================================
+   Multi-language Styles
+   ============================================================================ */
+
+.aas-multilang-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.aas-multilang-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.aas-multilang-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--spacing-md);
+}
+
+.aas-tab {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: none;
+  color: var(--color-text-light);
+  cursor: pointer;
+  font-size: 0.875rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.15s ease;
+}
+
+.aas-tab:hover {
+  color: var(--color-text);
+}
+
+.aas-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.aas-tab.has-value::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--color-success);
+  border-radius: 50%;
+  margin-left: var(--spacing-xs);
+  vertical-align: middle;
+}
+
+.aas-tab-indicator {
+  color: var(--color-success);
+  margin-left: var(--spacing-xs);
+}
+
+/* ============================================================================
+   File & Range Field Styles
+   ============================================================================ */
+
+.aas-file-fields,
+.aas-range-fields {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: flex-start;
+}
+
+.aas-file-path {
+  flex: 2;
+}
+
+.aas-file-content-type {
+  flex: 1;
+}
+
+.aas-range-min,
+.aas-range-max {
+  flex: 1;
+}
+
+.aas-range-separator {
+  padding-top: 28px;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================================
+   Button Styles
+   ============================================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-alt);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--color-bg);
+  border-color: var(--color-text-muted);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
+.btn-secondary {
+  background: white;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-danger {
+  color: var(--color-danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(229, 62, 62, 0.1);
+}
+
+.btn-icon {
+  padding: var(--spacing-xs);
+  min-width: 28px;
+  height: 28px;
+}
+
+.btn-refresh {
+  font-size: 0.75rem;
+}
+
+.aas-btn {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.75rem;
+}
+
+.aas-btn-add {
+  margin-left: auto;
+}
+
+.aas-btn-danger {
+  color: var(--color-danger);
+}
+
+/* ============================================================================
+   Export Panel Styles
+   ============================================================================ */
+
+.export-panel h3 {
+  margin: 0 0 var(--spacing-md);
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.export-filename {
+  margin-bottom: var(--spacing-md);
+}
+
+.export-filename label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-bottom: var(--spacing-xs);
+}
+
+.export-filename-input {
+  width: 100%;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.export-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.btn-export {
+  width: 100%;
+}
+
+.export-utilities {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.btn-validate {
+  flex: 1;
+}
+
+.btn-reset {
+  flex: 1;
+  color: var(--color-danger);
+}
+
+.export-error {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: rgba(229, 62, 62, 0.1);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  font-size: 0.875rem;
+}
+
+.validation-result {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.validation-result.valid {
+  background: rgba(56, 161, 105, 0.1);
+  border: 1px solid var(--color-success);
+}
+
+.validation-result.invalid {
+  background: rgba(229, 62, 62, 0.1);
+  border: 1px solid var(--color-danger);
+}
+
+.validation-success {
+  color: var(--color-success);
+  margin: 0;
+}
+
+.validation-failure {
+  color: var(--color-danger);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.validation-errors,
+.validation-warnings {
+  margin: var(--spacing-sm) 0 0;
+  padding-left: var(--spacing-md);
+}
+
+.validation-error {
+  color: var(--color-danger);
+  font-size: 0.75rem;
+}
+
+.validation-warning {
+  color: var(--color-warning);
+  font-size: 0.75rem;
+}
+
+/* ============================================================================
+   Responsive Adjustments
+   ============================================================================ */
+
+@media (max-width: 1024px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    max-height: 300px;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-export-sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+  }
+}

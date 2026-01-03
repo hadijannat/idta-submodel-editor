@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: submodel-editor-config
+  namespace: idta-editor
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: config
+data:
+  ENV: "production"
+  DEBUG: "false"
+  CORS_ORIGINS: "https://editor.example.com"
+  CACHE_TTL_HOURS: "24"
+  MAX_UPLOAD_SIZE_MB: "50"
+  PDF_ENABLED: "true"
+  OIDC_ENABLED: "false"
+  OIDC_ISSUER_URL: ""
+  OIDC_AUDIENCE: "idta-editor"
+  REDIS_URL: "redis://redis:6379"
+  GITHUB_REPO: "admin-shell-io/submodel-templates"

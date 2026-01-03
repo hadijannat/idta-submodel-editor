@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ submodel.idShort }} - Submodel Report</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #333;
+        }
+
+        .header {
+            border-bottom: 2px solid #2c5282;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            color: #2c5282;
+            margin: 0 0 0.5rem 0;
+            font-size: 18pt;
+        }
+
+        .header .meta {
+            color: #666;
+            font-size: 9pt;
+        }
+
+        .section {
+            margin-bottom: 1.5rem;
+            page-break-inside: avoid;
+        }
+
+        .section-title {
+            background-color: #edf2f7;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #2d3748;
+            border-left: 3px solid #2c5282;
+        }
+
+        .element {
+            margin-left: 1rem;
+            margin-bottom: 0.5rem;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .element:last-child {
+            border-bottom: none;
+        }
+
+        .element-label {
+            font-weight: 600;
+            color: #2d3748;
+            display: inline-block;
+            min-width: 200px;
+        }
+
+        .element-value {
+            color: #4a5568;
+        }
+
+        .element-type {
+            font-size: 8pt;
+            color: #a0aec0;
+            margin-left: 0.5rem;
+        }
+
+        .collection {
+            margin-left: 1rem;
+            padding-left: 0.5rem;
+            border-left: 2px solid #e2e8f0;
+        }
+
+        .collection-title {
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 0.25rem;
+        }
+
+        .multilang {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .multilang-item {
+            background: #f7fafc;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 9pt;
+        }
+
+        .multilang-lang {
+            font-weight: 600;
+            color: #2c5282;
+        }
+
+        .list-item {
+            background: #f7fafc;
+            padding: 0.5rem;
+            margin-bottom: 0.25rem;
+            border-radius: 4px;
+        }
+
+        .list-item-index {
+            font-weight: 600;
+            color: #718096;
+            font-size: 8pt;
+        }
+
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 8pt;
+            color: #a0aec0;
+            padding: 1rem;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .empty-value {
+            color: #a0aec0;
+            font-style: italic;
+        }
+
+        .required {
+            color: #c53030;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ submodel.idShort }}</h1>
+        <div class="meta">
+            <strong>Submodel ID:</strong> {{ submodel.submodelId }}<br>
+            {% if submodel.semanticId %}
+            <strong>Semantic ID:</strong> {{ submodel.semanticId }}<br>
+            {% endif %}
+            {% if submodel.description %}
+            <strong>Description:</strong> {{ submodel.description.get('en', submodel.description.values()|first) }}
+            {% endif %}
+        </div>
+    </div>
+
+    {% macro render_element(element, depth=0) %}
+    {% if element.modelType == 'Property' %}
+        <div class="element">
+            <span class="element-label">{{ element.semanticLabel or element.idShort }}</span>
+            <span class="element-type">({{ element.valueType or 'string' }})</span>
+            <span class="element-value">
+                {% if element.value %}
+                    {{ element.value }}
+                    {% if element.unit %} {{ element.unit }}{% endif %}
+                {% else %}
+                    <span class="empty-value">—</span>
+                {% endif %}
+            </span>
+        </div>
+
+    {% elif element.modelType == 'MultiLanguageProperty' %}
+        <div class="element">
+            <span class="element-label">{{ element.semanticLabel or element.idShort }}</span>
+            <div class="multilang">
+                {% for lang, value in (element.value or {}).items() %}
+                {% if value %}
+                <span class="multilang-item">
+                    <span class="multilang-lang">{{ lang }}:</span> {{ value }}
+                </span>
+                {% endif %}
+                {% endfor %}
+                {% if not element.value %}
+                <span class="empty-value">No translations</span>
+                {% endif %}
+            </div>
+        </div>
+
+    {% elif element.modelType == 'SubmodelElementCollection' %}
+        <div class="section">
+            <div class="section-title">{{ element.semanticLabel or element.idShort }}</div>
+            <div class="collection">
+                {% for child in element.elements or [] %}
+                    {{ render_element(child, depth + 1) }}
+                {% endfor %}
+            </div>
+        </div>
+
+    {% elif element.modelType == 'SubmodelElementList' %}
+        <div class="section">
+            <div class="section-title">{{ element.semanticLabel or element.idShort }}</div>
+            <div class="collection">
+                {% for item in element.items or [] %}
+                <div class="list-item">
+                    <span class="list-item-index">Item {{ loop.index }}</span>
+                    {{ render_element(item, depth + 1) }}
+                </div>
+                {% endfor %}
+                {% if not element.items %}
+                <span class="empty-value">No items</span>
+                {% endif %}
+            </div>
+        </div>
+
+    {% elif element.modelType == 'File' %}
+        <div class="element">
+            <span class="element-label">{{ element.semanticLabel or element.idShort }}</span>
+            <span class="element-type">(File)</span>
+            <span class="element-value">
+                {% if element.value %}
+                    {{ element.value }}
+                    {% if element.contentType %}({{ element.contentType }}){% endif %}
+                {% else %}
+                    <span class="empty-value">No file</span>
+                {% endif %}
+            </span>
+        </div>
+
+    {% elif element.modelType == 'Range' %}
+        <div class="element">
+            <span class="element-label">{{ element.semanticLabel or element.idShort }}</span>
+            <span class="element-type">(Range)</span>
+            <span class="element-value">
+                {{ element.min or '—' }} to {{ element.max or '—' }}
+                {% if element.unit %} {{ element.unit }}{% endif %}
+            </span>
+        </div>
+
+    {% elif element.modelType == 'Entity' %}
+        <div class="section">
+            <div class="section-title">{{ element.semanticLabel or element.idShort }} (Entity)</div>
+            <div class="collection">
+                <div class="element">
+                    <span class="element-label">Entity Type</span>
+                    <span class="element-value">{{ element.entityType }}</span>
+                </div>
+                {% if element.globalAssetId %}
+                <div class="element">
+                    <span class="element-label">Global Asset ID</span>
+                    <span class="element-value">{{ element.globalAssetId }}</span>
+                </div>
+                {% endif %}
+                {% for stmt in element.statements or [] %}
+                    {{ render_element(stmt, depth + 1) }}
+                {% endfor %}
+            </div>
+        </div>
+
+    {% elif element.modelType == 'ReferenceElement' %}
+        <div class="element">
+            <span class="element-label">{{ element.semanticLabel or element.idShort }}</span>
+            <span class="element-type">(Reference)</span>
+            <span class="element-value">
+                {% if element.value %}
+                    {{ element.value }}
+                {% else %}
+                    <span class="empty-value">—</span>
+                {% endif %}
+            </span>
+        </div>
+
+    {% else %}
+        <div class="element">
+            <span class="element-label">{{ element.semanticLabel or element.idShort }}</span>
+            <span class="element-type">({{ element.modelType }})</span>
+            <span class="element-value">
+                {% if element.value %}
+                    {{ element.value }}
+                {% else %}
+                    <span class="empty-value">—</span>
+                {% endif %}
+            </span>
+        </div>
+    {% endif %}
+    {% endmacro %}
+
+    {% for element in elements %}
+        {{ render_element(element) }}
+    {% endfor %}
+
+    <div class="footer">
+        Generated by IDTA Submodel Editor | {{ now().strftime('%Y-%m-%d %H:%M:%S') if now is defined else '' }}
+    </div>
+</body>
+</html>

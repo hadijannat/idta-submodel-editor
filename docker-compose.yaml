@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Backend API service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      - CACHE_TTL_HOURS=24
+      - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
+      - MAX_UPLOAD_SIZE_MB=50
+      - PDF_ENABLED=true
+      # OIDC (optional)
+      - OIDC_ENABLED=false
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL:-http://keycloak:8080/realms/idta}
+      - OIDC_AUDIENCE=${OIDC_AUDIENCE:-idta-editor}
+      # Redis (optional)
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend/app:/app/app
+      - template_cache:/app/cache
+      - temp_storage:/app/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - redis
+    networks:
+      - idta-network
+
+  # Frontend development server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - idta-network
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - idta-network
+
+  # Keycloak for authentication (optional)
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    networks:
+      - idta-network
+    profiles:
+      - auth  # Only start with: docker-compose --profile auth up
+
+volumes:
+  template_cache:
+    driver: local
+  temp_storage:
+    driver: local
+  redis_data:
+    driver: local
+  keycloak_data:
+    driver: local
+
+networks:
+  idta-network:
+    driver: bridge

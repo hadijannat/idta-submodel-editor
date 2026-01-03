@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: submodel-editor-frontend
+  namespace: idta-editor
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
