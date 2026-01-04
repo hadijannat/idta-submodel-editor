@@ -21,6 +21,23 @@ The application follows a three-pipeline architecture:
 
 ## Quick Start
 
+## Three-Step Demo
+
+1. **Start the stack**
+   ```bash
+   docker-compose up
+   ```
+2. **Open the UI**  
+   Visit `http://localhost:3000` and select a template (e.g., “Digital Nameplate”).
+3. **Fill & export**  
+   Complete the form and export as **AASX**, **JSON**, or **PDF** from the Export panel.
+
+Screenshots (replace with real UI captures when available):
+
+![Step 1: Start the stack](docs/demo-step-1-start.png)
+![Step 2: Select a template](docs/demo-step-2-select.png)
+![Step 3: Fill & export](docs/demo-step-3-export.png)
+
 ### Using Docker Compose
 
 ```bash
