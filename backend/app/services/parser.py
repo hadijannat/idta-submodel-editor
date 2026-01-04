@@ -65,10 +65,11 @@ class ParserService:
         if not submodel:
             raise ValueError("No Submodel found in AASX file")
 
-        logger.info(f"Parsing submodel: {submodel.id_short} ({submodel.id_})")
+        submodel_id = getattr(submodel, "id_", None) or getattr(submodel, "id", None)
+        logger.info(f"Parsing submodel: {submodel.id_short} ({submodel_id})")
 
         return {
-            "submodelId": submodel.id_,
+            "submodelId": submodel_id,
             "idShort": submodel.id_short,
             "semanticId": self._serialize_reference(submodel.semantic_id),
             "description": dict(submodel.description) if submodel.description else None,
@@ -370,7 +371,8 @@ class ParserService:
         - [1..*]: Mandatory, at least one
         """
         for q in getattr(element, "qualifier", []) or []:
-            if q.type_ in ("Multiplicity", "cardinality", "Cardinality"):
+            q_type = getattr(q, "type_", None) or getattr(q, "type", None)
+            if q_type in ("Multiplicity", "cardinality", "Cardinality", "SMT/Cardinality"):
                 return q.value
         return "[1]"  # Default to mandatory
 
@@ -382,7 +384,7 @@ class ParserService:
         for q in getattr(element, "qualifier", []) or []:
             qualifiers.append(
                 {
-                    "type": q.type_,
+                    "type": getattr(q, "type_", None) or getattr(q, "type", None),
                     "value": q.value,
                     "valueType": str(q.value_type) if q.value_type else None,
                     "semanticId": self._serialize_reference(

@@ -110,8 +110,13 @@ class TemplateFetcherService:
                     }
                 )
 
-        # Sort by IDTA number
-        templates.sort(key=lambda x: x.get("idta_number", "99999"))
+        # Sort by IDTA number, falling back to a high value when missing.
+        templates.sort(
+            key=lambda x: (
+                x.get("idta_number") or "99999",
+                x.get("title") or x.get("name", ""),
+            )
+        )
 
         self._index_cache[cache_key] = (templates, datetime.now())
         return templates
