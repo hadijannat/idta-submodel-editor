@@ -32,7 +32,7 @@ The application follows a three-pipeline architecture:
 3. **Fill & export**  
    Complete the form and export as **AASX**, **JSON**, or **PDF** from the Export panel.
 
-Screenshots (replace with real UI captures when available):
+Screenshots (Digital Nameplate example):
 
 ![Step 1: Start the stack](docs/demo-step-1-start.png)
 ![Step 2: Select a template](docs/demo-step-2-select.png)
