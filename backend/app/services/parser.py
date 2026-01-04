@@ -16,6 +16,7 @@ from app.utils.semantic_resolver import (
     get_description_text,
     get_unit_from_concept_description,
     resolve_semantic_label,
+    resolve_semantic_description,
 )
 from app.utils.xsd_mapping import (
     get_input_type,
@@ -101,6 +102,12 @@ class ParserService:
         Recursively processes nested elements (SMC, SML, Entity).
         """
         # Base schema applicable to all element types
+        description = dict(element.description) if element.description else None
+        if not description:
+            semantic_description = resolve_semantic_description(element, object_store)
+            if semantic_description:
+                description = semantic_description
+
         base_schema: dict[str, Any] = {
             "idShort": element.id_short,
             "modelType": type(element).__name__,
@@ -109,7 +116,7 @@ class ParserService:
             ),
             "semanticLabel": resolve_semantic_label(element, object_store),
             "description": (
-                dict(element.description) if element.description else None
+                description
             ),
             "qualifiers": self._serialize_qualifiers(element),
             "cardinality": self._extract_cardinality(element),

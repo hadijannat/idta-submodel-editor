@@ -5,6 +5,7 @@
 import React from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
+import DescriptionText from './DescriptionText';
 
 interface PropertyFieldProps {
   /** Form path for the value */
@@ -78,9 +79,7 @@ export const PropertyField: React.FC<PropertyFieldProps> = ({
             </label>
           )}
         />
-        {schema.description?.en && (
-          <p className="aas-description">{schema.description.en}</p>
-        )}
+        <DescriptionText description={schema.description} />
       </div>
     );
   }
@@ -137,9 +136,7 @@ export const PropertyField: React.FC<PropertyFieldProps> = ({
         )}
       />
 
-      {schema.description?.en && (
-        <p className="aas-description">{schema.description.en}</p>
-      )}
+      <DescriptionText description={schema.description} />
     </div>
   );
 };

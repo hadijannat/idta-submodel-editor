@@ -7,6 +7,7 @@
 import React from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
+import DescriptionText from './DescriptionText';
 
 interface FileFieldProps {
   /** Form path for the file element */
@@ -52,9 +53,7 @@ export const FileField: React.FC<FileFieldProps> = ({
         {required && <span className="aas-required">*</span>}
       </label>
 
-      {schema.description?.en && (
-        <p className="aas-description">{schema.description.en}</p>
-      )}
+      <DescriptionText description={schema.description} />
 
       <div className="aas-file-fields">
         <div className="aas-file-path">

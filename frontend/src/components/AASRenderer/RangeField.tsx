@@ -7,6 +7,7 @@
 import React from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
+import DescriptionText from './DescriptionText';
 
 interface RangeFieldProps {
   /** Form path for the range element */
@@ -47,9 +48,7 @@ export const RangeField: React.FC<RangeFieldProps> = ({
         {unit && <span className="aas-unit">({unit})</span>}
       </label>
 
-      {schema.description?.en && (
-        <p className="aas-description">{schema.description.en}</p>
-      )}
+      <DescriptionText description={schema.description} />
 
       <div className="aas-range-fields">
         <div className="aas-range-min">

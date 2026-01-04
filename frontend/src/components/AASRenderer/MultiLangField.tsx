@@ -7,6 +7,7 @@
 import React, { useState } from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
+import DescriptionText from './DescriptionText';
 import { SUPPORTED_LANGUAGES } from '../../types/aas-elements';
 
 interface MultiLangFieldProps {
@@ -69,9 +70,7 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
         </span>
       </div>
 
-      {schema.description?.en && (
-        <p className="aas-description">{schema.description.en}</p>
-      )}
+      <DescriptionText description={schema.description} />
 
       <div className="aas-multilang-tabs" role="tablist">
         {languages.map((lang, index) => (

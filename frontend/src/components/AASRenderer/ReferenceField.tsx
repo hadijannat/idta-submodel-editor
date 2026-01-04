@@ -7,6 +7,7 @@
 import React from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
+import DescriptionText from './DescriptionText';
 
 interface ReferenceFieldProps {
   /** Form path for the reference value */
@@ -55,9 +56,7 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
         {required && <span className="aas-required">*</span>}
       </label>
 
-      {schema.description?.en && (
-        <p className="aas-description">{schema.description.en}</p>
-      )}
+      <DescriptionText description={schema.description} />
 
       <Controller
         name={path}
