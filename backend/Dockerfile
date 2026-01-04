@@ -29,10 +29,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
-    libgdk-pixbuf2.0-0 \
     libffi8 \
     shared-mime-info \
     curl \
+    && (apt-get install -y --no-install-recommends libgdk-pixbuf-2.0-0 \
+        || apt-get install -y --no-install-recommends libgdk-pixbuf-xlib-2.0-0) \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
