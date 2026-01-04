@@ -5,7 +5,7 @@ Resolves human-readable labels from ConceptDescriptions linked via semantic IDs.
 """
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any
 
 if TYPE_CHECKING:
     from basyx.aas import model
@@ -193,6 +193,82 @@ def _extract_semantic_id_value(semantic_ref) -> str | None:
     if hasattr(semantic_ref, "key") and semantic_ref.key:
         return semantic_ref.key[0].value
     return str(semantic_ref) if semantic_ref else None
+
+
+def resolve_concept_description_by_semantic_id(
+    semantic_id: str,
+    object_store: "model.DictObjectStore",
+) -> Optional["model.ConceptDescription"]:
+    """
+    Resolve ConceptDescription by a raw semantic ID string.
+    """
+    from basyx.aas import model
+
+    if not semantic_id:
+        return None
+
+    semantic_id = semantic_id.strip()
+    for obj in object_store:
+        if not isinstance(obj, model.ConceptDescription):
+            continue
+        obj_id = getattr(obj, "id", None)
+        if obj_id == semantic_id:
+            return obj
+        if obj_id and isinstance(obj_id, str) and obj_id.endswith(semantic_id):
+            return obj
+        if getattr(obj, "id_short", None) == semantic_id:
+            return obj
+
+    return None
+
+
+def concept_description_to_dict(
+    concept_description: "model.ConceptDescription",
+) -> dict[str, Any]:
+    """
+    Serialize a ConceptDescription to a JSON-friendly dict.
+    """
+    from basyx.aas import model
+
+    def _lang_map(value) -> dict[str, str] | None:
+        if not value:
+            return None
+        return dict(value)
+
+    def _serialize_reference(ref) -> str | None:
+        if ref is None:
+            return None
+        if hasattr(ref, "key") and ref.key:
+            return ref.key[0].value
+        return str(ref)
+
+    result: dict[str, Any] = {
+        "id": getattr(concept_description, "id", None),
+        "idShort": getattr(concept_description, "id_short", None),
+        "description": _lang_map(getattr(concept_description, "description", None)),
+        "displayName": _lang_map(getattr(concept_description, "display_name", None)),
+    }
+
+    for eds in concept_description.embedded_data_specifications or []:
+        content = eds.data_specification_content
+        if isinstance(content, model.DataSpecificationIEC61360):
+            result.update(
+                {
+                    "preferredName": _lang_map(getattr(content, "preferred_name", None)),
+                    "shortName": _lang_map(getattr(content, "short_name", None)),
+                    "definition": _lang_map(getattr(content, "definition", None)),
+                    "dataType": str(content.data_type) if content.data_type else None,
+                    "unit": content.unit,
+                    "unitId": _serialize_reference(getattr(content, "unit_id", None)),
+                    "sourceOfDefinition": content.source_of_definition,
+                    "symbol": content.symbol,
+                    "valueFormat": content.value_format,
+                    "value": content.value,
+                }
+            )
+            break
+
+    return result
 
 
 def get_description_text(

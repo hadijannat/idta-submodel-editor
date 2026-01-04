@@ -5,18 +5,27 @@ Provides the core API for the submodel editor functionality.
 """
 
 import logging
+from io import BytesIO
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
 from fastapi.responses import Response
+from basyx.aas import model
+from basyx.aas.adapter import aasx
 
 from app.config import get_settings
 from app.dependencies import get_fetcher, get_hydrator, get_parser
+from app.schemas.concept_description import ConceptDescriptionResponse
 from app.schemas.form_data import SubmodelFormData, UploadResponse, ValidationResult
 from app.schemas.ui_schema import SubmodelUISchema
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
+from app.utils.aasx_reader import SafeAASXReader
+from app.utils.semantic_resolver import (
+    concept_description_to_dict,
+    resolve_concept_description_by_semantic_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +51,52 @@ async def get_template_schema(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"Failed to get schema for {template_name}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/templates/{template_name}/concept-description",
+    response_model=ConceptDescriptionResponse,
+)
+async def get_concept_description(
+    template_name: str,
+    semantic_id: Annotated[
+        str, Query(description="Semantic ID to resolve against ConceptDescriptions")
+    ],
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+) -> ConceptDescriptionResponse:
+    """
+    Resolve a ConceptDescription by semantic ID within a template AASX.
+    """
+    try:
+        aasx_bytes = await fetcher.fetch_template_aasx(f"published/{template_name}")
+        object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
+        file_store = aasx.DictSupplementaryFileContainer()
+
+        with SafeAASXReader(BytesIO(aasx_bytes)) as reader:
+            reader.read_into(object_store, file_store)
+
+        concept_description = resolve_concept_description_by_semantic_id(
+            semantic_id, object_store
+        )
+        if concept_description is None:
+            raise HTTPException(
+                status_code=404,
+                detail="ConceptDescription not found for semanticId",
+            )
+
+        payload = concept_description_to_dict(concept_description)
+        return ConceptDescriptionResponse(**payload)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(
+            "Failed to resolve ConceptDescription for %s (%s)",
+            template_name,
+            semantic_id,
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 

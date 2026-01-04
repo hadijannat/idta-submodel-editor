@@ -12,7 +12,7 @@ services:
       - ENV=development
       - DEBUG=true
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
+      - CORS_ORIGINS=["http://localhost:8080","http://localhost:5173"]
       - CACHE_TTL_HOURS=24
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
       - MAX_UPLOAD_SIZE_MB=50
@@ -45,7 +45,7 @@ services:
       dockerfile: Dockerfile
       target: development
     ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
       - VITE_API_URL=http://localhost:8000
     volumes:

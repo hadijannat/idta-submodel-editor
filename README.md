@@ -28,7 +28,7 @@ The application follows a three-pipeline architecture:
    docker-compose up
    ```
 2. **Open the UI**  
-   Visit `http://localhost:3000` and select a template (e.g., “Digital Nameplate”).
+   Visit `http://localhost:8080` and select a template (e.g., “Digital Nameplate”).
 3. **Fill & export**  
    Complete the form and export as **AASX**, **JSON**, or **PDF** from the Export panel.
 
@@ -49,7 +49,7 @@ cd idta-submodel-editor
 docker-compose up
 
 # Access the application
-# Frontend: http://localhost:3000
+# Frontend: http://localhost:8080
 # Backend API: http://localhost:8000
 # API Documentation (Swagger): http://localhost:8000/api/docs
 # API Documentation (ReDoc): http://localhost:8000/api/redoc
@@ -96,7 +96,7 @@ npm run dev
 | `ENV` | Environment (development, staging, production) | development |
 | `SECRET_KEY` | Secret key for signing | Required in production |
 | `GITHUB_TOKEN` | GitHub API token for higher rate limits | Optional |
-| `CORS_ORIGINS` | Allowed CORS origins | http://localhost:3000 |
+| `CORS_ORIGINS` | Allowed CORS origins | http://localhost:8080 |
 | `CACHE_TTL_HOURS` | Template cache TTL in hours | 24 |
 | `MAX_UPLOAD_SIZE_MB` | Maximum upload file size | 50 |
 | `PDF_ENABLED` | Enable PDF export | true |

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     workers: int = 4
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:8080", "http://localhost:5173"]
 
     # GitHub API
     github_token: str | None = None
