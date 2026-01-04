@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: submodel-editor-frontend
-  namespace: idta-editor
   labels:
     app.kubernetes.io/name: idta-submodel-editor
     app.kubernetes.io/component: frontend

@@ -2,7 +2,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: submodel-editor-ingress
-  namespace: idta-editor
   labels:
     app.kubernetes.io/name: idta-submodel-editor
     app.kubernetes.io/component: ingress

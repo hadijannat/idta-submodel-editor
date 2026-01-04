@@ -2,7 +2,6 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: submodel-editor-backend-hpa
-  namespace: idta-editor
   labels:
     app.kubernetes.io/name: idta-submodel-editor
     app.kubernetes.io/component: autoscaling
@@ -44,7 +43,6 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: submodel-editor-frontend-hpa
-  namespace: idta-editor
   labels:
     app.kubernetes.io/name: idta-submodel-editor
     app.kubernetes.io/component: autoscaling
