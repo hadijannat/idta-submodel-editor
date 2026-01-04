@@ -18,6 +18,7 @@ from app.utils.semantic_resolver import (
     resolve_semantic_label,
     resolve_semantic_description,
 )
+from app.utils.aasx_reader import SafeAASXReader
 from app.utils.xsd_mapping import (
     get_input_type,
     get_range_constraints,
@@ -58,7 +59,7 @@ class ParserService:
         object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
         file_store = aasx.DictSupplementaryFileContainer()
 
-        with aasx.AASXReader(BytesIO(aasx_bytes)) as reader:
+        with SafeAASXReader(BytesIO(aasx_bytes)) as reader:
             reader.read_into(object_store, file_store)
 
         # Find the submodel
@@ -329,26 +330,47 @@ class ParserService:
         """Generate schema for Operation element."""
         return {
             "inputVariables": [
-                self._operation_variable_schema(v, object_store)
-                for v in element.input_variable or []
+                schema
+                for v in (element.input_variable or [])
+                if (schema := self._operation_variable_schema(v, object_store)) is not None
             ],
             "outputVariables": [
-                self._operation_variable_schema(v, object_store)
-                for v in element.output_variable or []
+                schema
+                for v in (element.output_variable or [])
+                if (schema := self._operation_variable_schema(v, object_store)) is not None
             ],
             "inoutputVariables": [
-                self._operation_variable_schema(v, object_store)
-                for v in element.in_output_variable or []
+                schema
+                for v in (element.in_output_variable or [])
+                if (schema := self._operation_variable_schema(v, object_store)) is not None
             ],
         }
 
     def _operation_variable_schema(
         self,
-        variable: OperationVariableType,
+        variable: OperationVariableType | model.SubmodelElement,
         object_store: model.DictObjectStore,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """Generate schema for Operation variable."""
-        return self._element_to_schema(variable.value, object_store)
+        if hasattr(variable, "value"):
+            value = getattr(variable, "value", None)
+            if value is None:
+                logger.warning("Skipping operation variable without value")
+                return None
+            if not isinstance(value, model.SubmodelElement):
+                logger.warning(
+                    "Skipping operation variable with non-element value: %s",
+                    type(value).__name__,
+                )
+                return None
+            return self._element_to_schema(value, object_store)  # type: ignore[arg-type]
+        if not isinstance(variable, model.SubmodelElement):
+            logger.warning(
+                "Skipping operation variable that is not a submodel element: %s",
+                type(variable).__name__,
+            )
+            return None
+        return self._element_to_schema(variable, object_store)
 
     def _capability_schema(self, element: model.Capability) -> dict[str, Any]:
         """Generate schema for Capability element."""

@@ -7,10 +7,13 @@ from the admin-shell-io/submodel-templates repository.
 
 import base64
 import hashlib
+import json
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -87,23 +90,41 @@ class TemplateFetcherService:
 
         logger.info("Fetching template index from GitHub")
 
+        directories = None
         async with httpx.AsyncClient(timeout=30.0) as client:
             url = f"https://api.github.com/repos/{self.github_repo}/contents/published"
-            response = await client.get(url, headers=self.headers)
-            response.raise_for_status()
-            directories = response.json()
+            try:
+                response = await client.get(url, headers=self.headers)
+                response.raise_for_status()
+                directories = response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 403 and "rate limit" in exc.response.text.lower():
+                    logger.warning(
+                        "GitHub API rate limit hit while listing templates, falling back to HTML listing",
+                    )
+                    directories = await self._list_templates_via_html()
+                else:
+                    raise
 
         templates = []
-        for item in directories:
-            if item["type"] == "dir":
+        for item in directories or []:
+            is_dir = item.get("type") == "dir" or item.get("contentType") == "directory"
+            if is_dir:
                 # Parse template name to extract IDTA number and title
-                name = item["name"]
+                name = item.get("name")
+                if not name:
+                    continue
                 template_info = self._parse_template_name(name)
+                path = item.get("path") or f"published/{name}"
+                url = item.get("url")
+                if not url:
+                    url_path = quote(path, safe="/")
+                    url = f"https://github.com/{self.github_repo}/tree/main/{url_path}"
                 templates.append(
                     {
                         "name": name,
-                        "path": item["path"],
-                        "url": item["url"],
+                        "path": path,
+                        "url": url,
                         "idta_number": template_info.get("idta_number"),
                         "title": template_info.get("title"),
                         "sha": item.get("sha"),
@@ -120,6 +141,42 @@ class TemplateFetcherService:
 
         self._index_cache[cache_key] = (templates, datetime.now())
         return templates
+
+    async def _list_templates_via_html(self) -> list[dict]:
+        """
+        Fallback to GitHub HTML tree listing for /published.
+        """
+        items = await self._fetch_github_tree_items("published")
+        templates: dict[str, dict] = {}
+        for item in items:
+            if item.get("contentType") != "directory":
+                continue
+
+            raw_name = item.get("name") or ""
+            raw_path = item.get("path") or ""
+            if raw_path.startswith("published/"):
+                root = raw_path.split("/", 2)[1]
+            else:
+                root = raw_name.split("/", 1)[0]
+
+            if not root:
+                continue
+
+            path = f"published/{root}"
+            url_path = quote(path, safe="/")
+            templates.setdefault(
+                root,
+                {
+                    "name": root,
+                    "path": path,
+                    "url": f"https://github.com/{self.github_repo}/tree/main/{url_path}",
+                    "sha": None,
+                    "type": "dir",
+                    "contentType": "directory",
+                },
+            )
+
+        return list(templates.values())
 
     def _parse_template_name(self, name: str) -> dict:
         """
@@ -166,16 +223,27 @@ class TemplateFetcherService:
         logger.info(f"Fetching AASX for {template_path} from GitHub")
 
         # Navigate to find the AASX file
+        aasx_download_url = None
         async with httpx.AsyncClient(timeout=60.0) as client:
             contents_url = (
                 f"https://api.github.com/repos/{self.github_repo}/contents/{template_path}"
             )
-            response = await client.get(contents_url, headers=self.headers)
-            response.raise_for_status()
-            items = response.json()
-
-        # Find the AASX file (may be in a version subdirectory)
-        aasx_download_url = await self._find_aasx_file(items)
+            try:
+                response = await client.get(contents_url, headers=self.headers)
+                response.raise_for_status()
+                items = response.json()
+                aasx_download_url = await self._find_aasx_file(items)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 403 and "rate limit" in exc.response.text.lower():
+                    logger.warning(
+                        "GitHub API rate limit hit while fetching %s, falling back to HTML listing",
+                        template_path,
+                    )
+                    aasx_download_url = await self._find_aasx_file_via_html(
+                        template_path
+                    )
+                else:
+                    raise
         if not aasx_download_url:
             raise ValueError(f"No AASX file found in {template_path}")
 
@@ -228,6 +296,83 @@ class TemplateFetcherService:
                         return result
 
         return None
+
+    async def _find_aasx_file_via_html(
+        self, template_path: str, depth: int = 0, max_depth: int = 3
+    ) -> str | None:
+        """
+        Fallback to GitHub HTML directory listings when API is rate-limited.
+        """
+        if depth > max_depth:
+            return None
+
+        items = await self._fetch_github_tree_items(template_path)
+        if not items:
+            return None
+
+        aasx_files = [
+            item
+            for item in items
+            if item.get("contentType") == "file"
+            and item.get("name", "").endswith(".aasx")
+        ]
+        subdirs = [
+            item for item in items if item.get("contentType") == "directory"
+        ]
+
+        if aasx_files:
+            aasx_files.sort(key=lambda x: x.get("name", ""), reverse=True)
+            filename = aasx_files[0].get("name")
+            if not filename:
+                return None
+            raw_path = quote(f"{template_path}/{filename}", safe="/")
+            return (
+                f"https://raw.githubusercontent.com/{self.github_repo}/main/{raw_path}"
+            )
+
+        for subdir in subdirs:
+            name = subdir.get("name")
+            if not name:
+                continue
+            result = await self._find_aasx_file_via_html(
+                f"{template_path}/{name}",
+                depth + 1,
+                max_depth,
+            )
+            if result:
+                return result
+
+        return None
+
+    async def _fetch_github_tree_items(self, path: str) -> list[dict]:
+        """
+        Parse GitHub HTML tree page to get directory items.
+        """
+        url_path = quote(path, safe="/")
+        url = f"https://github.com/{self.github_repo}/tree/main/{url_path}"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            html = response.text
+
+        match = re.search(
+            r'data-target=\"react-app.embeddedData\"[^>]*>(.*?)</script>',
+            html,
+            re.S,
+        )
+        if not match:
+            logger.warning("Failed to find embedded data on GitHub tree page: %s", url)
+            return []
+
+        raw_json = match.group(1).strip()
+        try:
+            data = json.loads(raw_json)
+        except json.JSONDecodeError as exc:
+            logger.warning("Failed to parse GitHub embedded data JSON: %s", exc)
+            return []
+
+        return data.get("payload", {}).get("tree", {}).get("items", []) or []
 
     async def get_template_versions(self, template_path: str) -> list[dict]:
         """

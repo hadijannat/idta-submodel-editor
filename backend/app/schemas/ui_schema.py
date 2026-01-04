@@ -14,7 +14,7 @@ class QualifierSchema(BaseModel):
     """Schema for a Qualifier on a SubmodelElement."""
 
     type: str = Field(..., alias="type")
-    value: str | None = None
+    value: str | int | float | bool | None = None
     valueType: str | None = None
     semanticId: str | None = None
     kind: str | None = None

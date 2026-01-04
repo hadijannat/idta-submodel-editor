@@ -14,6 +14,8 @@ from typing import Any
 from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
 
+from app.utils.aasx_reader import SafeAASXReader
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +49,7 @@ class HydratorService:
         file_store = aasx.DictSupplementaryFileContainer()
 
         # Load the template
-        with aasx.AASXReader(BytesIO(template_aasx_bytes)) as reader:
+        with SafeAASXReader(BytesIO(template_aasx_bytes)) as reader:
             reader.read_into(object_store, file_store)
 
         # Find the submodel
@@ -102,7 +104,7 @@ class HydratorService:
         object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
         file_store = aasx.DictSupplementaryFileContainer()
 
-        with aasx.AASXReader(BytesIO(template_aasx_bytes)) as reader:
+        with SafeAASXReader(BytesIO(template_aasx_bytes)) as reader:
             reader.read_into(object_store, file_store)
 
         submodel = self._find_submodel(object_store)
