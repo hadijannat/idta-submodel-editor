@@ -5,7 +5,7 @@ Resolves human-readable labels from ConceptDescriptions linked via semantic IDs.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from basyx.aas import model
@@ -146,7 +146,7 @@ def _extract_display_name(
 def _resolve_concept_description(
     semantic_ref,
     object_store: "model.DictObjectStore",
-) -> "model.ConceptDescription" | None:
+) -> Optional["model.ConceptDescription"]:
     """
     Resolve a ConceptDescription from a semantic reference.
     """
@@ -172,7 +172,7 @@ def _resolve_concept_description(
 def _find_concept_description_by_identifier(
     object_store: "model.DictObjectStore",
     identifier: str,
-) -> "model.ConceptDescription" | None:
+) -> Optional["model.ConceptDescription"]:
     from basyx.aas import model
 
     for obj in object_store:

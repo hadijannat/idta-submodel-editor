@@ -5,6 +5,7 @@ Supports environment variables and .env files for configuration.
 """
 
 from functools import lru_cache
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -61,7 +62,15 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            value = v.strip()
+            if value.startswith("["):
+                try:
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        return [str(origin).strip() for origin in parsed if str(origin).strip()]
+                except json.JSONDecodeError:
+                    pass
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
     @field_validator("cache_dir", mode="before")
