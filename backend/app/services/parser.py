@@ -372,9 +372,46 @@ class ParserService:
         """
         for q in getattr(element, "qualifier", []) or []:
             q_type = getattr(q, "type_", None) or getattr(q, "type", None)
-            if q_type in ("Multiplicity", "cardinality", "Cardinality", "SMT/Cardinality"):
-                return q.value
+            if q_type in (
+                "Multiplicity",
+                "cardinality",
+                "Cardinality",
+                "SMT/Cardinality",
+            ):
+                normalized = self._normalize_cardinality_value(q.value)
+                if normalized:
+                    return normalized
         return "[1]"  # Default to mandatory
+
+    @staticmethod
+    def _normalize_cardinality_value(value: str | None) -> str | None:
+        """Normalize common cardinality encodings to bracket format."""
+        if value is None:
+            return None
+        value = str(value).strip()
+        if not value:
+            return None
+
+        mapping = {
+            "ZeroToOne": "[0..1]",
+            "ZeroToMany": "[0..*]",
+            "OneToMany": "[1..*]",
+            "One": "[1]",
+            "Zero": "[0]",
+        }
+        if value in mapping:
+            return mapping[value]
+
+        if value.startswith("[") and value.endswith("]"):
+            return value
+
+        if ".." in value:
+            return f"[{value}]"
+
+        if value.isdigit():
+            return f"[{value}]"
+
+        return value
 
     def _serialize_qualifiers(
         self, element: model.SubmodelElement
