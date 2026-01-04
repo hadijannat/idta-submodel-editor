@@ -348,7 +348,7 @@ body {
 
 .aas-label {
   display: block;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--color-text);
   margin-bottom: var(--spacing-xs);
 }
@@ -768,6 +768,10 @@ body {
 }
 
 .btn-validate {
+  flex: 1;
+}
+
+.btn-verify {
   flex: 1;
 }
 

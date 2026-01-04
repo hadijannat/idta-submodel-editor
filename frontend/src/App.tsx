@@ -31,6 +31,7 @@ function App() {
     exportAasx,
     exportJson,
     exportPdf,
+    verifyExport,
     resetForm,
   } = useSubmodelForm({
     templateName: selectedTemplate?.name,
@@ -149,6 +150,7 @@ function App() {
               onExportAasx={exportAasx}
               onExportJson={exportJson}
               onExportPdf={exportPdf}
+              onVerify={verifyExport}
               onValidate={validate}
               onReset={resetForm}
               validating={validating}

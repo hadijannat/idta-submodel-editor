@@ -13,6 +13,8 @@ interface ExportPanelProps {
   onExportJson: (filename?: string) => Promise<void>;
   /** Export as PDF */
   onExportPdf: (filename?: string) => Promise<void>;
+  /** Verify export without downloading */
+  onVerify: () => Promise<void>;
   /** Validate the form */
   onValidate: () => Promise<boolean>;
   /** Reset the form */
@@ -35,12 +37,14 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   onExportAasx,
   onExportJson,
   onExportPdf,
+  onVerify,
   onValidate,
   onReset,
   validating = false,
   validationResult,
 }) => {
   const [exporting, setExporting] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customFilename, setCustomFilename] = useState('');
 
@@ -70,6 +74,26 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     }
   };
 
+  const handleVerify = async () => {
+    setVerifying(true);
+    setError(null);
+
+    try {
+      const isValid = await onValidate();
+      if (!isValid) {
+        setError('Please fix validation errors before verifying');
+        return;
+      }
+
+      await onVerify();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Verify failed';
+      setError(message);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   return (
     <div className="export-panel">
       <h3>Export Options</h3>
@@ -91,7 +115,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           type="button"
           className="btn btn-primary btn-export"
           onClick={() => handleExport('aasx', onExportAasx)}
-          disabled={!!exporting}
+          disabled={!!exporting || verifying}
         >
           {exporting === 'aasx' ? 'Exporting...' : 'Export AASX'}
         </button>
@@ -100,7 +124,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           type="button"
           className="btn btn-secondary btn-export"
           onClick={() => handleExport('json', onExportJson)}
-          disabled={!!exporting}
+          disabled={!!exporting || verifying}
         >
           {exporting === 'json' ? 'Exporting...' : 'Export JSON'}
         </button>
@@ -109,7 +133,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           type="button"
           className="btn btn-secondary btn-export"
           onClick={() => handleExport('pdf', onExportPdf)}
-          disabled={!!exporting}
+          disabled={!!exporting || verifying}
         >
           {exporting === 'pdf' ? 'Exporting...' : 'Export PDF'}
         </button>
@@ -120,9 +144,18 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           type="button"
           className="btn btn-validate"
           onClick={onValidate}
-          disabled={validating}
+          disabled={validating || verifying || !!exporting}
         >
           {validating ? 'Validating...' : 'Validate'}
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-verify"
+          onClick={handleVerify}
+          disabled={validating || verifying || !!exporting}
+        >
+          {verifying ? 'Verifying...' : 'Verify'}
         </button>
 
         <button
@@ -133,6 +166,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
               onReset();
             }
           }}
+          disabled={!!exporting || verifying}
         >
           Reset Form
         </button>

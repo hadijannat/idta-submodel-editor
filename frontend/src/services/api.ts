@@ -281,6 +281,48 @@ export async function exportAsPdf(
 }
 
 /**
+ * Verify export without downloading the file.
+ */
+export async function verifyExport(
+  templateName: string,
+  formData: SubmodelFormData,
+  format: 'aasx' | 'json' | 'pdf' = 'aasx'
+): Promise<void> {
+  const url = `${API_BASE_URL}/api/export/${encodeURIComponent(
+    templateName
+  )}?format=${format}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(formData),
+  });
+
+  if (!response.ok) {
+    let details;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError(
+      `Verification failed: ${response.statusText}`,
+      response.status,
+      details
+    );
+  }
+
+  // Drain response without triggering download.
+  try {
+    await response.arrayBuffer();
+  } catch {
+    // Ignore body consumption errors; verification already succeeded.
+  }
+}
+
+/**
  * Get template preview without form data.
  */
 export async function getTemplatePreview(

@@ -8,7 +8,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { SubmodelUISchema, UIElementSchema } from '../types/ui-schema';
 import type { SubmodelFormData, ElementFormData } from '../types/aas-elements';
-import { getTemplateSchema, validateFormData, exportAsAasx, exportAsJson, exportAsPdf } from '../services/api';
+import {
+  getTemplateSchema,
+  validateFormData,
+  exportAsAasx,
+  exportAsJson,
+  exportAsPdf,
+  verifyExport,
+} from '../services/api';
 import { isRequired } from '../types/aas-elements';
 
 interface UseSubmodelFormOptions {
@@ -43,6 +50,8 @@ interface UseSubmodelFormReturn {
   exportJson: (filename?: string) => Promise<void>;
   /** Export as PDF */
   exportPdf: (filename?: string) => Promise<void>;
+  /** Verify export without downloading */
+  verifyExport: () => Promise<void>;
   /** Reset form to default values */
   resetForm: () => void;
 }
@@ -350,6 +359,12 @@ export function useSubmodelForm(
     [templateName, form]
   );
 
+  const handleVerifyExport = useCallback(async () => {
+    if (!templateName) throw new Error('No template loaded');
+    const formData = form.getValues();
+    await verifyExport(templateName, formData, 'aasx');
+  }, [templateName, form]);
+
   // Reset form
   const resetForm = useCallback(() => {
     if (schema) {
@@ -371,6 +386,7 @@ export function useSubmodelForm(
     exportAasx: handleExportAasx,
     exportJson: handleExportJson,
     exportPdf: handleExportPdf,
+    verifyExport: handleVerifyExport,
     resetForm,
   };
 }
