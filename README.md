@@ -51,7 +51,8 @@ docker-compose up
 # Access the application
 # Frontend: http://localhost:3000
 # Backend API: http://localhost:8000
-# API Documentation: http://localhost:8000/api/docs
+# API Documentation (Swagger): http://localhost:8000/api/docs
+# API Documentation (ReDoc): http://localhost:8000/api/redoc
 ```
 
 ### Development Setup

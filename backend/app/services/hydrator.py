@@ -239,12 +239,13 @@ class HydratorService:
                 # Update existing item
                 item = existing_items[idx]
                 self._hydrate_single_element(item, item_data)
+                self._ensure_list_item_id_short(item)
                 element.value.add(item)
             else:
                 # Clone template for new item or create from list type
                 if template_item:
                     new_item = self._clone_element(template_item)
-                    new_item.id_short = f"{template_item.id_short}_{idx}"
+                    self._ensure_list_item_id_short(new_item)
                 else:
                     new_item = self._create_list_item(element, idx)
 
@@ -252,6 +253,7 @@ class HydratorService:
                     continue
 
                 self._hydrate_single_element(new_item, item_data)
+                self._ensure_list_item_id_short(new_item)
                 element.value.add(new_item)
 
     def _create_list_item(
@@ -268,25 +270,24 @@ class HydratorService:
         if element_type is None:
             return None
 
-        id_short = f"{element_type.__name__}_{idx}"
         value_type = list_element.value_type_list_element or model.datatypes.String
 
         try:
             if issubclass(element_type, model.Property):
-                return element_type(id_short=id_short, value_type=value_type)
+                return element_type(id_short=None, value_type=value_type)
 
             if issubclass(element_type, model.Range):
-                return element_type(id_short=id_short, value_type=value_type)
+                return element_type(id_short=None, value_type=value_type)
 
             if issubclass(element_type, model.MultiLanguageProperty):
-                return element_type(id_short=id_short, value={})
+                return element_type(id_short=None, value={})
 
             if issubclass(element_type, model.SubmodelElementCollection):
-                return element_type(id_short=id_short, value=())
+                return element_type(id_short=None, value=())
 
             if issubclass(element_type, model.SubmodelElementList):
                 return element_type(
-                    id_short=id_short,
+                    id_short=None,
                     type_value_list_element=model.Property,
                     value_type_list_element=model.datatypes.String,
                     value=(),
@@ -294,41 +295,41 @@ class HydratorService:
 
             if issubclass(element_type, model.File):
                 return element_type(
-                    id_short=id_short,
+                    id_short=None,
                     content_type="application/octet-stream",
                     value=None,
                 )
 
             if issubclass(element_type, model.Blob):
                 return element_type(
-                    id_short=id_short,
+                    id_short=None,
                     content_type="application/octet-stream",
                     value=None,
                 )
 
             if issubclass(element_type, model.ReferenceElement):
-                return element_type(id_short=id_short, value=None)
+                return element_type(id_short=None, value=None)
 
             if issubclass(element_type, model.Entity):
                 return element_type(
-                    id_short=id_short,
+                    id_short=None,
                     entity_type=model.EntityType.CO_MANAGED_ENTITY,
                     statement=(),
                 )
 
             if issubclass(element_type, model.AnnotatedRelationshipElement):
-                placeholder = self._create_reference("urn:placeholder")
+                placeholder = self._external_reference("urn:placeholder")
                 return element_type(
-                    id_short=id_short,
+                    id_short=None,
                     first=placeholder,
                     second=placeholder,
                     annotation=(),
                 )
 
             if issubclass(element_type, model.RelationshipElement):
-                placeholder = self._create_reference("urn:placeholder")
+                placeholder = self._external_reference("urn:placeholder")
                 return element_type(
-                    id_short=id_short,
+                    id_short=None,
                     first=placeholder,
                     second=placeholder,
                 )
@@ -378,20 +379,7 @@ class HydratorService:
         """Hydrate a ReferenceElement."""
         if "value" in value_data and value_data["value"]:
             ref_value = value_data["value"]
-            if element.value and getattr(element.value, "key", None):
-                keys = list(element.value.key)
-                if keys:
-                    keys[0] = model.Key(keys[0].type, ref_value)
-                    element.value = model.ModelReference(
-                        key=tuple(keys),
-                        type_=getattr(element.value, "type_", model.Referable),
-                    )
-                    return
-
-            element.value = model.ModelReference(
-                key=(model.Key(model.KeyTypes.GLOBAL_REFERENCE, ref_value),),
-                type_=model.Referable,
-            )
+            element.value = self._build_reference(ref_value, element.value)
 
     def _hydrate_entity(
         self,
@@ -411,9 +399,9 @@ class HydratorService:
     ) -> None:
         """Hydrate a RelationshipElement."""
         if "first" in value_data and value_data["first"]:
-            element.first = self._create_reference(value_data["first"])
+            element.first = self._build_reference(value_data["first"], element.first)
         if "second" in value_data and value_data["second"]:
-            element.second = self._create_reference(value_data["second"])
+            element.second = self._build_reference(value_data["second"], element.second)
 
     def _hydrate_annotated_relationship(
         self,
@@ -459,12 +447,48 @@ class HydratorService:
         except (ValueError, TypeError):
             return str(value)
 
-    def _create_reference(self, value: str) -> model.ModelReference:
-        """Create a ModelReference from a string value."""
-        return model.ModelReference(
+    def _external_reference(self, value: str) -> model.ExternalReference:
+        """Create an ExternalReference from a string value."""
+        return model.ExternalReference(
             key=(model.Key(model.KeyTypes.GLOBAL_REFERENCE, value),),
-            type_=model.Referable,
         )
+
+    def _build_reference(
+        self,
+        value: str,
+        existing: model.Reference | None,
+    ) -> model.Reference:
+        """Create a reference, preserving type when possible."""
+        if isinstance(existing, model.ModelReference):
+            keys = list(existing.key or ())
+            if not keys:
+                return self._external_reference(value)
+            keys[-1] = model.Key(keys[-1].type, value)
+            existing_type = (
+                getattr(existing, "type_", None)
+                or getattr(existing, "type", None)
+                or model.Referable
+            )
+            return model.ModelReference(
+                key=tuple(keys),
+                type_=existing_type,
+                referred_semantic_id=getattr(existing, "referred_semantic_id", None),
+            )
+        if isinstance(existing, model.ExternalReference):
+            keys = list(existing.key or ())
+            if not keys:
+                return self._external_reference(value)
+            keys[-1] = model.Key(keys[-1].type, value)
+            return model.ExternalReference(
+                key=tuple(keys),
+                referred_semantic_id=existing.referred_semantic_id,
+            )
+        return self._external_reference(value)
+
+    def _ensure_list_item_id_short(self, item: model.SubmodelElement) -> None:
+        """Ensure list items comply with AASd-120 (no idShort)."""
+        if hasattr(item, "id_short") and item.id_short is not None:
+            item.id_short = None
 
     def _clone_element(self, element: model.SubmodelElement) -> model.SubmodelElement:
         """
