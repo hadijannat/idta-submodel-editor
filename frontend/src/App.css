@@ -327,6 +327,13 @@ body {
   margin: 0;
 }
 
+.submodel-template-id {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0 0 var(--spacing-xxs);
+}
+
 .submodel-description {
   margin: var(--spacing-sm) 0 0;
   color: var(--color-text-light);

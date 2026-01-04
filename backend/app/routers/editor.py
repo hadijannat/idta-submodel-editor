@@ -46,6 +46,8 @@ async def get_template_schema(
     try:
         aasx_bytes = await fetcher.fetch_template_aasx(f"published/{template_name}")
         schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+        schema["templateName"] = template_name
+        schema["templatePath"] = f"published/{template_name}"
         return SubmodelUISchema(**schema)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

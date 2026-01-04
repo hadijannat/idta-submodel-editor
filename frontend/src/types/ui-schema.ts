@@ -131,6 +131,8 @@ export interface AdministrationSchema {
  * Complete UI schema for a Submodel.
  */
 export interface SubmodelUISchema {
+  templateName?: string | null;
+  templatePath?: string | null;
   submodelId: string;
   idShort: string;
   semanticId: string | null;

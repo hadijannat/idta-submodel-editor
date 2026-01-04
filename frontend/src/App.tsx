@@ -116,6 +116,14 @@ function App() {
               >
                 <div className="submodel-header">
                   <h2>{schema.idShort}</h2>
+                  {(schema.templateName || selectedTemplate?.name) && (
+                    <p className="submodel-template-id">
+                      Template ID:{' '}
+                      <span>
+                        {schema.templateName || selectedTemplate?.name}
+                      </span>
+                    </p>
+                  )}
                   {schema.semanticId && (
                     <p className="submodel-semantic-id">
                       Semantic ID: {schema.semanticId}

@@ -127,6 +127,8 @@ class SubmodelUISchema(BaseModel):
     This is the top-level structure returned by the parser.
     """
 
+    templateName: str | None = None
+    templatePath: str | None = None
     submodelId: str
     idShort: str
     semanticId: str | None = None
