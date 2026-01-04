@@ -82,9 +82,13 @@ class UploadResponse(BaseModel):
     """Response after uploading an AASX file."""
 
     success: bool
-    schema: dict[str, Any] | None = None
+    schema_: dict[str, Any] | None = Field(default=None, alias="schema")
     error: str | None = None
     filename: str | None = None
+
+    model_config = {
+        "populate_by_name": True,
+    }
 
 
 class HydrateResponse(BaseModel):

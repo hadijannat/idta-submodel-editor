@@ -7,7 +7,7 @@ that the frontend can render without knowledge of AAS specifics.
 
 import logging
 from io import BytesIO
-from typing import Any
+from typing import Any, Protocol
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx
@@ -24,6 +24,12 @@ from app.utils.xsd_mapping import (
 )
 
 logger = logging.getLogger(__name__)
+
+try:  # Keep compatibility with basyx versions that moved/renamed OperationVariable.
+    OperationVariableType = model.OperationVariable  # type: ignore[attr-defined]
+except AttributeError:
+    class OperationVariableType(Protocol):
+        value: model.SubmodelElement
 
 
 class ParserService:
@@ -330,7 +336,7 @@ class ParserService:
 
     def _operation_variable_schema(
         self,
-        variable: model.OperationVariable,
+        variable: OperationVariableType,
         object_store: model.DictObjectStore,
     ) -> dict[str, Any]:
         """Generate schema for Operation variable."""

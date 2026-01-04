@@ -142,7 +142,7 @@ async def upload_aasx(
 
         return UploadResponse(
             success=True,
-            schema=schema,
+            schema_=schema,
             filename=file.filename,
         )
     except ValueError as e:
