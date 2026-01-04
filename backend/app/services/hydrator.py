@@ -64,13 +64,23 @@ class HydratorService:
         # Write back to AASX
         output = BytesIO()
         with aasx.AASXWriter(output) as writer:
-            # Write all identifiable objects from the store
-            writer.write_aas(
-                aas_ids=[],  # Empty to write submodels without AAS wrapper
-                object_store=object_store,
-                file_store=file_store,
-                write_json=False,
-            )
+            aas_ids = [
+                obj.id for obj in object_store if isinstance(obj, model.AssetAdministrationShell)
+            ]
+            if aas_ids:
+                writer.write_aas(
+                    aas_ids=aas_ids,
+                    object_store=object_store,
+                    file_store=file_store,
+                    write_json=False,
+                )
+            else:
+                writer.write_all_aas_objects(
+                    "/aasx/data.xml",
+                    object_store,
+                    file_store,
+                    write_json=False,
+                )
 
         return output.getvalue()
 
@@ -442,6 +452,24 @@ class HydratorService:
                 if isinstance(value, bool):
                     return value
                 return str(value).lower() in ("true", "1", "yes")
+            elif "datetime" in type_str:
+                from datetime import datetime
+
+                if isinstance(value, datetime):
+                    return value
+                return datetime.fromisoformat(str(value))
+            elif type_str.endswith("date") or "date" in type_str:
+                from datetime import date
+
+                if isinstance(value, date):
+                    return value
+                return date.fromisoformat(str(value))
+            elif "time" in type_str:
+                from datetime import time
+
+                if isinstance(value, time):
+                    return value
+                return time.fromisoformat(str(value))
             else:
                 return str(value)
         except (ValueError, TypeError):
@@ -526,12 +554,30 @@ class PDFExportService:
         """
         try:
             from jinja2 import Environment, FileSystemLoader
-            from weasyprint import HTML
+            from weasyprint import HTML, pdf as weasy_pdf
+            import inspect
+            import pydyf
         except ImportError:
             raise ImportError(
                 "PDF export requires weasyprint and jinja2. "
                 "Install with: pip install weasyprint jinja2"
             )
+
+        # WeasyPrint expects pydyf.PDF to accept (version, identifier).
+        # Some pydyf versions expose a no-arg __init__, so add a thin shim.
+        if not inspect.signature(pydyf.PDF).parameters:
+            class _CompatPDF(pydyf.PDF):
+                def __init__(self, *args, **kwargs):
+                    super().__init__()
+                    version = args[0] if len(args) > 0 else None
+                    if version is None:
+                        version = b"1.7"
+                    elif isinstance(version, str):
+                        version = version.encode()
+                    self.version = version
+                    self.identifier = args[1] if len(args) > 1 else None
+
+            weasy_pdf.pydyf.PDF = _CompatPDF
 
         # Load and render template
         env = Environment(loader=FileSystemLoader(self.template_dir))
