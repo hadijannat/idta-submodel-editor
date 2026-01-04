@@ -201,13 +201,13 @@
         <div class="section">
             <div class="section-title">{{ element.semanticLabel or element.idShort }}</div>
             <div class="collection">
-                {% for item in element.items or [] %}
+                {% for item in element.get('items', []) %}
                 <div class="list-item">
                     <span class="list-item-index">Item {{ loop.index }}</span>
                     {{ render_element(item, depth + 1) }}
                 </div>
                 {% endfor %}
-                {% if not element.items %}
+                {% if not element.get('items') %}
                 <span class="empty-value">No items</span>
                 {% endif %}
             </div>

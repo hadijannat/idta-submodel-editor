@@ -91,23 +91,26 @@ export type MultiLanguageValue = Partial<Record<LanguageCode, string>>;
  * Helper to check if a cardinality indicates required.
  */
 export function isRequired(cardinality: string): boolean {
-  return cardinality === '[1]' || cardinality === '[1..*]';
+  const normalized = normalizeCardinality(cardinality);
+  return normalized === '[1]' || normalized === '[1..*]';
 }
 
 /**
  * Helper to check if a cardinality allows multiple items.
  */
 export function allowsMultiple(cardinality: string): boolean {
-  return cardinality.includes('*') || cardinality.includes('..');
+  const normalized = normalizeCardinality(cardinality);
+  return normalized.includes('*') || normalized.includes('..');
 }
 
 /**
  * Get minimum required items from cardinality.
  */
 export function getMinItems(cardinality: string): number {
-  if (cardinality === '[1..*]') return 1;
-  if (cardinality === '[0..*]' || cardinality === '[0..1]') return 0;
-  if (cardinality === '[1]') return 1;
+  const normalized = normalizeCardinality(cardinality);
+  if (normalized === '[1..*]') return 1;
+  if (normalized === '[0..*]' || normalized === '[0..1]') return 0;
+  if (normalized === '[1]') return 1;
   return 0;
 }
 
@@ -115,7 +118,28 @@ export function getMinItems(cardinality: string): number {
  * Get maximum allowed items from cardinality.
  */
 export function getMaxItems(cardinality: string): number | undefined {
-  if (cardinality.includes('*')) return undefined;
-  if (cardinality === '[0..1]' || cardinality === '[1]') return 1;
+  const normalized = normalizeCardinality(cardinality);
+  if (normalized.includes('*')) return undefined;
+  if (normalized === '[0..1]' || normalized === '[1]') return 1;
   return undefined;
+}
+
+/**
+ * Normalize common cardinality encodings to bracket format.
+ */
+export function normalizeCardinality(cardinality: string): string {
+  const trimmed = (cardinality || '').trim();
+  const mapping: Record<string, string> = {
+    ZeroToOne: '[0..1]',
+    ZeroToMany: '[0..*]',
+    OneToMany: '[1..*]',
+    One: '[1]',
+    Zero: '[0]',
+  };
+
+  if (mapping[trimmed]) return mapping[trimmed];
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) return trimmed;
+  if (trimmed.includes('..')) return `[${trimmed}]`;
+  if (/^\\d+$/.test(trimmed)) return `[${trimmed}]`;
+  return trimmed;
 }

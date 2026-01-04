@@ -64,13 +64,23 @@ class HydratorService:
         # Write back to AASX
         output = BytesIO()
         with aasx.AASXWriter(output) as writer:
-            # Write all identifiable objects from the store
-            writer.write_aas(
-                aas_ids=[],  # Empty to write submodels without AAS wrapper
-                object_store=object_store,
-                file_store=file_store,
-                write_json=False,
-            )
+            aas_ids = [
+                obj.id for obj in object_store if isinstance(obj, model.AssetAdministrationShell)
+            ]
+            if aas_ids:
+                writer.write_aas(
+                    aas_ids=aas_ids,
+                    object_store=object_store,
+                    file_store=file_store,
+                    write_json=False,
+                )
+            else:
+                writer.write_all_aas_objects(
+                    "/aasx/data.xml",
+                    object_store,
+                    file_store,
+                    write_json=False,
+                )
 
         return output.getvalue()
 
@@ -239,13 +249,104 @@ class HydratorService:
                 # Update existing item
                 item = existing_items[idx]
                 self._hydrate_single_element(item, item_data)
+                self._ensure_list_item_id_short(item)
                 element.value.add(item)
-            elif template_item:
-                # Clone template for new item
-                new_item = self._clone_element(template_item)
-                new_item.id_short = f"{template_item.id_short}_{idx}"
+            else:
+                # Clone template for new item or create from list type
+                if template_item:
+                    new_item = self._clone_element(template_item)
+                    self._ensure_list_item_id_short(new_item)
+                else:
+                    new_item = self._create_list_item(element, idx)
+
+                if new_item is None:
+                    continue
+
                 self._hydrate_single_element(new_item, item_data)
+                self._ensure_list_item_id_short(new_item)
                 element.value.add(new_item)
+
+    def _create_list_item(
+        self,
+        list_element: model.SubmodelElementList,
+        idx: int,
+    ) -> model.SubmodelElement | None:
+        """
+        Create a list item when the template list is empty.
+
+        Falls back to minimal constructors based on the list element type.
+        """
+        element_type = list_element.type_value_list_element
+        if element_type is None:
+            return None
+
+        value_type = list_element.value_type_list_element or model.datatypes.String
+
+        try:
+            if issubclass(element_type, model.Property):
+                return element_type(id_short=None, value_type=value_type)
+
+            if issubclass(element_type, model.Range):
+                return element_type(id_short=None, value_type=value_type)
+
+            if issubclass(element_type, model.MultiLanguageProperty):
+                return element_type(id_short=None, value={})
+
+            if issubclass(element_type, model.SubmodelElementCollection):
+                return element_type(id_short=None, value=())
+
+            if issubclass(element_type, model.SubmodelElementList):
+                return element_type(
+                    id_short=None,
+                    type_value_list_element=model.Property,
+                    value_type_list_element=model.datatypes.String,
+                    value=(),
+                )
+
+            if issubclass(element_type, model.File):
+                return element_type(
+                    id_short=None,
+                    content_type="application/octet-stream",
+                    value=None,
+                )
+
+            if issubclass(element_type, model.Blob):
+                return element_type(
+                    id_short=None,
+                    content_type="application/octet-stream",
+                    value=None,
+                )
+
+            if issubclass(element_type, model.ReferenceElement):
+                return element_type(id_short=None, value=None)
+
+            if issubclass(element_type, model.Entity):
+                return element_type(
+                    id_short=None,
+                    entity_type=model.EntityType.CO_MANAGED_ENTITY,
+                    statement=(),
+                )
+
+            if issubclass(element_type, model.AnnotatedRelationshipElement):
+                placeholder = self._external_reference("urn:placeholder")
+                return element_type(
+                    id_short=None,
+                    first=placeholder,
+                    second=placeholder,
+                    annotation=(),
+                )
+
+            if issubclass(element_type, model.RelationshipElement):
+                placeholder = self._external_reference("urn:placeholder")
+                return element_type(
+                    id_short=None,
+                    first=placeholder,
+                    second=placeholder,
+                )
+        except Exception:
+            return None
+
+        return None
 
     def _hydrate_file(
         self,
@@ -287,12 +388,8 @@ class HydratorService:
     ) -> None:
         """Hydrate a ReferenceElement."""
         if "value" in value_data and value_data["value"]:
-            # Create a new reference from the string value
             ref_value = value_data["value"]
-            element.value = model.ModelReference(
-                key=(model.Key(model.KeyTypes.GLOBAL_REFERENCE, ref_value),),
-                type_=model.Submodel,  # Default type
-            )
+            element.value = self._build_reference(ref_value, element.value)
 
     def _hydrate_entity(
         self,
@@ -312,9 +409,9 @@ class HydratorService:
     ) -> None:
         """Hydrate a RelationshipElement."""
         if "first" in value_data and value_data["first"]:
-            element.first = self._create_reference(value_data["first"])
+            element.first = self._build_reference(value_data["first"], element.first)
         if "second" in value_data and value_data["second"]:
-            element.second = self._create_reference(value_data["second"])
+            element.second = self._build_reference(value_data["second"], element.second)
 
     def _hydrate_annotated_relationship(
         self,
@@ -355,17 +452,71 @@ class HydratorService:
                 if isinstance(value, bool):
                     return value
                 return str(value).lower() in ("true", "1", "yes")
+            elif "datetime" in type_str:
+                from datetime import datetime
+
+                if isinstance(value, datetime):
+                    return value
+                return datetime.fromisoformat(str(value))
+            elif type_str.endswith("date") or "date" in type_str:
+                from datetime import date
+
+                if isinstance(value, date):
+                    return value
+                return date.fromisoformat(str(value))
+            elif "time" in type_str:
+                from datetime import time
+
+                if isinstance(value, time):
+                    return value
+                return time.fromisoformat(str(value))
             else:
                 return str(value)
         except (ValueError, TypeError):
             return str(value)
 
-    def _create_reference(self, value: str) -> model.ModelReference:
-        """Create a ModelReference from a string value."""
-        return model.ModelReference(
+    def _external_reference(self, value: str) -> model.ExternalReference:
+        """Create an ExternalReference from a string value."""
+        return model.ExternalReference(
             key=(model.Key(model.KeyTypes.GLOBAL_REFERENCE, value),),
-            type_=model.Referable,
         )
+
+    def _build_reference(
+        self,
+        value: str,
+        existing: model.Reference | None,
+    ) -> model.Reference:
+        """Create a reference, preserving type when possible."""
+        if isinstance(existing, model.ModelReference):
+            keys = list(existing.key or ())
+            if not keys:
+                return self._external_reference(value)
+            keys[-1] = model.Key(keys[-1].type, value)
+            existing_type = (
+                getattr(existing, "type_", None)
+                or getattr(existing, "type", None)
+                or model.Referable
+            )
+            return model.ModelReference(
+                key=tuple(keys),
+                type_=existing_type,
+                referred_semantic_id=getattr(existing, "referred_semantic_id", None),
+            )
+        if isinstance(existing, model.ExternalReference):
+            keys = list(existing.key or ())
+            if not keys:
+                return self._external_reference(value)
+            keys[-1] = model.Key(keys[-1].type, value)
+            return model.ExternalReference(
+                key=tuple(keys),
+                referred_semantic_id=existing.referred_semantic_id,
+            )
+        return self._external_reference(value)
+
+    def _ensure_list_item_id_short(self, item: model.SubmodelElement) -> None:
+        """Ensure list items comply with AASd-120 (no idShort)."""
+        if hasattr(item, "id_short") and item.id_short is not None:
+            item.id_short = None
 
     def _clone_element(self, element: model.SubmodelElement) -> model.SubmodelElement:
         """
@@ -403,12 +554,30 @@ class PDFExportService:
         """
         try:
             from jinja2 import Environment, FileSystemLoader
-            from weasyprint import HTML
+            from weasyprint import HTML, pdf as weasy_pdf
+            import inspect
+            import pydyf
         except ImportError:
             raise ImportError(
                 "PDF export requires weasyprint and jinja2. "
                 "Install with: pip install weasyprint jinja2"
             )
+
+        # WeasyPrint expects pydyf.PDF to accept (version, identifier).
+        # Some pydyf versions expose a no-arg __init__, so add a thin shim.
+        if not inspect.signature(pydyf.PDF).parameters:
+            class _CompatPDF(pydyf.PDF):
+                def __init__(self, *args, **kwargs):
+                    super().__init__()
+                    version = args[0] if len(args) > 0 else None
+                    if version is None:
+                        version = b"1.7"
+                    elif isinstance(version, str):
+                        version = version.encode()
+                    self.version = version
+                    self.identifier = args[1] if len(args) > 1 else None
+
+            weasy_pdf.pydyf.PDF = _CompatPDF
 
         # Load and render template
         env = Environment(loader=FileSystemLoader(self.template_dir))

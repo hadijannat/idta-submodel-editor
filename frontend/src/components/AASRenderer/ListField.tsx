@@ -8,7 +8,7 @@ import React from 'react';
 import { useFormContext, useFieldArray } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import type { ElementFormData } from '../../types/aas-elements';
-import { getMinItems } from '../../types/aas-elements';
+import { getMaxItems, getMinItems } from '../../types/aas-elements';
 
 interface ListFieldProps {
   /** Form path for the list */
@@ -79,7 +79,9 @@ export const ListField: React.FC<ListFieldProps> = ({
   const displayTitle = schema.semanticLabel || schema.idShort;
   const itemTemplate = schema.itemTemplate;
   const minItems = getMinItems(schema.cardinality);
+  const maxItems = getMaxItems(schema.cardinality);
   const canRemove = fields.length > minItems;
+  const canAdd = maxItems === undefined || fields.length < maxItems;
 
   const handleAddItem = () => {
     const newItem = createDefaultItem(itemTemplate || null);
@@ -144,6 +146,7 @@ export const ListField: React.FC<ListFieldProps> = ({
           type="button"
           className="aas-btn aas-btn-add"
           onClick={handleAddItem}
+          disabled={!canAdd}
           aria-label="Add item"
         >
           + Add Item
