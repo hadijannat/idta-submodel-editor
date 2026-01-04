@@ -205,10 +205,12 @@ class HydratorService:
         if "value" in value_data and isinstance(value_data["value"], dict):
             # Filter out empty values
             filtered_values = {
-                k: v for k, v in value_data["value"].items() if v and v.strip()
+                k: v
+                for k, v in value_data["value"].items()
+                if v is not None and str(v).strip()
             }
             if filtered_values:
-                element.value = filtered_values
+                element.value = model.MultiLanguageTextType(filtered_values)
 
     def _hydrate_collection(
         self,
