@@ -2,7 +2,7 @@
  * Main application component for the IDTA Submodel Editor.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { FormProvider } from 'react-hook-form';
 import type { TemplateInfo, TemplateVersionInfo } from './types/ui-schema';
 import { useSubmodelForm } from './hooks/useSubmodelForm';

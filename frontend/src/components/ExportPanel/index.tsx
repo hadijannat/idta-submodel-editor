@@ -61,7 +61,15 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       return false;
     }
 
-    const details = err.details?.detail ?? err.details;
+    const rawDetails =
+      typeof err.details === 'object' && err.details !== null ? err.details : undefined;
+    const details =
+      rawDetails &&
+      'detail' in rawDetails &&
+      typeof (rawDetails as Record<string, unknown>).detail !== 'undefined'
+        ? (rawDetails as Record<string, unknown>).detail
+        : rawDetails;
+
     if (typeof details !== 'object' || details === null) {
       return false;
     }
