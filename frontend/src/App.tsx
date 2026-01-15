@@ -442,6 +442,30 @@ function App() {
             </div>
           </div>
           <div className="review-summary-item">
+            <h4>Issues</h4>
+            {!validationResult ? (
+              <p>Run validation to see any blocking errors or warnings.</p>
+            ) : validationResult.errors.length === 0 &&
+              validationResult.warnings.length === 0 ? (
+              <p>No issues detected.</p>
+            ) : (
+              <div className="issue-list">
+                {validationResult.errors.map((issue) => (
+                  <div key={`error-${issue}`} className="issue-item">
+                    <span className="issue-badge issue-badge-error">Error</span>
+                    <span>{issue}</span>
+                  </div>
+                ))}
+                {validationResult.warnings.map((issue) => (
+                  <div key={`warning-${issue}`} className="issue-item">
+                    <span className="issue-badge issue-badge-warning">Warning</span>
+                    <span>{issue}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="review-summary-item">
             <h4>Export readiness</h4>
             <p>Export actions are available in the panel on the right.</p>
           </div>
