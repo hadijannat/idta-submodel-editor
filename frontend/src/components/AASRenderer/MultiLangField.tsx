@@ -8,7 +8,6 @@ import React, { useState } from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import DescriptionText from './DescriptionText';
-import { SUPPORTED_LANGUAGES } from '../../types/aas-elements';
 
 interface MultiLangFieldProps {
   /** Form path for the value object */

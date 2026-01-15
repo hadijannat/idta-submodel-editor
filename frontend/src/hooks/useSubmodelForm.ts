@@ -247,7 +247,7 @@ function generateElementDefaults(element: UIElementSchema): ElementFormData {
 export function useSubmodelForm(
   options: UseSubmodelFormOptions = {}
 ): UseSubmodelFormReturn {
-  const { templateName, initialSchema, onSubmit, templateStatus, templateVersion } =
+  const { templateName, initialSchema, templateStatus, templateVersion } =
     options;
 
   const [schema, setSchema] = useState<SubmodelUISchema | null>(

@@ -73,7 +73,7 @@ export const ListField: React.FC<ListFieldProps> = ({
 
   const { fields, append, remove, move } = useFieldArray({
     control,
-    name: `${path}.items` as any,
+    name: `${path}.items` as const,
   });
 
   const displayTitle = schema.semanticLabel || schema.idShort;

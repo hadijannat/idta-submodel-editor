@@ -56,21 +56,38 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     setServerWarnings([]);
   };
 
-  const captureServerIssues = (err: unknown) => {
+  const captureServerIssues = (err: unknown): boolean => {
     if (!(err instanceof ApiError) || !err.details) {
       return false;
     }
 
-    const details: any = err.details?.detail ?? err.details;
-    const errors = Array.isArray(details?.errors) ? details.errors : [];
-    const warnings = Array.isArray(details?.warnings) ? details.warnings : [];
+    const details = err.details?.detail ?? err.details;
+    if (typeof details !== 'object' || details === null) {
+      return false;
+    }
+
+    const record = details as Record<string, unknown>;
+    const errors = Array.isArray(record.errors) ? record.errors : [];
+    const warnings = Array.isArray(record.warnings) ? record.warnings : [];
 
     if (errors.length === 0 && warnings.length === 0) {
       return false;
     }
 
-    const formatIssue = (issue: any) =>
-      issue?.field ? `${issue.field}: ${issue.message}` : issue?.message || String(issue);
+    const formatIssue = (issue: unknown) => {
+      if (typeof issue === 'object' && issue !== null) {
+        const issueRecord = issue as Record<string, unknown>;
+        const field = typeof issueRecord.field === 'string' ? issueRecord.field : '';
+        const message = typeof issueRecord.message === 'string' ? issueRecord.message : '';
+        if (field && message) {
+          return `${field}: ${message}`;
+        }
+        if (message) {
+          return message;
+        }
+      }
+      return String(issue);
+    };
 
     setServerErrors(errors.map(formatIssue));
     setServerWarnings(warnings.map(formatIssue));
@@ -100,8 +117,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       if (captureServerIssues(err)) {
         setError('Server-side validation failed. Please review the errors below.');
       } else {
-      const message = err instanceof Error ? err.message : 'Export failed';
-      setError(message);
+        const message = err instanceof Error ? err.message : 'Export failed';
+        setError(message);
       }
     } finally {
       setExporting(null);
@@ -125,8 +142,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       if (captureServerIssues(err)) {
         setError('Server-side validation failed. Please review the errors below.');
       } else {
-      const message = err instanceof Error ? err.message : 'Verify failed';
-      setError(message);
+        const message = err instanceof Error ? err.message : 'Verify failed';
+        setError(message);
       }
     } finally {
       setVerifying(false);

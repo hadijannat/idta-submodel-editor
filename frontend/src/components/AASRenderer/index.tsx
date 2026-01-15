@@ -6,7 +6,6 @@
  */
 
 import React from 'react';
-import { useFormContext } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import { isRequired } from '../../types/aas-elements';
 import PropertyField from './PropertyField';
@@ -37,8 +36,6 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
   path,
   depth = 0,
 }) => {
-  const { control } = useFormContext();
-
   const getLabel = () => schema.semanticLabel || schema.idShort;
   const required = isRequired(schema.cardinality);
 

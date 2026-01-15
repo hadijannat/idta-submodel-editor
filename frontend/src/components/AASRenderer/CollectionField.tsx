@@ -22,7 +22,6 @@ interface CollectionFieldProps {
  * Renders a collapsible section for SubmodelElementCollection.
  */
 export const CollectionField: React.FC<CollectionFieldProps> = ({
-  path,
   schema,
   depth,
   title,
