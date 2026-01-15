@@ -40,6 +40,10 @@ Screenshots (Digital Nameplate example):
 ![Step 2: Select a template](docs/demo-step-2-select.png)
 ![Step 3: Fill & export](docs/demo-step-3-export.png)
 
+Wizard preview (Configure Instance step):
+
+![Wizard: Configure Instance](docs/wizard-template-config.png)
+
 ### Using Docker Compose
 
 ```bash
