@@ -288,7 +288,7 @@ function App() {
                 <span>Version</span>
                 <input
                   type="text"
-                  placeholder="1.0"
+                  placeholder="1"
                   {...form.register('metadata.administration.version')}
                 />
               </label>

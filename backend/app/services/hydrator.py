@@ -166,6 +166,16 @@ class HydratorService:
             revision = normalize_text(admin_data.get("revision"))
             template_id = normalize_text(admin_data.get("templateId"))
 
+            def is_numeric_token(value: str | None) -> bool:
+                return bool(value) and value.isdigit() and 1 <= len(value) <= 4
+
+            if version and not is_numeric_token(version):
+                logger.warning("Skipping invalid administration version: %s", version)
+                version = None
+            if revision and not is_numeric_token(revision):
+                logger.warning("Skipping invalid administration revision: %s", revision)
+                revision = None
+
             if not any([version, revision, template_id]):
                 return
 

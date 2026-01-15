@@ -15,7 +15,7 @@ def test_apply_metadata_updates_submodel_fields():
         "idShort": "NewId",
         "submodelId": "urn:new-submodel",
         "administration": {
-            "version": "2.1",
+            "version": "2",
             "revision": "5",
             "templateId": "template-42",
         },
@@ -24,8 +24,9 @@ def test_apply_metadata_updates_submodel_fields():
     hydrator._apply_metadata(submodel, metadata)
 
     assert submodel.id_short == "NewId"
-    assert submodel.id_ == "urn:new-submodel"
+    submodel_id = getattr(submodel, "id_", None) or getattr(submodel, "id", None)
+    assert submodel_id == "urn:new-submodel"
     assert submodel.administration is not None
-    assert submodel.administration.version == "2.1"
+    assert submodel.administration.version == "2"
     assert submodel.administration.revision == "5"
     assert submodel.administration.template_id == "template-42"
