@@ -135,6 +135,247 @@ body {
 }
 
 /* ============================================================================
+   Wizard Layout
+   ============================================================================ */
+
+.wizard-layout {
+  background: var(--color-bg);
+}
+
+.wizard-sidebar {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.wizard-card {
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.wizard-stepper h3 {
+  margin: 0;
+}
+
+.wizard-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.wizard-step {
+  display: flex;
+  gap: var(--spacing-sm);
+  text-align: left;
+  align-items: flex-start;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.wizard-step:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wizard-step.active {
+  border-color: var(--color-primary-light);
+  background: rgba(66, 153, 225, 0.1);
+}
+
+.wizard-step.completed {
+  border-color: rgba(56, 161, 105, 0.3);
+}
+
+.wizard-step-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  flex-shrink: 0;
+}
+
+.wizard-step.active .wizard-step-index {
+  background: var(--color-primary);
+  color: white;
+}
+
+.wizard-step.completed .wizard-step-index {
+  background: var(--color-success);
+  color: white;
+}
+
+.wizard-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.wizard-step-title {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.wizard-step-desc {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+}
+
+.wizard-step-meta {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.completion-card h4 {
+  margin-top: 0;
+}
+
+.completion-ring {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--color-primary) calc(var(--progress) * 1%),
+    var(--color-border) 0
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: var(--spacing-md) auto;
+  position: relative;
+}
+
+.completion-ring::before {
+  content: '';
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--color-bg-alt);
+}
+
+.completion-ring span {
+  position: relative;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.completion-stats {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+}
+
+.wizard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.wizard-panel-header h2 {
+  margin: 0 0 var(--spacing-xs);
+}
+
+.wizard-panel-header p {
+  margin: 0;
+  color: var(--color-text-light);
+}
+
+.wizard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  justify-content: flex-end;
+}
+
+.wizard-actions .btn {
+  min-width: 180px;
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.form-field input,
+.form-field select {
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: 0.875rem;
+}
+
+.form-field small {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+}
+
+.template-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.template-summary-title {
+  font-weight: 600;
+  margin: 0;
+}
+
+.template-summary-subtitle {
+  margin: 0;
+  color: var(--color-text-light);
+  font-size: 0.85rem;
+}
+
+.template-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.review-summary {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.review-summary-item {
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+}
+
+.review-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+/* ============================================================================
    Welcome Screen
    ============================================================================ */
 

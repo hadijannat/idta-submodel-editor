@@ -118,13 +118,13 @@ async def export_submodel(
 @router.get("/{template_name}/preview")
 async def preview_submodel(
     template_name: str,
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    parser: Annotated[ParserService, Depends(get_parser)],
     status: Annotated[
         Literal["published", "deprecated"],
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
-    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
-    parser: Annotated[ParserService, Depends(get_parser)],
 ) -> dict:
     """
     Get a preview of the template structure without form data.
@@ -187,14 +187,14 @@ def _summarize_elements(elements: list[dict], depth: int = 0, max_depth: int = 2
 @router.post("/batch")
 async def batch_export(
     requests: list[ExportRequest],
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    hydrator: Annotated[HydratorService, Depends(get_hydrator)],
+    parser: Annotated[ParserService, Depends(get_parser)],
     status: Annotated[
         Literal["published", "deprecated"],
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
-    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
-    hydrator: Annotated[HydratorService, Depends(get_hydrator)],
-    parser: Annotated[ParserService, Depends(get_parser)],
 ) -> Response:
     """
     Export multiple submodels as a ZIP archive.

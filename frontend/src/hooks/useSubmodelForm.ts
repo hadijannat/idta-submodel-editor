@@ -178,7 +178,18 @@ function generateDefaultValues(schema: SubmodelUISchema): SubmodelFormData {
     elements[element.idShort] = generateElementDefaults(element);
   }
 
-  return { elements };
+  return {
+    elements,
+    metadata: {
+      idShort: schema.idShort ?? '',
+      submodelId: schema.submodelId ?? '',
+      administration: {
+        version: schema.administration?.version ?? '',
+        revision: schema.administration?.revision ?? '',
+        templateId: schema.administration?.templateId ?? '',
+      },
+    },
+  };
 }
 
 /**
@@ -273,6 +284,19 @@ export function useSubmodelForm(
 
     return z.object({
       elements: z.object(elementsSchema),
+      metadata: z
+        .object({
+          idShort: z.string().optional(),
+          submodelId: z.string().optional(),
+          administration: z
+            .object({
+              version: z.string().optional(),
+              revision: z.string().optional(),
+              templateId: z.string().optional(),
+            })
+            .optional(),
+        })
+        .optional(),
     });
   }, [schema]);
 

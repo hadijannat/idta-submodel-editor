@@ -59,6 +59,8 @@ class HydratorService:
 
         logger.info(f"Hydrating submodel: {submodel.id_short}")
 
+        self._apply_metadata(submodel, form_data.get("metadata"))
+
         # Hydrate the submodel elements
         elements_data = form_data.get("elements", {})
         self._hydrate_elements(submodel.submodel_element, elements_data)
@@ -111,6 +113,8 @@ class HydratorService:
         if not submodel:
             raise ValueError("No Submodel found in template")
 
+        self._apply_metadata(submodel, form_data.get("metadata"))
+
         elements_data = form_data.get("elements", {})
         self._hydrate_elements(submodel.submodel_element, elements_data)
 
@@ -127,6 +131,57 @@ class HydratorService:
             if isinstance(obj, model.Submodel):
                 return obj
         return None
+
+    def _apply_metadata(
+        self,
+        submodel: model.Submodel,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        """Apply user-provided metadata updates to the submodel."""
+        if not metadata:
+            return
+
+        def normalize_text(value: Any) -> str | None:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                trimmed = value.strip()
+                return trimmed if trimmed else None
+            return None
+
+        id_short = normalize_text(metadata.get("idShort"))
+        if id_short:
+            submodel.id_short = id_short
+
+        submodel_id = normalize_text(metadata.get("submodelId"))
+        if submodel_id:
+            if hasattr(submodel, "id_"):
+                setattr(submodel, "id_", submodel_id)
+            elif hasattr(submodel, "id"):
+                setattr(submodel, "id", submodel_id)
+
+        admin_data = metadata.get("administration")
+        if isinstance(admin_data, dict):
+            version = normalize_text(admin_data.get("version"))
+            revision = normalize_text(admin_data.get("revision"))
+            template_id = normalize_text(admin_data.get("templateId"))
+
+            if not any([version, revision, template_id]):
+                return
+
+            if submodel.administration is None:
+                submodel.administration = model.AdministrativeInformation(
+                    version=version,
+                    revision=revision,
+                    template_id=template_id,
+                )
+            else:
+                if version is not None:
+                    submodel.administration.version = version
+                if revision is not None:
+                    submodel.administration.revision = revision
+                if template_id is not None:
+                    submodel.administration.template_id = template_id
 
     def _hydrate_elements(
         self,

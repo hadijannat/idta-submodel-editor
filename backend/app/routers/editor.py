@@ -36,13 +36,13 @@ router = APIRouter(prefix="/api/editor", tags=["editor"])
 @router.get("/templates/{template_name}/schema", response_model=SubmodelUISchema)
 async def get_template_schema(
     template_name: str,
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    parser: Annotated[ParserService, Depends(get_parser)],
     status: Annotated[
         Literal["published", "deprecated"],
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
-    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
-    parser: Annotated[ParserService, Depends(get_parser)],
 ) -> SubmodelUISchema:
     """
     Get the UI schema for a template.
@@ -74,12 +74,12 @@ async def get_concept_description(
     semantic_id: Annotated[
         str, Query(description="Semantic ID to resolve against ConceptDescriptions")
     ],
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
     status: Annotated[
         Literal["published", "deprecated"],
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
-    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
 ) -> ConceptDescriptionResponse:
     """
     Resolve a ConceptDescription by semantic ID within a template AASX.
@@ -123,14 +123,14 @@ async def get_concept_description(
 async def hydrate_template(
     template_name: str,
     form_data: SubmodelFormData,
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    hydrator: Annotated[HydratorService, Depends(get_hydrator)],
+    parser: Annotated[ParserService, Depends(get_parser)],
     status: Annotated[
         Literal["published", "deprecated"],
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
-    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
-    hydrator: Annotated[HydratorService, Depends(get_hydrator)],
-    parser: Annotated[ParserService, Depends(get_parser)],
 ) -> Response:
     """
     Hydrate a template with form data and return the AASX file.
@@ -174,14 +174,14 @@ async def hydrate_template(
 async def hydrate_template_json(
     template_name: str,
     form_data: SubmodelFormData,
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    hydrator: Annotated[HydratorService, Depends(get_hydrator)],
+    parser: Annotated[ParserService, Depends(get_parser)],
     status: Annotated[
         Literal["published", "deprecated"],
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
-    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
-    hydrator: Annotated[HydratorService, Depends(get_hydrator)],
-    parser: Annotated[ParserService, Depends(get_parser)],
 ) -> Response:
     """
     Hydrate a template with form data and return as JSON.
@@ -278,13 +278,13 @@ async def upload_aasx(
 async def validate_form_data(
     template_name: str,
     form_data: SubmodelFormData,
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    parser: Annotated[ParserService, Depends(get_parser)],
     status: Annotated[
         Literal["published", "deprecated"],
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
-    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
-    parser: Annotated[ParserService, Depends(get_parser)],
 ) -> ValidationResult:
     """
     Validate form data against the template schema.
