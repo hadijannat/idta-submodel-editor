@@ -147,6 +147,7 @@ class TemplateInfo(BaseModel):
     idta_number: str | None = None
     title: str | None = None
     sha: str | None = None
+    status: Literal["published", "deprecated"] | None = None
 
 
 class TemplateVersionInfo(BaseModel):

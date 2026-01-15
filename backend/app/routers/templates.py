@@ -5,7 +5,7 @@ Provides API endpoints for browsing available IDTA submodel templates.
 """
 
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -25,6 +25,10 @@ async def list_templates(
     idta_number: Annotated[
         str | None, Query(description="Filter by IDTA number")
     ] = None,
+    status: Annotated[
+        Literal["published", "deprecated", "all"] | None,
+        Query(description="Template status filter"),
+    ] = None,
 ) -> TemplateListResponse:
     """
     List all available IDTA submodel templates.
@@ -33,7 +37,14 @@ async def list_templates(
     GitHub repository and cached locally.
     """
     try:
-        templates = await fetcher.list_available_templates()
+        if status == "deprecated":
+            statuses = ["deprecated"]
+        elif status == "all":
+            statuses = ["published", "deprecated"]
+        else:
+            statuses = ["published"]
+
+        templates, cached = await fetcher.list_available_templates(statuses)
 
         # Apply filters
         if search:
@@ -53,7 +64,7 @@ async def list_templates(
         return TemplateListResponse(
             templates=[TemplateInfo(**t) for t in templates],
             total=len(templates),
-            cached=True,
+            cached=cached,
         )
     except Exception as e:
         logger.exception("Failed to list templates")
@@ -64,12 +75,23 @@ async def list_templates(
 async def get_template_info(
     template_name: str,
     fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    status: Annotated[
+        Literal["published", "deprecated", "all"] | None,
+        Query(description="Template status filter"),
+    ] = None,
 ) -> TemplateInfo:
     """
     Get information about a specific template.
     """
     try:
-        templates = await fetcher.list_available_templates()
+        if status == "deprecated":
+            statuses = ["deprecated"]
+        elif status == "all":
+            statuses = ["published", "deprecated"]
+        else:
+            statuses = ["published"]
+
+        templates, _ = await fetcher.list_available_templates(statuses)
         template = next((t for t in templates if t["name"] == template_name), None)
 
         if not template:
@@ -87,12 +109,16 @@ async def get_template_info(
 async def get_template_versions(
     template_name: str,
     fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    status: Annotated[
+        Literal["published", "deprecated"],
+        Query(description="Template status filter"),
+    ] = "published",
 ) -> list[TemplateVersionInfo]:
     """
     Get available versions for a template.
     """
     try:
-        versions = await fetcher.get_template_versions(f"published/{template_name}")
+        versions = await fetcher.get_template_versions(f"{status}/{template_name}")
         return [TemplateVersionInfo(**v) for v in versions]
     except Exception as e:
         logger.exception(f"Failed to get versions for {template_name}")

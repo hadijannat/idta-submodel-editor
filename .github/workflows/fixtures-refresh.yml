@@ -1,0 +1,53 @@
+name: Fixture Refresh
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Install aas-test-engines
+        run: pip install aas-test-engines
+
+      - name: Generate fixtures
+        env:
+          SECRET_KEY: ${{ secrets.FIXTURE_SECRET_KEY }}
+        run: |
+          if [ -z "$SECRET_KEY" ]; then
+            echo "Missing FIXTURE_SECRET_KEY secret." >&2
+            exit 1
+          fi
+          PYTHONPATH=backend python backend/tests/fixtures/generate_fixtures.py
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          if git status --porcelain | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR
+        if: steps.git-check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: refresh AAS fixtures"
+          title: "chore: refresh AAS fixtures"
+          body: "Automated fixture refresh from scheduled workflow."
+          branch: "chore/refresh-aas-fixtures"

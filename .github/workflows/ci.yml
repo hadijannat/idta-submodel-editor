@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run backend tests
+        run: PYTHONPATH=backend pytest backend/tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Lint frontend
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: Type-check frontend
+        run: |
+          cd frontend
+          npm run type-check
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+  aas-conformance:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('backend/tests/fixtures/aasx/*.aasx') != '' || hashFiles('backend/tests/fixtures/json/*.json') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install aas-test-engines
+        run: |
+          python -m pip install --upgrade pip
+          pip install aas-test-engines
+
+      - name: Run AAS conformance checks
+        run: |
+          set -e
+          if [ -d backend/tests/fixtures/aasx ]; then
+            for file in backend/tests/fixtures/aasx/*.aasx; do
+              [ -e "$file" ] || continue
+              aas_test_engines check_file --format aasx "$file"
+            done
+          fi
+          if [ -d backend/tests/fixtures/json ]; then
+            for file in backend/tests/fixtures/json/*.json; do
+              [ -e "$file" ] || continue
+              aas_test_engines check_file --format json "$file"
+            done
+          fi

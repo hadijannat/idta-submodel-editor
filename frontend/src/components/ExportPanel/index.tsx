@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { ApiError } from '../../services/api';
 
 interface ExportPanelProps {
   /** Template name */
@@ -47,6 +48,34 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customFilename, setCustomFilename] = useState('');
+  const [serverErrors, setServerErrors] = useState<string[]>([]);
+  const [serverWarnings, setServerWarnings] = useState<string[]>([]);
+
+  const clearServerIssues = () => {
+    setServerErrors([]);
+    setServerWarnings([]);
+  };
+
+  const captureServerIssues = (err: unknown) => {
+    if (!(err instanceof ApiError) || !err.details) {
+      return false;
+    }
+
+    const details: any = err.details?.detail ?? err.details;
+    const errors = Array.isArray(details?.errors) ? details.errors : [];
+    const warnings = Array.isArray(details?.warnings) ? details.warnings : [];
+
+    if (errors.length === 0 && warnings.length === 0) {
+      return false;
+    }
+
+    const formatIssue = (issue: any) =>
+      issue?.field ? `${issue.field}: ${issue.message}` : issue?.message || String(issue);
+
+    setServerErrors(errors.map(formatIssue));
+    setServerWarnings(warnings.map(formatIssue));
+    return true;
+  };
 
   const handleExport = async (
     format: 'aasx' | 'json' | 'pdf',
@@ -54,6 +83,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   ) => {
     setExporting(format);
     setError(null);
+    clearServerIssues();
 
     try {
       // Validate first
@@ -67,8 +97,12 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
       const filename = customFilename || undefined;
       await exportFn(filename);
     } catch (err) {
+      if (captureServerIssues(err)) {
+        setError('Server-side validation failed. Please review the errors below.');
+      } else {
       const message = err instanceof Error ? err.message : 'Export failed';
       setError(message);
+      }
     } finally {
       setExporting(null);
     }
@@ -77,6 +111,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const handleVerify = async () => {
     setVerifying(true);
     setError(null);
+    clearServerIssues();
 
     try {
       const isValid = await onValidate();
@@ -87,8 +122,12 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
 
       await onVerify();
     } catch (err) {
+      if (captureServerIssues(err)) {
+        setError('Server-side validation failed. Please review the errors below.');
+      } else {
       const message = err instanceof Error ? err.message : 'Verify failed';
       setError(message);
+      }
     } finally {
       setVerifying(false);
     }
@@ -202,6 +241,30 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           {validationResult.warnings.length > 0 && (
             <ul className="validation-warnings">
               {validationResult.warnings.map((warn, idx) => (
+                <li key={idx} className="validation-warning">
+                  ⚠ {warn}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {(serverErrors.length > 0 || serverWarnings.length > 0) && (
+        <div className="validation-result invalid">
+          <p className="validation-failure">✗ Server-side validation failed</p>
+          {serverErrors.length > 0 && (
+            <ul className="validation-errors">
+              {serverErrors.map((err, idx) => (
+                <li key={idx} className="validation-error">
+                  {err}
+                </li>
+              ))}
+            </ul>
+          )}
+          {serverWarnings.length > 0 && (
+            <ul className="validation-warnings">
+              {serverWarnings.map((warn, idx) => (
                 <li key={idx} className="validation-warning">
                   ⚠ {warn}
                 </li>

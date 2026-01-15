@@ -2,7 +2,7 @@
  * Hook for managing template list state.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TemplateInfo, TemplateListResponse } from '../types/ui-schema';
 import { listTemplates, refreshTemplateCache } from '../services/api';
 
@@ -11,6 +11,8 @@ interface UseTemplateListOptions {
   initialSearch?: string;
   /** Auto-load on mount */
   autoLoad?: boolean;
+  /** Filter by template status */
+  status?: 'published' | 'deprecated' | 'all';
 }
 
 interface UseTemplateListReturn {
@@ -40,7 +42,7 @@ interface UseTemplateListReturn {
 export function useTemplateList(
   options: UseTemplateListOptions = {}
 ): UseTemplateListReturn {
-  const { initialSearch = '', autoLoad = true } = options;
+  const { initialSearch = '', autoLoad = true, status } = options;
 
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [total, setTotal] = useState(0);
@@ -48,13 +50,18 @@ export function useTemplateList(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState(initialSearch);
+  const initialLoadRef = useRef(true);
 
   const loadTemplates = useCallback(async (searchQuery?: string) => {
     setLoading(true);
     setError(null);
 
     try {
-      const response: TemplateListResponse = await listTemplates(searchQuery);
+      const response: TemplateListResponse = await listTemplates(
+        searchQuery,
+        undefined,
+        status
+      );
       setTemplates(response.templates);
       setTotal(response.total);
       setCached(response.cached);
@@ -66,7 +73,7 @@ export function useTemplateList(
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [status]);
 
   const reload = useCallback(async () => {
     await loadTemplates(search);
@@ -89,19 +96,22 @@ export function useTemplateList(
 
   // Load on mount if autoLoad is true
   useEffect(() => {
-    if (autoLoad) {
-      loadTemplates(search);
-    }
+    if (!autoLoad) return;
+    if (!initialLoadRef.current) return;
+    initialLoadRef.current = false;
+    loadTemplates(search);
   }, [autoLoad, loadTemplates, search]);
 
   // Debounced search effect
   useEffect(() => {
+    if (!autoLoad) return;
+    if (initialLoadRef.current) return;
     const timer = setTimeout(() => {
       loadTemplates(search);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, loadTemplates]);
+  }, [search, loadTemplates, autoLoad]);
 
   return {
     templates,

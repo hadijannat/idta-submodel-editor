@@ -16,6 +16,7 @@ from app.schemas.form_data import ExportRequest, SubmodelFormData
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService, PDFExportService
 from app.services.parser import ParserService
+from app.services.validation import validate_form_data
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,11 @@ async def export_submodel(
         Literal["aasx", "json", "pdf"],
         Query(description="Export format"),
     ] = "aasx",
+    status: Annotated[
+        Literal["published", "deprecated"],
+        Query(description="Template status filter"),
+    ] = "published",
+    version: Annotated[str | None, Query(description="Template version")] = None,
     fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)] = None,
     hydrator: Annotated[HydratorService, Depends(get_hydrator)] = None,
     parser: Annotated[ParserService, Depends(get_parser)] = None,
@@ -44,7 +50,21 @@ async def export_submodel(
     - pdf: PDF report
     """
     try:
-        template_bytes = await fetcher.fetch_template_aasx(f"published/{template_name}")
+        template_path = f"{status}/{template_name}"
+        if version:
+            template_path = f"{template_path}/{version}"
+        template_bytes = await fetcher.fetch_template_aasx(template_path)
+        schema = parser.parse_aasx_to_ui_schema(template_bytes)
+        errors, warnings = validate_form_data(schema, form_data.model_dump())
+        if errors:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Validation failed",
+                    "errors": [e.model_dump() for e in errors],
+                    "warnings": [w.model_dump() for w in warnings],
+                },
+            )
 
         if format == "aasx":
             content = hydrator.hydrate_submodel(template_bytes, form_data.model_dump())
@@ -98,6 +118,11 @@ async def export_submodel(
 @router.get("/{template_name}/preview")
 async def preview_submodel(
     template_name: str,
+    status: Annotated[
+        Literal["published", "deprecated"],
+        Query(description="Template status filter"),
+    ] = "published",
+    version: Annotated[str | None, Query(description="Template version")] = None,
     fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
     parser: Annotated[ParserService, Depends(get_parser)],
 ) -> dict:
@@ -107,7 +132,10 @@ async def preview_submodel(
     Useful for displaying template information before editing.
     """
     try:
-        aasx_bytes = await fetcher.fetch_template_aasx(f"published/{template_name}")
+        template_path = f"{status}/{template_name}"
+        if version:
+            template_path = f"{template_path}/{version}"
+        aasx_bytes = await fetcher.fetch_template_aasx(template_path)
         schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
 
         # Return summary information
@@ -159,8 +187,14 @@ def _summarize_elements(elements: list[dict], depth: int = 0, max_depth: int = 2
 @router.post("/batch")
 async def batch_export(
     requests: list[ExportRequest],
+    status: Annotated[
+        Literal["published", "deprecated"],
+        Query(description="Template status filter"),
+    ] = "published",
+    version: Annotated[str | None, Query(description="Template version")] = None,
     fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
     hydrator: Annotated[HydratorService, Depends(get_hydrator)],
+    parser: Annotated[ParserService, Depends(get_parser)],
 ) -> Response:
     """
     Export multiple submodels as a ZIP archive.
@@ -172,9 +206,23 @@ async def batch_export(
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for idx, req in enumerate(requests):
-                template_bytes = await fetcher.fetch_template_aasx(
-                    f"published/{req.template_name}"
+                template_path = f"{status}/{req.template_name}"
+                if version:
+                    template_path = f"{template_path}/{version}"
+                template_bytes = await fetcher.fetch_template_aasx(template_path)
+                schema = parser.parse_aasx_to_ui_schema(template_bytes)
+                errors, warnings = validate_form_data(
+                    schema, req.form_data.model_dump()
                 )
+                if errors:
+                    raise HTTPException(
+                        status_code=422,
+                        detail={
+                            "message": "Validation failed",
+                            "errors": [e.model_dump() for e in errors],
+                            "warnings": [w.model_dump() for w in warnings],
+                        },
+                    )
 
                 if req.format == "aasx":
                     content = hydrator.hydrate_submodel(

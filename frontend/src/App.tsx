@@ -2,13 +2,14 @@
  * Main application component for the IDTA Submodel Editor.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { FormProvider } from 'react-hook-form';
-import type { TemplateInfo } from './types/ui-schema';
+import type { TemplateInfo, TemplateVersionInfo } from './types/ui-schema';
 import { useSubmodelForm } from './hooks/useSubmodelForm';
 import TemplateSelector from './components/TemplateSelector';
 import AASRenderer from './components/AASRenderer';
 import ExportPanel from './components/ExportPanel';
+import { getTemplateVersions } from './services/api';
 import './App.css';
 
 /**
@@ -18,6 +19,9 @@ import './App.css';
  */
 function App() {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateInfo | null>(null);
+  const [templateVersions, setTemplateVersions] = useState<TemplateVersionInfo[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const templateStatus = selectedTemplate?.status ?? 'published';
 
   const {
     schema,
@@ -35,15 +39,50 @@ function App() {
     resetForm,
   } = useSubmodelForm({
     templateName: selectedTemplate?.name,
+    templateStatus,
+    templateVersion: selectedVersion ?? null,
   });
 
   const handleTemplateSelect = useCallback(
     (template: TemplateInfo) => {
       setSelectedTemplate(template);
-      loadSchema(template.name);
+      setSelectedVersion(null);
     },
-    [loadSchema]
+    []
   );
+
+  useEffect(() => {
+    let active = true;
+
+    const loadVersions = async () => {
+      if (!selectedTemplate) {
+        setTemplateVersions([]);
+        setSelectedVersion(null);
+        return;
+      }
+
+      setSelectedVersion(null);
+      try {
+        const versions = await getTemplateVersions(
+          selectedTemplate.name,
+          templateStatus
+        );
+        if (!active) return;
+        setTemplateVersions(versions);
+      } catch {
+        if (!active) return;
+        setTemplateVersions([]);
+        setSelectedVersion(null);
+      }
+    };
+
+    loadVersions();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedTemplate, templateStatus]);
+
 
   return (
     <div className="app">
@@ -103,7 +142,13 @@ function App() {
               <p>{error}</p>
               <button
                 type="button"
-                onClick={() => loadSchema(selectedTemplate.name)}
+                onClick={() =>
+                  loadSchema(
+                    selectedTemplate.name,
+                    templateStatus,
+                    selectedVersion ?? null
+                  )
+                }
               >
                 Retry
               </button>
@@ -123,6 +168,35 @@ function App() {
                         {schema.templateName || selectedTemplate?.name}
                       </span>
                     </p>
+                  )}
+                  {selectedTemplate?.status === 'deprecated' && (
+          <p className="submodel-template-status">
+                      <span className="template-status template-status-deprecated">
+                        Deprecated
+                      </span>
+                    </p>
+                  )}
+                  {templateVersions.length > 0 && (
+                    <div className="submodel-template-version">
+                      <label htmlFor="template-version">Version</label>
+                      <select
+                        id="template-version"
+                        value={selectedVersion ?? ''}
+                        onChange={(e) =>
+                          setSelectedVersion(e.target.value || null)
+                        }
+                      >
+                        <option value="">Latest</option>
+                        {templateVersions.map((version) => (
+                          <option
+                            key={version.version}
+                            value={version.version}
+                          >
+                            {version.version}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   )}
                   {schema.semanticId && (
                     <p className="submodel-semantic-id">

@@ -2,7 +2,7 @@
  * TemplateSelector component for browsing and selecting IDTA templates.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { TemplateInfo } from '../../types/ui-schema';
 import { useTemplateList } from '../../hooks/useTemplateList';
 
@@ -20,6 +20,8 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   onSelect,
   selectedTemplate,
 }) => {
+  const [showDeprecated, setShowDeprecated] = useState(false);
+  const statusFilter = showDeprecated ? 'all' : 'published';
   const {
     templates,
     loading,
@@ -28,21 +30,31 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
     setSearch,
     refresh,
     cached,
-  } = useTemplateList();
+  } = useTemplateList({ status: statusFilter });
 
   return (
     <div className="template-selector">
       <div className="template-selector-header">
         <h2>IDTA Submodel Templates</h2>
-        <button
-          type="button"
-          className="btn btn-refresh"
-          onClick={refresh}
-          disabled={loading}
-          title="Refresh from GitHub"
-        >
-          {loading ? 'Loading...' : '↻ Refresh'}
-        </button>
+        <div className="template-selector-actions">
+          <label className="template-filter">
+            <input
+              type="checkbox"
+              checked={showDeprecated}
+              onChange={(e) => setShowDeprecated(e.target.checked)}
+            />
+            Show deprecated
+          </label>
+          <button
+            type="button"
+            className="btn btn-refresh"
+            onClick={refresh}
+            disabled={loading}
+            title="Refresh from GitHub"
+          >
+            {loading ? 'Loading...' : '↻ Refresh'}
+          </button>
+        </div>
       </div>
 
       <div className="template-selector-search">
@@ -102,6 +114,11 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                 {template.idta_number && (
                   <span className="template-idta-number">
                     IDTA {template.idta_number}
+                  </span>
+                )}
+                {template.status === 'deprecated' && (
+                  <span className="template-status template-status-deprecated">
+                    Deprecated
                   </span>
                 )}
                 <span className="template-title">

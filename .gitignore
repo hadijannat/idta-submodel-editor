@@ -22,6 +22,7 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+.hypothesis/
 
 # Caches/runtime
 .cache/
@@ -36,3 +37,4 @@ cache/
 Thumbs.db
 .idea/
 .vscode/
+AGENTS.md

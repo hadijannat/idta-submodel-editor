@@ -72,27 +72,51 @@ class TemplateFetcherService:
         cache_key = hashlib.md5(template_path.encode()).hexdigest()
         return self.cache_dir / f"{cache_key}.aasx"
 
-    async def list_available_templates(self) -> list[dict]:
+    async def list_available_templates(
+        self, statuses: list[str] | None = None
+    ) -> tuple[list[dict], bool]:
         """
         List all available IDTA templates from GitHub.
 
         Returns:
-            List of template metadata dictionaries.
+            Tuple of (template list, cached flag).
         """
-        cache_key = "template_index"
+        roots = statuses or ["published"]
+        cache_key = f"template_index:{','.join(sorted(roots))}"
 
         # Check in-memory cache
         if cache_key in self._index_cache:
             data, timestamp = self._index_cache[cache_key]
             if self._is_cache_valid(timestamp):
                 logger.debug("Returning cached template index")
-                return data
+                return data, True
 
         logger.info("Fetching template index from GitHub")
 
+        templates: list[dict] = []
+        for root in roots:
+            templates.extend(await self._list_templates_for_root(root))
+
+        # Sort by IDTA number, falling back to a high value when missing.
+        status_order = {"published": 0, "deprecated": 1}
+        templates.sort(
+            key=lambda x: (
+                status_order.get(x.get("status", "published"), 99),
+                x.get("idta_number") or "99999",
+                x.get("title") or x.get("name", ""),
+            )
+        )
+
+        self._index_cache[cache_key] = (templates, datetime.now())
+        return templates, False
+
+    async def _list_templates_for_root(self, root: str) -> list[dict]:
+        """
+        List templates under a specific root (e.g. published, deprecated).
+        """
         directories = None
         async with httpx.AsyncClient(timeout=30.0) as client:
-            url = f"https://api.github.com/repos/{self.github_repo}/contents/published"
+            url = f"https://api.github.com/repos/{self.github_repo}/contents/{root}"
             try:
                 response = await client.get(url, headers=self.headers)
                 response.raise_for_status()
@@ -102,7 +126,7 @@ class TemplateFetcherService:
                     logger.warning(
                         "GitHub API rate limit hit while listing templates, falling back to HTML listing",
                     )
-                    directories = await self._list_templates_via_html()
+                    directories = await self._list_templates_via_html(root)
                 else:
                     raise
 
@@ -115,7 +139,7 @@ class TemplateFetcherService:
                 if not name:
                     continue
                 template_info = self._parse_template_name(name)
-                path = item.get("path") or f"published/{name}"
+                path = item.get("path") or f"{root}/{name}"
                 url = item.get("url")
                 if not url:
                     url_path = quote(path, safe="/")
@@ -128,51 +152,43 @@ class TemplateFetcherService:
                         "idta_number": template_info.get("idta_number"),
                         "title": template_info.get("title"),
                         "sha": item.get("sha"),
+                        "status": root,
                     }
                 )
-
-        # Sort by IDTA number, falling back to a high value when missing.
-        templates.sort(
-            key=lambda x: (
-                x.get("idta_number") or "99999",
-                x.get("title") or x.get("name", ""),
-            )
-        )
-
-        self._index_cache[cache_key] = (templates, datetime.now())
         return templates
 
-    async def _list_templates_via_html(self) -> list[dict]:
+    async def _list_templates_via_html(self, root: str) -> list[dict]:
         """
-        Fallback to GitHub HTML tree listing for /published.
+        Fallback to GitHub HTML tree listing for a given root.
         """
-        items = await self._fetch_github_tree_items("published")
+        items = await self._fetch_github_tree_items(root)
         templates: dict[str, dict] = {}
         for item in items:
             if item.get("contentType") != "directory":
                 continue
 
             raw_name = item.get("name") or ""
-            raw_path = item.get("path") or ""
-            if raw_path.startswith("published/"):
-                root = raw_path.split("/", 2)[1]
+            raw_path = item.get("path") or raw_name
+            if raw_path.startswith(f"{root}/"):
+                template_name = raw_path.split("/", 1)[1].split("/", 1)[0]
             else:
-                root = raw_name.split("/", 1)[0]
+                template_name = raw_path.split("/", 1)[0]
 
-            if not root:
+            if not template_name:
                 continue
 
-            path = f"published/{root}"
+            path = f"{root}/{template_name}"
             url_path = quote(path, safe="/")
             templates.setdefault(
-                root,
+                template_name,
                 {
-                    "name": root,
+                    "name": template_name,
                     "path": path,
                     "url": f"https://github.com/{self.github_repo}/tree/main/{url_path}",
                     "sha": None,
                     "type": "dir",
                     "contentType": "directory",
+                    "status": root,
                 },
             )
 

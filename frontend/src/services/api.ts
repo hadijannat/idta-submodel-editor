@@ -128,11 +128,13 @@ async function downloadFile(
  */
 export async function listTemplates(
   search?: string,
-  idtaNumber?: string
+  idtaNumber?: string,
+  status?: 'published' | 'deprecated' | 'all'
 ): Promise<TemplateListResponse> {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
   if (idtaNumber) params.set('idta_number', idtaNumber);
+  if (status) params.set('status', status);
 
   const query = params.toString();
   return apiFetch<TemplateListResponse>(
@@ -144,19 +146,33 @@ export async function listTemplates(
  * Get information about a specific template.
  */
 export async function getTemplateInfo(
-  templateName: string
+  templateName: string,
+  status?: 'published' | 'deprecated' | 'all'
 ): Promise<TemplateInfo> {
-  return apiFetch<TemplateInfo>(`/api/templates/${encodeURIComponent(templateName)}`);
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  const query = params.toString();
+  return apiFetch<TemplateInfo>(
+    `/api/templates/${encodeURIComponent(templateName)}${
+      query ? `?${query}` : ''
+    }`
+  );
 }
 
 /**
  * Get available versions for a template.
  */
 export async function getTemplateVersions(
-  templateName: string
+  templateName: string,
+  status?: 'published' | 'deprecated'
 ): Promise<TemplateVersionInfo[]> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  const query = params.toString();
   return apiFetch<TemplateVersionInfo[]>(
-    `/api/templates/${encodeURIComponent(templateName)}/versions`
+    `/api/templates/${encodeURIComponent(templateName)}/versions${
+      query ? `?${query}` : ''
+    }`
   );
 }
 
@@ -177,10 +193,18 @@ export async function refreshTemplateCache(): Promise<{ cleared: number }> {
  * Get the UI schema for a template.
  */
 export async function getTemplateSchema(
-  templateName: string
+  templateName: string,
+  status?: 'published' | 'deprecated',
+  version?: string | null
 ): Promise<SubmodelUISchema> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
+  const query = params.toString();
   return apiFetch<SubmodelUISchema>(
-    `/api/editor/templates/${encodeURIComponent(templateName)}/schema`
+    `/api/editor/templates/${encodeURIComponent(templateName)}/schema${
+      query ? `?${query}` : ''
+    }`
   );
 }
 
@@ -189,10 +213,18 @@ export async function getTemplateSchema(
  */
 export async function validateFormData(
   templateName: string,
-  formData: SubmodelFormData
+  formData: SubmodelFormData,
+  status?: 'published' | 'deprecated',
+  version?: string | null
 ): Promise<ValidationResult> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
+  const query = params.toString();
   return apiFetch<ValidationResult>(
-    `/api/editor/validate/${encodeURIComponent(templateName)}`,
+    `/api/editor/validate/${encodeURIComponent(templateName)}${
+      query ? `?${query}` : ''
+    }`,
     {
       method: 'POST',
       body: JSON.stringify(formData),
@@ -232,10 +264,15 @@ export async function uploadAasx(file: File): Promise<UploadResponse> {
 export async function exportAsAasx(
   templateName: string,
   formData: SubmodelFormData,
-  filename?: string
+  filename?: string,
+  status?: 'published' | 'deprecated',
+  version?: string | null
 ): Promise<void> {
+  const params = new URLSearchParams({ format: 'aasx' });
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
   await downloadFile(
-    `/api/export/${encodeURIComponent(templateName)}?format=aasx`,
+    `/api/export/${encodeURIComponent(templateName)}?${params.toString()}`,
     {
       method: 'POST',
       body: JSON.stringify(formData),
@@ -250,10 +287,15 @@ export async function exportAsAasx(
 export async function exportAsJson(
   templateName: string,
   formData: SubmodelFormData,
-  filename?: string
+  filename?: string,
+  status?: 'published' | 'deprecated',
+  version?: string | null
 ): Promise<void> {
+  const params = new URLSearchParams({ format: 'json' });
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
   await downloadFile(
-    `/api/export/${encodeURIComponent(templateName)}?format=json`,
+    `/api/export/${encodeURIComponent(templateName)}?${params.toString()}`,
     {
       method: 'POST',
       body: JSON.stringify(formData),
@@ -268,10 +310,15 @@ export async function exportAsJson(
 export async function exportAsPdf(
   templateName: string,
   formData: SubmodelFormData,
-  filename?: string
+  filename?: string,
+  status?: 'published' | 'deprecated',
+  version?: string | null
 ): Promise<void> {
+  const params = new URLSearchParams({ format: 'pdf' });
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
   await downloadFile(
-    `/api/export/${encodeURIComponent(templateName)}?format=pdf`,
+    `/api/export/${encodeURIComponent(templateName)}?${params.toString()}`,
     {
       method: 'POST',
       body: JSON.stringify(formData),
@@ -286,11 +333,16 @@ export async function exportAsPdf(
 export async function verifyExport(
   templateName: string,
   formData: SubmodelFormData,
-  format: 'aasx' | 'json' | 'pdf' = 'aasx'
+  format: 'aasx' | 'json' | 'pdf' = 'aasx',
+  status?: 'published' | 'deprecated',
+  version?: string | null
 ): Promise<void> {
+  const params = new URLSearchParams({ format });
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
   const url = `${API_BASE_URL}/api/export/${encodeURIComponent(
     templateName
-  )}?format=${format}`;
+  )}?${params.toString()}`;
 
   const response = await fetch(url, {
     method: 'POST',
@@ -326,10 +378,18 @@ export async function verifyExport(
  * Get template preview without form data.
  */
 export async function getTemplatePreview(
-  templateName: string
+  templateName: string,
+  status?: 'published' | 'deprecated',
+  version?: string | null
 ): Promise<Record<string, unknown>> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
+  const query = params.toString();
   return apiFetch<Record<string, unknown>>(
-    `/api/export/${encodeURIComponent(templateName)}/preview`
+    `/api/export/${encodeURIComponent(templateName)}/preview${
+      query ? `?${query}` : ''
+    }`
   );
 }
 

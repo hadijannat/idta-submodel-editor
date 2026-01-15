@@ -224,6 +224,20 @@ body {
   margin-bottom: var(--spacing-md);
 }
 
+.template-selector-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.template-filter {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
 .template-selector-header h2 {
   margin: 0;
   font-size: 1rem;
@@ -289,6 +303,20 @@ body {
   border-radius: var(--radius-sm);
 }
 
+.template-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.template-status-deprecated {
+  color: var(--color-warning);
+  background: rgba(221, 107, 32, 0.12);
+}
+
 .template-title {
   font-weight: 500;
   color: var(--color-text);
@@ -332,6 +360,29 @@ body {
   font-size: 0.75rem;
   color: var(--color-text-muted);
   margin: 0 0 var(--spacing-xxs);
+}
+
+.submodel-template-status {
+  margin: var(--spacing-xs) 0;
+}
+
+.submodel-template-version {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-sm) 0;
+}
+
+.submodel-template-version label {
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.submodel-template-version select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
 }
 
 .submodel-description {

@@ -152,6 +152,7 @@ export interface TemplateInfo {
   idta_number: string | null;
   title: string | null;
   sha: string | null;
+  status?: 'published' | 'deprecated';
 }
 
 /**

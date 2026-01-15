@@ -21,6 +21,10 @@ import { isRequired } from '../types/aas-elements';
 interface UseSubmodelFormOptions {
   /** Template name to load */
   templateName?: string;
+  /** Template status to load */
+  templateStatus?: 'published' | 'deprecated';
+  /** Template version to load */
+  templateVersion?: string | null;
   /** Pre-loaded schema (skip API call) */
   initialSchema?: SubmodelUISchema;
   /** Called when form is submitted successfully */
@@ -41,7 +45,11 @@ interface UseSubmodelFormReturn {
   /** Validation result */
   validationResult: { valid: boolean; errors: string[]; warnings: string[] } | null;
   /** Load or reload schema */
-  loadSchema: (templateName: string) => Promise<void>;
+  loadSchema: (
+    templateName: string,
+    status?: 'published' | 'deprecated',
+    version?: string | null
+  ) => Promise<void>;
   /** Validate the form */
   validate: () => Promise<boolean>;
   /** Export as AASX */
@@ -83,8 +91,13 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
         propSchema = z.string();
       }
 
+      const valueSchema =
+        required && propSchema instanceof z.ZodString
+          ? propSchema.min(1)
+          : propSchema;
+
       return z.object({
-        value: required ? propSchema : propSchema.optional().nullable(),
+        value: required ? valueSchema : valueSchema.optional().nullable(),
       });
     }
 
@@ -234,7 +247,8 @@ function generateElementDefaults(element: UIElementSchema): ElementFormData {
 export function useSubmodelForm(
   options: UseSubmodelFormOptions = {}
 ): UseSubmodelFormReturn {
-  const { templateName, initialSchema, onSubmit } = options;
+  const { templateName, initialSchema, onSubmit, templateStatus, templateVersion } =
+    options;
 
   const [schema, setSchema] = useState<SubmodelUISchema | null>(
     initialSchema || null
@@ -276,27 +290,34 @@ export function useSubmodelForm(
   });
 
   // Load schema from API
-  const loadSchema = useCallback(async (name: string) => {
-    setLoading(true);
-    setError(null);
+  const loadSchema = useCallback(
+    async (
+      name: string,
+      status?: 'published' | 'deprecated',
+      version?: string | null
+    ) => {
+      setLoading(true);
+      setError(null);
 
-    try {
-      const loadedSchema = await getTemplateSchema(name);
-      setSchema(loadedSchema);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load schema';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      try {
+        const loadedSchema = await getTemplateSchema(name, status, version);
+        setSchema(loadedSchema);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load schema';
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   // Load on mount if templateName provided
   useEffect(() => {
     if (templateName && !initialSchema) {
-      loadSchema(templateName);
+      loadSchema(templateName, templateStatus, templateVersion);
     }
-  }, [templateName, initialSchema, loadSchema]);
+  }, [templateName, initialSchema, loadSchema, templateStatus, templateVersion]);
 
   // Reset form when schema changes
   useEffect(() => {
@@ -313,7 +334,12 @@ export function useSubmodelForm(
     setValidating(true);
     try {
       const formData = form.getValues();
-      const result = await validateFormData(templateName, formData);
+      const result = await validateFormData(
+        templateName,
+        formData,
+        templateStatus,
+        templateVersion
+      );
 
       setValidationResult({
         valid: result.valid,
@@ -329,41 +355,65 @@ export function useSubmodelForm(
     } finally {
       setValidating(false);
     }
-  }, [schema, templateName, form]);
+  }, [schema, templateName, form, templateStatus, templateVersion]);
 
   // Export functions
   const handleExportAasx = useCallback(
     async (filename?: string) => {
       if (!templateName) throw new Error('No template loaded');
       const formData = form.getValues();
-      await exportAsAasx(templateName, formData, filename);
+      await exportAsAasx(
+        templateName,
+        formData,
+        filename,
+        templateStatus,
+        templateVersion
+      );
     },
-    [templateName, form]
+    [templateName, form, templateStatus, templateVersion]
   );
 
   const handleExportJson = useCallback(
     async (filename?: string) => {
       if (!templateName) throw new Error('No template loaded');
       const formData = form.getValues();
-      await exportAsJson(templateName, formData, filename);
+      await exportAsJson(
+        templateName,
+        formData,
+        filename,
+        templateStatus,
+        templateVersion
+      );
     },
-    [templateName, form]
+    [templateName, form, templateStatus, templateVersion]
   );
 
   const handleExportPdf = useCallback(
     async (filename?: string) => {
       if (!templateName) throw new Error('No template loaded');
       const formData = form.getValues();
-      await exportAsPdf(templateName, formData, filename);
+      await exportAsPdf(
+        templateName,
+        formData,
+        filename,
+        templateStatus,
+        templateVersion
+      );
     },
-    [templateName, form]
+    [templateName, form, templateStatus, templateVersion]
   );
 
   const handleVerifyExport = useCallback(async () => {
     if (!templateName) throw new Error('No template loaded');
     const formData = form.getValues();
-    await verifyExport(templateName, formData, 'aasx');
-  }, [templateName, form]);
+    await verifyExport(
+      templateName,
+      formData,
+      'aasx',
+      templateStatus,
+      templateVersion
+    );
+  }, [templateName, form, templateStatus, templateVersion]);
 
   // Reset form
   const resetForm = useCallback(() => {
