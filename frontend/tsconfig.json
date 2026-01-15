@@ -36,5 +36,6 @@
     }
   },
   "include": ["src"],
+  "exclude": ["src/utils/__tests__"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
