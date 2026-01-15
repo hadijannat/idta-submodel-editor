@@ -54,7 +54,6 @@ jobs:
 
   aas-conformance:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('backend/tests/fixtures/aasx/*.aasx') != '' || hashFiles('backend/tests/fixtures/json/*.json') != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -70,15 +69,21 @@ jobs:
       - name: Run AAS conformance checks
         run: |
           set -e
+          has_files=false
           if [ -d backend/tests/fixtures/aasx ]; then
             for file in backend/tests/fixtures/aasx/*.aasx; do
               [ -e "$file" ] || continue
+              has_files=true
               aas_test_engines check_file --format aasx "$file"
             done
           fi
           if [ -d backend/tests/fixtures/json ]; then
             for file in backend/tests/fixtures/json/*.json; do
               [ -e "$file" ] || continue
+              has_files=true
               aas_test_engines check_file --format json "$file"
             done
+          fi
+          if [ "$has_files" = false ]; then
+            echo "No fixture files found; skipping conformance checks."
           fi
