@@ -7,7 +7,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 from fastapi import HTTPException, UploadFile
 
@@ -19,14 +19,13 @@ from app.schemas.mapper import (
     DatasetProfile,
     DatasetSheetInfo,
     MapperDiagnostic,
-    MapperMode,
     MapperRecipe,
     MapperRunRequest,
     MapperRunResponse,
 )
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService, PDFExportService
-from app.services.mapper.apply import apply_mapping
+from app.services.mapper.apply import apply_mapping, apply_mapping_into
 from app.services.mapper.parsers import (
     DatasetReader,
     build_examples,
@@ -55,8 +54,10 @@ class MapperService:
         self.base_dir = self.settings.mapper_cache_dir
         self.upload_dir = self.base_dir / "uploads"
         self.profile_dir = self.base_dir / "profiles"
+        self.recipe_dir = self.base_dir / "recipes"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.profile_dir.mkdir(parents=True, exist_ok=True)
+        self.recipe_dir.mkdir(parents=True, exist_ok=True)
 
     async def profile(
         self,
@@ -220,7 +221,62 @@ class MapperService:
                 row_count=len(data_rows),
             )
 
-        raise HTTPException(status_code=400, detail="Grouped mode not supported yet")
+        if mode.type == "grouped":
+            if not mode.group_by:
+                raise HTTPException(
+                    status_code=400, detail="Grouped mode requires group_by columns"
+                )
+
+            group_indices: list[int] = []
+            for name in mode.group_by:
+                idx = header_map.get(name)
+                if idx is None:
+                    idx = header_map.get(normalize_header(name))
+                if idx is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Group-by column '{name}' not found",
+                    )
+                group_indices.append(idx)
+
+            grouped_rows: dict[tuple[str, ...], list[tuple[int, list]]] = {}
+            for row_index, row in enumerate(data_rows, start=1):
+                key = tuple(
+                    ""
+                    if idx >= len(row) or row[idx] is None
+                    else str(row[idx]).strip()
+                    for idx in group_indices
+                )
+                grouped_rows.setdefault(key, []).append((row_index, row))
+
+            batch_data: list[dict] = []
+            diagnostics: list[MapperDiagnostic] = []
+            for rows_in_group in grouped_rows.values():
+                form_data = {"elements": {}}
+                for row_index, row in rows_in_group:
+                    list_context: dict[str, int] = {}
+                    diagnostics.extend(
+                        apply_mapping_into(
+                            form_data,
+                            row,
+                            request.recipe.mappings,
+                            header_map,
+                            row_index,
+                            list_context=list_context,
+                            preserve_existing=True,
+                        )
+                    )
+                form_data.pop("_mapper_values", None)
+                batch_data.append(form_data)
+
+            return MapperRunResponse(
+                mode=mode,
+                diagnostics=diagnostics,
+                form_data_batch=batch_data,
+                row_count=len(data_rows),
+            )
+
+        raise HTTPException(status_code=400, detail="Unsupported mode")
 
     async def export(self, request: MapperRunRequest):
         response = await self.run(request)
@@ -260,7 +316,16 @@ class MapperService:
                 request.output_format,
             )
 
-        raise HTTPException(status_code=400, detail="Grouped mode not supported yet")
+        if mode.type == "grouped":
+            return self._export_batch(
+                request.template_name,
+                template_bytes,
+                schema,
+                response,
+                request.output_format,
+            )
+
+        raise HTTPException(status_code=400, detail="Unsupported mode")
 
     def _export_single(
         self,
@@ -377,6 +442,34 @@ class MapperService:
             raise HTTPException(status_code=404, detail="Profile not found")
         return json.loads(profile_path.read_text())
 
+    def list_recipes(self, user: dict | None) -> list[MapperRecipe]:
+        recipe_dir = self._recipe_dir(user)
+        recipes: list[MapperRecipe] = []
+        for path in recipe_dir.glob("*.json"):
+            try:
+                data = json.loads(path.read_text())
+                recipes.append(MapperRecipe(**data))
+            except Exception:
+                logger.warning("Skipping invalid recipe file: %s", path)
+        return sorted(recipes, key=lambda recipe: recipe.name.lower())
+
+    def get_recipe(self, name: str, user: dict | None) -> MapperRecipe:
+        recipe_path = self._recipe_path(name, user)
+        if not recipe_path.exists():
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        return MapperRecipe(**json.loads(recipe_path.read_text()))
+
+    def save_recipe(self, recipe: MapperRecipe, user: dict | None) -> MapperRecipe:
+        recipe_path = self._recipe_path(recipe.name, user)
+        recipe_path.write_text(recipe.model_dump_json(indent=2))
+        return recipe
+
+    def delete_recipe(self, name: str, user: dict | None) -> None:
+        recipe_path = self._recipe_path(name, user)
+        if not recipe_path.exists():
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        recipe_path.unlink()
+
     @staticmethod
     def _detect_file_type(filename: str | None, content_type: str | None) -> str:
         if filename:
@@ -388,3 +481,29 @@ class MapperService:
         if content_type and "excel" in content_type:
             return "xlsx"
         return "csv"
+
+    def _recipe_dir(self, user: dict | None) -> Path:
+        scope = self._recipe_scope(user)
+        recipe_dir = self.recipe_dir / scope
+        recipe_dir.mkdir(parents=True, exist_ok=True)
+        return recipe_dir
+
+    def _recipe_path(self, name: str, user: dict | None) -> Path:
+        safe_id = self._safe_recipe_id(name)
+        return self._recipe_dir(user) / f"{safe_id}.json"
+
+    @staticmethod
+    def _safe_recipe_id(name: str) -> str:
+        slug = "".join(
+            char if char.isalnum() or char in {"-", "_"} else "-"
+            for char in name.lower()
+        ).strip("-")
+        digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+        return f"{slug}-{digest}" if slug else digest
+
+    @staticmethod
+    def _recipe_scope(user: dict | None) -> str:
+        if user and user.get("sub"):
+            digest = hashlib.sha256(str(user["sub"]).encode("utf-8")).hexdigest()[:12]
+            return f"user-{digest}"
+        return "public"

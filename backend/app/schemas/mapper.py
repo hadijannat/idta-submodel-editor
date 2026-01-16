@@ -125,3 +125,7 @@ class MapperRunResponse(BaseModel):
     form_data: dict | None = None
     form_data_batch: list[dict] | None = None
     row_count: int | None = None
+
+
+class MapperRecipeList(BaseModel):
+    recipes: list[MapperRecipe] = Field(default_factory=list)

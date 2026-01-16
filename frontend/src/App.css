@@ -1482,6 +1482,18 @@ body {
   gap: var(--spacing-sm);
 }
 
+.smart-mapper-recipe-save {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.smart-mapper-recipe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
 .smart-mapper-upload-card input[type='file'] {
   border: 1px dashed var(--color-border);
   padding: var(--spacing-sm);
@@ -1544,6 +1556,23 @@ body {
   border-radius: var(--radius-sm);
 }
 
+.smart-mapper-column.dragging {
+  border-color: rgba(26, 115, 232, 0.4);
+  background: rgba(26, 115, 232, 0.06);
+}
+
+.smart-mapper-column-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: grab;
+}
+
+.smart-mapper-column-hint {
+  font-size: 0.7rem;
+  color: var(--color-text-light);
+}
+
 .smart-mapper-column select {
   padding: var(--spacing-xs);
   border-radius: var(--radius-sm);
@@ -1570,6 +1599,41 @@ body {
 .smart-mapper-target.mapped {
   border-color: rgba(46, 125, 50, 0.35);
   background: rgba(46, 125, 50, 0.08);
+}
+
+.smart-mapper-target.droppable {
+  border-style: dashed;
+}
+
+.smart-mapper-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(26, 115, 232, 0.25);
+  background: rgba(26, 115, 232, 0.03);
+}
+
+.smart-mapper-canvas-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.smart-mapper-canvas-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font-size: 0.85rem;
+}
+
+.smart-mapper-canvas-row .btn {
+  padding: 4px 8px;
+  font-size: 0.75rem;
 }
 
 .smart-mapper-target .badge {
@@ -1619,6 +1683,32 @@ body {
   flex-direction: column;
   gap: var(--spacing-xs);
   font-size: 0.85rem;
+}
+
+.smart-mapper-groupby {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: rgba(26, 115, 232, 0.05);
+  border: 1px solid rgba(26, 115, 232, 0.15);
+}
+
+.smart-mapper-groupby-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-xs);
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: var(--spacing-xs);
+}
+
+.smart-mapper-groupby label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 0.8rem;
 }
 
 .smart-mapper-diagnostics {

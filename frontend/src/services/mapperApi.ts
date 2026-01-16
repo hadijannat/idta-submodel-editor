@@ -1,5 +1,10 @@
 import { API_BASE_URL, ApiError } from './api';
-import type { DatasetProfile, MapperRunRequest, MapperRunResponse } from '../types/mapper';
+import type {
+  DatasetProfile,
+  MapperRecipe,
+  MapperRunRequest,
+  MapperRunResponse,
+} from '../types/mapper';
 
 export async function profileMapperFile(
   file: File,
@@ -51,4 +56,62 @@ export async function runMapper(
   }
 
   return response.json();
+}
+
+export async function listMapperRecipes(): Promise<MapperRecipe[]> {
+  const response = await fetch(`${API_BASE_URL}/api/mapper/recipes`);
+
+  if (!response.ok) {
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError('Load recipes failed', response.status, details);
+  }
+
+  const data = (await response.json()) as { recipes?: MapperRecipe[] };
+  return data.recipes ?? [];
+}
+
+export async function saveMapperRecipe(recipe: MapperRecipe): Promise<MapperRecipe> {
+  const response = await fetch(`${API_BASE_URL}/api/mapper/recipes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(recipe),
+  });
+
+  if (!response.ok) {
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError('Save recipe failed', response.status, details);
+  }
+
+  return response.json();
+}
+
+export async function deleteMapperRecipe(name: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/mapper/recipes/${encodeURIComponent(name)}`,
+    {
+      method: 'DELETE',
+    }
+  );
+
+  if (!response.ok) {
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError('Delete recipe failed', response.status, details);
+  }
 }

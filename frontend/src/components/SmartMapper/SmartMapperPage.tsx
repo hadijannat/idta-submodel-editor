@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { DragEvent } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import localforage from 'localforage';
 import type { SubmodelUISchema, UIElementSchema } from '../../types/ui-schema';
@@ -11,7 +12,12 @@ import type {
   MapperRecipe,
   MapperRunRequest,
 } from '../../types/mapper';
-import { profileMapperFile, runMapper } from '../../services/mapperApi';
+import {
+  listMapperRecipes,
+  profileMapperFile,
+  runMapper,
+  saveMapperRecipe,
+} from '../../services/mapperApi';
 import { isRequired } from '../../types/aas-elements';
 
 interface SmartMapperPageProps {
@@ -66,24 +72,60 @@ function scoreMatch(source: string, target: TargetField): number {
 
 function flattenTargets(elements: UIElementSchema[], path: string[] = []): TargetField[] {
   const targets: TargetField[] = [];
+
+  const isLeaf = (element: UIElementSchema) =>
+    element.modelType === 'Property' ||
+    element.modelType === 'MultiLanguageProperty' ||
+    element.modelType === 'Range' ||
+    element.modelType === 'File' ||
+    element.modelType === 'ReferenceElement';
+
+  const pushLeaf = (
+    element: UIElementSchema,
+    pathSegments: string[],
+    requiredOverride?: boolean
+  ) => {
+    const label = element.idShort || pathSegments[pathSegments.length - 1];
+    targets.push({
+      idShortPath: pathSegments.join('.'),
+      label,
+      elementType: element.modelType,
+      valueType: element.valueType ?? null,
+      required: requiredOverride ?? isRequired(element.cardinality),
+      semanticLabel: element.semanticLabel ?? null,
+      languages: element.supportedLanguages ?? undefined,
+    });
+  };
+
   for (const element of elements) {
+    if (element.modelType === 'SubmodelElementList') {
+      const listPath = [...path, `${element.idShort}[]`];
+      const listRequired = isRequired(element.cardinality);
+      const template = element.itemTemplate ?? element.items?.[0] ?? null;
+
+      if (template) {
+        if (isLeaf(template)) {
+          const leafPath = [
+            ...listPath,
+            template.idShort ? template.idShort : 'value',
+          ];
+          pushLeaf(template, leafPath, listRequired);
+        } else {
+          const basePath = template.idShort ? [...listPath, template.idShort] : listPath;
+          if (template.elements && template.elements.length) {
+            targets.push(...flattenTargets(template.elements, basePath));
+          }
+          if (template.statements && template.statements.length) {
+            targets.push(...flattenTargets(template.statements, basePath));
+          }
+        }
+      }
+      continue;
+    }
+
     const nextPath = [...path, element.idShort];
-    if (
-      element.modelType === 'Property' ||
-      element.modelType === 'MultiLanguageProperty' ||
-      element.modelType === 'Range' ||
-      element.modelType === 'File' ||
-      element.modelType === 'ReferenceElement'
-    ) {
-      targets.push({
-        idShortPath: nextPath.join('.'),
-        label: element.idShort,
-        elementType: element.modelType,
-        valueType: element.valueType ?? null,
-        required: isRequired(element.cardinality),
-        semanticLabel: element.semanticLabel ?? null,
-        languages: element.supportedLanguages ?? undefined,
-      });
+    if (isLeaf(element)) {
+      pushLeaf(element, nextPath);
     }
 
     if (element.elements && element.elements.length) {
@@ -93,6 +135,7 @@ function flattenTargets(elements: UIElementSchema[], path: string[] = []): Targe
       targets.push(...flattenTargets(element.statements, nextPath));
     }
   }
+
   return targets;
 }
 
@@ -127,14 +170,18 @@ export default function SmartMapperPage({
   const [mappings, setMappings] = useState<MappingItem[]>([]);
   const [autoMapped, setAutoMapped] = useState(false);
   const [mode, setMode] = useState<MapperModeType>('single');
+  const [groupBy, setGroupBy] = useState<string[]>([]);
   const [rowIndex, setRowIndex] = useState(1);
   const [diagnostics, setDiagnostics] = useState<MapperDiagnostic[]>([]);
   const [mappedFormData, setMappedFormData] = useState<Record<string, unknown> | null>(
     null
   );
   const [recipes, setRecipes] = useState<MapperRecipe[]>([]);
+  const [serverRecipes, setServerRecipes] = useState<MapperRecipe[]>([]);
+  const [serverRecipeError, setServerRecipeError] = useState<string | null>(null);
   const [recipeName, setRecipeName] = useState('');
   const [selectedRecipe, setSelectedRecipe] = useState<string>('');
+  const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
   const targetFields = useMemo(
@@ -158,10 +205,22 @@ export default function SmartMapperPage({
     [requiredTargets, mappedTargets]
   );
 
+  const canRun = mappings.length > 0 && (mode !== 'grouped' || groupBy.length > 0);
+
   useEffect(() => {
     recipeStore.getItem<MapperRecipe[]>('recipes').then((saved) => {
       setRecipes(saved ?? []);
     });
+    listMapperRecipes()
+      .then((saved) => {
+        setServerRecipes(saved ?? []);
+        setServerRecipeError(null);
+      })
+      .catch((err: unknown) => {
+        const message =
+          err instanceof Error ? err.message : 'Server recipes unavailable';
+        setServerRecipeError(message);
+      });
   }, []);
 
   const handleProfile = useCallback(async () => {
@@ -173,6 +232,7 @@ export default function SmartMapperPage({
     setDiagnostics([]);
     setMappedFormData(null);
     setAutoMapped(false);
+    setGroupBy([]);
 
     try {
       const result = await profileMapperFile(file, { sampleRows: 200 });
@@ -224,6 +284,57 @@ export default function SmartMapperPage({
     []
   );
 
+  const toggleGroupBy = useCallback((columnName: string) => {
+    setGroupBy((prev) =>
+      prev.includes(columnName)
+        ? prev.filter((name) => name !== columnName)
+        : [...prev, columnName]
+    );
+  }, []);
+
+  const handleDragStart = useCallback(
+    (columnName: string, columnIndex: number) =>
+      (event: DragEvent<HTMLDivElement>) => {
+        event.dataTransfer.setData(
+          'application/json',
+          JSON.stringify({ columnName, columnIndex })
+        );
+        event.dataTransfer.effectAllowed = 'copy';
+        setDraggingColumn(columnName);
+      },
+    []
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingColumn(null);
+  }, []);
+
+  const handleDropOnTarget = useCallback(
+    (targetId: string) => (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const payload = event.dataTransfer.getData('application/json');
+      if (!payload) return;
+      try {
+        const { columnName, columnIndex } = JSON.parse(payload) as {
+          columnName: string;
+          columnIndex: number;
+        };
+        handleMappingChange(columnName, columnIndex, targetId);
+      } catch {
+        // Ignore malformed drag data.
+      } finally {
+        setDraggingColumn(null);
+      }
+    },
+    [handleMappingChange]
+  );
+
+  const removeMapping = useCallback((columnName: string) => {
+    setMappings((prev) =>
+      prev.filter((mapping) => mapping.source.column_name !== columnName)
+    );
+  }, []);
+
   const handleAutoMap = useCallback(() => {
     if (!profile) return;
     const newMappings: MappingItem[] = [];
@@ -273,11 +384,30 @@ export default function SmartMapperPage({
       },
       mode: {
         type: mode,
-        group_by: [],
+        group_by: mode === 'grouped' ? groupBy : [],
       },
       mappings,
     };
-  }, [profile, templateName, templateVersion, templateStatus, recipeName, mode, mappings]);
+  }, [
+    profile,
+    templateName,
+    templateVersion,
+    templateStatus,
+    recipeName,
+    mode,
+    groupBy,
+    mappings,
+  ]);
+
+  const formatRecipeId = useCallback(
+    (source: 'local' | 'server', name: string) => `${source}::${name}`,
+    []
+  );
+
+  const parseRecipeId = useCallback((value: string) => {
+    const [source, ...rest] = value.split('::');
+    return { source, name: rest.join('::') };
+  }, []);
 
   const handleSaveRecipe = useCallback(async () => {
     const recipe = buildRecipe();
@@ -286,12 +416,35 @@ export default function SmartMapperPage({
     await recipeStore.setItem('recipes', updated);
     setRecipes(updated);
     setRecipeName('');
-    setSelectedRecipe(recipe.name);
-  }, [buildRecipe, recipes]);
+    setSelectedRecipe(formatRecipeId('local', recipe.name));
+  }, [buildRecipe, recipes, formatRecipeId]);
+
+  const handleSaveRecipeToServer = useCallback(async () => {
+    const recipe = buildRecipe();
+    if (!recipe) return;
+    try {
+      const saved = await saveMapperRecipe(recipe);
+      setServerRecipes((prev) => [
+        saved,
+        ...prev.filter((r) => r.name !== saved.name),
+      ]);
+      setServerRecipeError(null);
+      setRecipeName('');
+      setSelectedRecipe(formatRecipeId('server', saved.name));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Save to server failed';
+      setServerRecipeError(message);
+    }
+  }, [buildRecipe, formatRecipeId]);
 
   const handleApplyRecipe = useCallback(() => {
-    const recipe = recipes.find((r) => r.name === selectedRecipe);
+    if (!selectedRecipe) return;
+    const parsed = parseRecipeId(selectedRecipe);
+    const source = parsed.source === 'server' ? serverRecipes : recipes;
+    const recipe = source.find((r) => r.name === parsed.name);
     if (!recipe || !profile) return;
+    setMode(recipe.mode.type);
+    setGroupBy(recipe.mode.group_by ?? []);
     const columnIndexByName = new Map(
       profile.columns.map((col) => [col.name_original, col.index])
     );
@@ -309,12 +462,21 @@ export default function SmartMapperPage({
       })
       .filter(Boolean) as MappingItem[];
     setMappings(applied);
-  }, [recipes, selectedRecipe, profile]);
+  }, [recipes, serverRecipes, selectedRecipe, profile, parseRecipeId]);
 
   const handleRun = useCallback(async () => {
     if (!profile || !templateName) return;
     const recipe = buildRecipe();
     if (!recipe) return;
+    if (mode === 'grouped' && groupBy.length === 0) {
+      setDiagnostics([
+        {
+          severity: 'error',
+          message: 'Select at least one group-by column before running.',
+        },
+      ] as MapperDiagnostic[]);
+      return;
+    }
     setRunning(true);
     setDiagnostics([]);
     setMappedFormData(null);
@@ -344,7 +506,16 @@ export default function SmartMapperPage({
     } finally {
       setRunning(false);
     }
-  }, [profile, templateName, templateStatus, templateVersion, buildRecipe, rowIndex]);
+  }, [
+    profile,
+    templateName,
+    templateStatus,
+    templateVersion,
+    buildRecipe,
+    rowIndex,
+    mode,
+    groupBy,
+  ]);
 
   const handleApplyToForm = useCallback(() => {
     if (!mappedFormData) return;
@@ -404,11 +575,30 @@ export default function SmartMapperPage({
               onChange={(event) => setSelectedRecipe(event.target.value)}
             >
               <option value="">Select saved recipe</option>
-              {recipes.map((recipe) => (
-                <option key={recipe.name} value={recipe.name}>
-                  {recipe.name}
-                </option>
-              ))}
+              {serverRecipes.length > 0 && (
+                <optgroup label="Server recipes">
+                  {serverRecipes.map((recipe) => (
+                    <option
+                      key={`server-${recipe.name}`}
+                      value={formatRecipeId('server', recipe.name)}
+                    >
+                      {recipe.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {recipes.length > 0 && (
+                <optgroup label="Local recipes">
+                  {recipes.map((recipe) => (
+                    <option
+                      key={`local-${recipe.name}`}
+                      value={formatRecipeId('local', recipe.name)}
+                    >
+                      {recipe.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <button
               type="button"
@@ -426,14 +616,27 @@ export default function SmartMapperPage({
               value={recipeName}
               onChange={(event) => setRecipeName(event.target.value)}
             />
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={handleSaveRecipe}
-              disabled={!profile || mappings.length === 0}
-            >
-              Save recipe
-            </button>
+            <div className="smart-mapper-recipe-actions">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={handleSaveRecipe}
+                disabled={!profile || mappings.length === 0}
+              >
+                Save locally
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleSaveRecipeToServer}
+                disabled={!profile || mappings.length === 0}
+              >
+                Save to server
+              </button>
+            </div>
+            {serverRecipeError && (
+              <p className="smart-mapper-hint">{serverRecipeError}</p>
+            )}
           </div>
         </div>
       </div>
@@ -456,12 +659,23 @@ export default function SmartMapperPage({
                   (field) => field.idShortPath === selected?.target.id_short_path
                 );
                 return (
-                  <div key={column.index} className="smart-mapper-column">
-                    <div>
+                  <div
+                    key={column.index}
+                    className={`smart-mapper-column ${
+                      draggingColumn === column.name_original ? 'dragging' : ''
+                    }`}
+                  >
+                    <div
+                      className="smart-mapper-column-header"
+                      draggable
+                      onDragStart={handleDragStart(column.name_original, column.index)}
+                      onDragEnd={handleDragEnd}
+                    >
                       <strong>{column.name_original}</strong>
                       <span className="smart-mapper-column-meta">
                         {column.inferred_type} · {column.examples.join(', ')}
                       </span>
+                      <span className="smart-mapper-column-hint">Drag to map</span>
                     </div>
                     <select
                       value={selected?.target.id_short_path ?? ''}
@@ -530,6 +744,38 @@ export default function SmartMapperPage({
 
           <div className="smart-mapper-panel">
             <div className="smart-mapper-panel-header">
+              <h3>Mapping Canvas</h3>
+              <span>{mappings.length} mappings</span>
+            </div>
+            <div className="smart-mapper-canvas">
+              {mappings.length === 0 ? (
+                <p className="smart-mapper-hint">
+                  Drag a column onto a target to create a mapping.
+                </p>
+              ) : (
+                <div className="smart-mapper-canvas-list">
+                  {mappings.map((mapping) => (
+                    <div
+                      key={mapping.source.column_name}
+                      className="smart-mapper-canvas-row"
+                    >
+                      <span>
+                        <strong>{mapping.source.column_name}</strong> →{' '}
+                        {mapping.target.id_short_path}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => removeMapping(mapping.source.column_name)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="smart-mapper-panel-header">
               <h3>Target Fields</h3>
               <span>{targetFields.length} fields</span>
             </div>
@@ -539,7 +785,9 @@ export default function SmartMapperPage({
                   key={field.idShortPath}
                   className={`smart-mapper-target ${
                     mappedTargets.has(field.idShortPath) ? 'mapped' : ''
-                  }`}
+                  } ${draggingColumn ? 'droppable' : ''}`}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handleDropOnTarget(field.idShortPath)}
                 >
                   <div>
                     <strong>{field.idShortPath}</strong>
@@ -591,6 +839,7 @@ export default function SmartMapperPage({
                   >
                     <option value="single">Single instance</option>
                     <option value="row-per-submodel">Row-per-submodel</option>
+                    <option value="grouped">Grouped rows (list items)</option>
                   </select>
                 </label>
                 {mode === 'single' && (
@@ -605,11 +854,33 @@ export default function SmartMapperPage({
                   </label>
                 )}
               </div>
+              {mode === 'grouped' && (
+                <div className="smart-mapper-groupby">
+                  <span>Group by columns</span>
+                  <div className="smart-mapper-groupby-list">
+                    {profile.columns.map((column) => (
+                      <label key={column.index}>
+                        <input
+                          type="checkbox"
+                          checked={groupBy.includes(column.name_original)}
+                          onChange={() => toggleGroupBy(column.name_original)}
+                        />
+                        {column.name_original}
+                      </label>
+                    ))}
+                  </div>
+                  {groupBy.length === 0 && (
+                    <p className="smart-mapper-hint">
+                      Select at least one column to group rows into list items.
+                    </p>
+                  )}
+                </div>
+              )}
               <button
                 type="button"
                 className="btn btn-primary"
                 onClick={handleRun}
-                disabled={running || mappings.length === 0}
+                disabled={running || !canRun}
               >
                 {running ? 'Running…' : 'Run mapping'}
               </button>

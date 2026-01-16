@@ -14,6 +14,18 @@ class MappingContext:
     row_index: int | None
 
 
+RESERVED_FIELDS = {
+    "value",
+    "min",
+    "max",
+    "contentType",
+    "valueId",
+    "first",
+    "second",
+    "globalAssetId",
+}
+
+
 def _normalize_value(value: Any, trim: bool) -> Any:
     if value is None:
         return None
@@ -120,20 +132,48 @@ def convert_value(value: Any, mapping: MappingItem) -> tuple[Any, str | None]:
         return value, "parse_error"
 
 
+def _path_has_list(path: list[str]) -> bool:
+    return any(segment.endswith("[]") for segment in path)
+
+
+def _target_key(path: list[str], mapping: MappingItem) -> str:
+    field = mapping.target.field or "value"
+    return f"{'.'.join(path)}:{field}"
+
+
 def set_form_value(
     form_elements: dict,
     path: list[str],
     mapping: MappingItem,
     value: Any,
+    list_context: dict[str, int] | None = None,
 ) -> None:
     current = form_elements
-    for segment in path[:-1]:
-        node = current.setdefault(segment, {})
-        if "elements" not in node:
-            node["elements"] = {}
-        current = node["elements"]
+    for idx, segment in enumerate(path[:-1]):
+        if segment.endswith("[]"):
+            list_id = segment[:-2]
+            list_node = current.setdefault(list_id, {})
+            items = list_node.setdefault("items", [])
+            list_key = ".".join(path[: idx + 1])
+            if list_context is None:
+                list_context = {}
+            item_index = list_context.get(list_key)
+            if item_index is None:
+                items.append({})
+                item_index = len(items) - 1
+                list_context[list_key] = item_index
+            current = items[item_index]
 
-    leaf = current.setdefault(path[-1], {})
+            next_segment = path[idx + 1]
+            if not next_segment.endswith("[]") and next_segment not in RESERVED_FIELDS:
+                current = current.setdefault("elements", {})
+            continue
+
+        node = current.setdefault(segment, {})
+        if idx < len(path) - 1:
+            current = node.setdefault("elements", {})
+
+    leaf = current.setdefault(path[-1], {}) if path[-1] not in RESERVED_FIELDS else current
     target = mapping.target
 
     if target.element_type == "MultiLanguageProperty":
@@ -164,14 +204,17 @@ def set_form_value(
     leaf[field or "value"] = value
 
 
-def apply_mapping(
+def apply_mapping_into(
+    form_data: dict,
     row: list[Any],
     mappings: list[MappingItem],
     header_map: dict[str, int],
     row_index: int | None,
-) -> tuple[dict, list[MapperDiagnostic]]:
-    form_data = {"elements": {}}
+    list_context: dict[str, int] | None = None,
+    preserve_existing: bool = False,
+) -> list[MapperDiagnostic]:
     diagnostics: list[MapperDiagnostic] = []
+    elements = form_data.setdefault("elements", {})
 
     for mapping in mappings:
         source = mapping.source
@@ -240,6 +283,38 @@ def apply_mapping(
                 )
             )
             continue
-        set_form_value(form_data["elements"], path, mapping, value)
+        if preserve_existing and not _path_has_list(path):
+            key = _target_key(path, mapping)
+            existing = form_data.setdefault("_mapper_values", {}).get(key)
+            if existing is not None and existing != value:
+                diagnostics.append(
+                    MapperDiagnostic(
+                        severity="warning",
+                        row_index=row_index,
+                        source_column=source.column_name,
+                        target_path=mapping.target.id_short_path,
+                        code="group_conflict",
+                        message="Conflicting values within group; keeping first value",
+                        sample=str(value) if value is not None else None,
+                    )
+                )
+                continue
+            form_data.setdefault("_mapper_values", {})[key] = value
 
+        set_form_value(elements, path, mapping, value, list_context=list_context)
+
+    return diagnostics
+
+
+def apply_mapping(
+    row: list[Any],
+    mappings: list[MappingItem],
+    header_map: dict[str, int],
+    row_index: int | None,
+) -> tuple[dict, list[MapperDiagnostic]]:
+    form_data = {"elements": {}}
+    diagnostics = apply_mapping_into(
+        form_data, row, mappings, header_map, row_index, list_context=None
+    )
+    form_data.pop("_mapper_values", None)
     return form_data, diagnostics
