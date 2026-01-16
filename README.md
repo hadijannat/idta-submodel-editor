@@ -68,7 +68,10 @@ apply the results directly into the editor form. Save recipes for monthly
 imports and re-run with minimal setup.
 
 - Profile CSV/XLSX headers + sample rows
-- Map columns → idShortPath targets
+- Drag-and-drop columns onto targets with a visual mapping canvas
+- Map columns → idShortPath targets (including list paths via `[]`)
+- Import modes: single, row-per-submodel, and grouped (build list items per group)
+- Save recipes locally or to the server (OIDC-aware scoping)
 - Run mapping and apply to the live form
 
 ## Architecture
@@ -215,6 +218,15 @@ npm run type-check
 - `GET /api/semantic/search` - Search semantic dictionaries
 - `GET /api/semantic/resolve` - Resolve an ID/IRI to metadata
 - `POST /api/semantic/apply-preview` - Suggest semanticId + type warnings
+
+### Mapper
+
+- `POST /api/mapper/profile` - Profile CSV/XLSX headers + sample rows
+- `POST /api/mapper/run` - Run mapping (form or export output)
+- `GET /api/mapper/recipes` - List saved recipes (scoped by OIDC user if enabled)
+- `POST /api/mapper/recipes` - Save recipe to server
+- `GET /api/mapper/recipes/{name}` - Fetch a recipe
+- `DELETE /api/mapper/recipes/{name}` - Delete a recipe
 
 ## Supported Element Types
 
