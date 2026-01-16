@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     eclass_index_path: Path = Path("./cache/semantic/eclass.json")
     iec_cdd_index_path: Path = Path("./cache/semantic/iec_cdd.json")
 
+    # AASX parsing
+    aasx_lenient_name_types: bool = True
+
     # ECLASS online provider
     eclass_api_base: str = ""
     eclass_search_url: str | None = None

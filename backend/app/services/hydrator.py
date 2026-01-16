@@ -212,7 +212,15 @@ class HydratorService:
 
         Modifies elements in-place while preserving metadata.
         """
-        for element in elements:
+        if elements is None:
+            return
+
+        if isinstance(elements, dict):
+            iterable = list(elements.values())
+        else:
+            iterable = list(elements)
+
+        for element in iterable:
             id_short = element.id_short
             if id_short not in form_values:
                 continue
