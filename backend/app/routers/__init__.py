@@ -2,6 +2,6 @@
 FastAPI routers for the IDTA Submodel Editor.
 """
 
-from app.routers import editor, export, templates, semantic
+from app.routers import editor, export, templates, semantic, mapper
 
-__all__ = ["templates", "editor", "export", "semantic"]
+__all__ = ["templates", "editor", "export", "semantic", "mapper"]

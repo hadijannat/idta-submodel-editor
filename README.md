@@ -12,6 +12,7 @@ A metamodel-driven application for editing any IDTA submodel template without co
 - **Validation**: Client-side and server-side validation based on cardinality and type constraints (server-side enforced on hydrate/export)
 - **Template Status + Versions**: Browse published/deprecated templates and select versions where available
 - **Semantic Dictionary Lookup**: Search ECLASS / IEC CDD, resolve semantics, and apply to fields with typing hints
+- **Smart Mapper (CSV/XLSX)**: Profile spreadsheets, map columns to elements, and reuse recipes for bulk imports
 
 ## Semantic Dictionary Lookup + Resolver
 
@@ -59,6 +60,16 @@ Out of scope (initially):
 
 The offline index supports JSON/CSV and SQLite FTS. See:
 `docs/semantic/indexing.md`
+
+## Smart Mapper (CSV/XLSX Bulk Import)
+
+Smart Mapper lets you upload a spreadsheet, map columns to template fields, and
+apply the results directly into the editor form. Save recipes for monthly
+imports and re-run with minimal setup.
+
+- Profile CSV/XLSX headers + sample rows
+- Map columns → idShortPath targets
+- Run mapping and apply to the live form
 
 ## Architecture
 

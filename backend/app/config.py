@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # Caching
     cache_dir: Path = Path("./cache/templates")
     cache_ttl_hours: int = 24
+    mapper_cache_dir: Path = Path("./cache/mapper")
 
     # Semantic dictionary lookup
     semantic_enabled: bool = True
@@ -110,6 +111,7 @@ class Settings(BaseSettings):
         "semantic_index_dir",
         "eclass_index_path",
         "iec_cdd_index_path",
+        "mapper_cache_dir",
         mode="before",
     )
     @classmethod

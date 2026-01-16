@@ -10,6 +10,7 @@ import { useSubmodelForm } from './hooks/useSubmodelForm';
 import TemplateSelector from './components/TemplateSelector';
 import AASRenderer from './components/AASRenderer';
 import ExportPanel from './components/ExportPanel';
+import SmartMapperPage from './components/SmartMapper/SmartMapperPage';
 import { getTemplateVersions } from './services/api';
 import { computeCompletion } from './utils/completion';
 import './App.css';
@@ -73,11 +74,16 @@ function App() {
     },
     {
       id: 3,
+      title: 'Smart Mapper',
+      description: 'Import and map CSV/XLSX data',
+    },
+    {
+      id: 4,
       title: 'Fill Required Fields',
       description: 'Complete mandatory elements',
     },
     {
-      id: 4,
+      id: 5,
       title: 'Review & Export',
       description: 'Validate and export',
     },
@@ -326,7 +332,7 @@ function App() {
               onClick={() => handleStepChange(3)}
               disabled={!schema}
             >
-              Continue to fields
+              Continue to Smart Mapper
             </button>
           </div>
         </div>
@@ -334,6 +340,19 @@ function App() {
     }
 
     if (wizardStep === 3) {
+      return (
+        <SmartMapperPage
+          schema={schema}
+          templateName={selectedTemplate.name}
+          templateStatus={templateStatus}
+          templateVersion={selectedVersion}
+          form={form}
+          onContinue={() => handleStepChange(4)}
+        />
+      );
+    }
+
+    if (wizardStep === 4) {
       const metadataIdShort =
         watchedValues?.metadata &&
         typeof watchedValues.metadata === 'object' &&
@@ -385,14 +404,14 @@ function App() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => handleStepChange(2)}
+              onClick={() => handleStepChange(3)}
             >
-              Back to configuration
+              Back to Smart Mapper
             </button>
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => handleStepChange(4)}
+              onClick={() => handleStepChange(5)}
             >
               Review & export
             </button>
@@ -401,10 +420,11 @@ function App() {
       );
     }
 
-    return (
-      <div className="wizard-panel">
-        <div className="wizard-panel-header">
-          <h2>Review & Export</h2>
+    if (wizardStep === 5) {
+      return (
+        <div className="wizard-panel">
+          <div className="wizard-panel-header">
+            <h2>Review & Export</h2>
           <p>Validate required fields and export when ready.</p>
         </div>
 
@@ -471,17 +491,20 @@ function App() {
           </div>
         </div>
 
-        <div className="wizard-actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => handleStepChange(3)}
-          >
-            Back to fields
-          </button>
+          <div className="wizard-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleStepChange(4)}
+            >
+              Back to fields
+            </button>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -519,7 +542,7 @@ function App() {
                     <span className="wizard-step-text">
                       <span className="wizard-step-title">{step.title}</span>
                       <span className="wizard-step-desc">{step.description}</span>
-                      {step.id === 3 && schema && (
+                      {step.id === 4 && schema && (
                         <span className="wizard-step-meta">
                           Required remaining: {requiredRemaining}
                         </span>

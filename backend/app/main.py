@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
-from app.routers import editor, export, templates, semantic
+from app.routers import editor, export, templates, semantic, mapper
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI):
     # Create cache directory
     settings.cache_dir.mkdir(parents=True, exist_ok=True)
     settings.semantic_index_dir.mkdir(parents=True, exist_ok=True)
+    settings.mapper_cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Create temp directory for file processing
     Path("./tmp").mkdir(parents=True, exist_ok=True)
@@ -92,6 +93,7 @@ def create_application() -> FastAPI:
     app.include_router(editor.router)
     app.include_router(export.router)
     app.include_router(semantic.router)
+    app.include_router(mapper.router)
 
     # Health check endpoints
     @app.get("/health", tags=["health"])

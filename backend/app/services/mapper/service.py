@@ -1,0 +1,390 @@
+"""Smart Mapper service for profiling and mapping datasets."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import uuid
+from pathlib import Path
+from typing import Iterable, Literal
+
+from fastapi import HTTPException, UploadFile
+
+from app.config import get_settings
+from app.schemas.form_data import SubmodelFormData
+from app.schemas.mapper import (
+    DatasetColumnProfile,
+    DatasetFileInfo,
+    DatasetProfile,
+    DatasetSheetInfo,
+    MapperDiagnostic,
+    MapperMode,
+    MapperRecipe,
+    MapperRunRequest,
+    MapperRunResponse,
+)
+from app.services.fetcher import TemplateFetcherService
+from app.services.hydrator import HydratorService, PDFExportService
+from app.services.mapper.apply import apply_mapping
+from app.services.mapper.parsers import (
+    DatasetReader,
+    build_examples,
+    normalize_header,
+    summarize_types,
+)
+from app.services.parser import ParserService
+from app.services.validation import validate_form_data
+
+logger = logging.getLogger(__name__)
+
+
+class MapperService:
+    def __init__(
+        self,
+        fetcher: TemplateFetcherService,
+        parser: ParserService,
+        hydrator: HydratorService,
+        pdf_service: PDFExportService | None = None,
+    ) -> None:
+        self.fetcher = fetcher
+        self.parser = parser
+        self.hydrator = hydrator
+        self.pdf_service = pdf_service
+        self.settings = get_settings()
+        self.base_dir = self.settings.mapper_cache_dir
+        self.upload_dir = self.base_dir / "uploads"
+        self.profile_dir = self.base_dir / "profiles"
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+
+    async def profile(
+        self,
+        file: UploadFile,
+        sheet: str | None,
+        header_row: int | None,
+        sample_rows: int,
+    ) -> DatasetProfile:
+        file_type = self._detect_file_type(file.filename, file.content_type)
+        if file_type not in {"csv", "xlsx"}:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+
+        profile_id = uuid.uuid4().hex
+        suffix = ".xlsx" if file_type == "xlsx" else ".csv"
+        file_path = self.upload_dir / f"{profile_id}{suffix}"
+        contents = await file.read()
+        max_bytes = self.settings.max_upload_size_mb * 1024 * 1024
+        if len(contents) > max_bytes:
+            raise HTTPException(status_code=413, detail="File too large")
+        file_path.write_bytes(contents)
+
+        reader = DatasetReader(file_path, file_type, sheet=sheet, header_row=header_row or 1)
+        sheets = [
+            DatasetSheetInfo(name=name, rows=rows, cols=cols)
+            for name, rows, cols in reader.list_sheets()
+        ]
+
+        rows = reader.read_rows(max_rows=(header_row or 1) + sample_rows)
+        if not rows:
+            raise HTTPException(status_code=400, detail="No rows found in file")
+
+        header_index = (header_row or 1) - 1
+        if header_index >= len(rows):
+            raise HTTPException(status_code=400, detail="Header row out of range")
+
+        header = rows[header_index]
+        header_values = [str(cell).strip() if cell is not None else "" for cell in header]
+        normalized_headers = [
+            normalize_header(text) if text else f"column_{idx+1}"
+            for idx, text in enumerate(header_values)
+        ]
+
+        data_rows = rows[header_index + 1 :]
+        if data_rows:
+            from itertools import zip_longest
+
+            column_values = list(zip_longest(*data_rows, fillvalue=None))
+        else:
+            column_values = []
+
+        columns: list[DatasetColumnProfile] = []
+        for idx, name in enumerate(header_values):
+            values = list(column_values[idx]) if idx < len(column_values) else []
+            inferred_type = summarize_types(values)
+            examples = build_examples(values)
+            null_count = sum(1 for v in values if v is None or str(v).strip() == "")
+            null_rate = (null_count / len(values)) if values else 0.0
+            distinct_count = len({str(v) for v in values if v is not None})
+            columns.append(
+                DatasetColumnProfile(
+                    name_original=name or f"Column {idx+1}",
+                    name_normalized=normalized_headers[idx],
+                    index=idx,
+                    inferred_type=inferred_type,
+                    null_rate=null_rate,
+                    distinct_count=distinct_count,
+                    examples=examples,
+                )
+            )
+
+        header_fingerprint = hashlib.sha256(
+            "|".join(normalized_headers).encode("utf-8")
+        ).hexdigest()
+
+        profile = DatasetProfile(
+            profile_id=profile_id,
+            file=DatasetFileInfo(
+                name=file.filename or file_path.name,
+                size=len(contents),
+                type=file.content_type,
+            ),
+            sheets=sheets,
+            columns=columns,
+            sample_rows=[[str(v) if v is not None else None for v in row] for row in data_rows[:sample_rows]],
+            row_count=None,
+            header_row=header_row or 1,
+            warnings=[],
+        )
+
+        self._store_profile(
+            profile,
+            file_path,
+            file_type=file_type,
+            sheet=sheet,
+            header_fingerprint=header_fingerprint,
+        )
+
+        return profile
+
+    async def run(self, request: MapperRunRequest) -> MapperRunResponse:
+        profile_meta = self._load_profile(request.profile_id)
+        file_path = Path(profile_meta["file_path"])
+        file_type = profile_meta["file_type"]
+        sheet = profile_meta.get("sheet")
+        header_row = profile_meta.get("header_row", 1)
+
+        reader = DatasetReader(file_path, file_type, sheet=sheet, header_row=header_row)
+        rows = reader.read_rows()
+        if not rows:
+            raise HTTPException(status_code=400, detail="No rows found")
+
+        header_index = header_row - 1
+        header = rows[header_index]
+        header_map = {}
+        for idx, cell in enumerate(header):
+            if cell is None:
+                continue
+            raw = str(cell).strip()
+            if not raw:
+                continue
+            header_map[raw] = idx
+            header_map[normalize_header(raw)] = idx
+
+        data_rows = rows[header_index + 1 :]
+        mode = request.recipe.mode
+
+        if mode.type == "single":
+            row_index = request.row_index or 1
+            if row_index < 1 or row_index > len(data_rows):
+                raise HTTPException(status_code=400, detail="Row index out of range")
+            row = data_rows[row_index - 1]
+            form_data, diagnostics = apply_mapping(
+                row,
+                request.recipe.mappings,
+                header_map,
+                row_index,
+            )
+            return MapperRunResponse(
+                mode=mode,
+                diagnostics=diagnostics,
+                form_data=form_data,
+                row_count=len(data_rows),
+            )
+
+        if mode.type == "row-per-submodel":
+            batch_data: list[dict] = []
+            diagnostics: list[MapperDiagnostic] = []
+            for idx, row in enumerate(data_rows, start=1):
+                form_data, row_diagnostics = apply_mapping(
+                    row,
+                    request.recipe.mappings,
+                    header_map,
+                    idx,
+                )
+                batch_data.append(form_data)
+                diagnostics.extend(row_diagnostics)
+            return MapperRunResponse(
+                mode=mode,
+                diagnostics=diagnostics,
+                form_data_batch=batch_data,
+                row_count=len(data_rows),
+            )
+
+        raise HTTPException(status_code=400, detail="Grouped mode not supported yet")
+
+    async def export(self, request: MapperRunRequest):
+        response = await self.run(request)
+        template_bytes = await self._fetch_template_bytes(
+            request.template_name, request.status, request.version
+        )
+        schema = self.parser.parse_aasx_to_ui_schema(template_bytes)
+
+        mode = request.recipe.mode
+
+        if mode.type == "single":
+            if response.form_data is None:
+                raise HTTPException(status_code=400, detail="No form data produced")
+            errors, warnings = validate_form_data(schema, response.form_data)
+            if errors:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "Validation failed",
+                        "errors": [e.model_dump() for e in errors],
+                        "warnings": [w.model_dump() for w in warnings],
+                    },
+                )
+            return self._export_single(
+                request.template_name,
+                template_bytes,
+                response.form_data,
+                request.output_format,
+            )
+
+        if mode.type == "row-per-submodel":
+            return self._export_batch(
+                request.template_name,
+                template_bytes,
+                schema,
+                response,
+                request.output_format,
+            )
+
+        raise HTTPException(status_code=400, detail="Grouped mode not supported yet")
+
+    def _export_single(
+        self,
+        template_name: str,
+        template_bytes: bytes,
+        form_data: dict,
+        output_format: Literal["aasx", "json", "pdf"],
+    ) -> tuple[bytes, str, str]:
+        if output_format == "aasx":
+            content = self.hydrator.hydrate_submodel(template_bytes, form_data)
+            return (
+                content,
+                "application/asset-administration-shell-package+xml",
+                f"{template_name}.aasx",
+            )
+        if output_format == "json":
+            content = self.hydrator.hydrate_to_json(template_bytes, form_data).encode(
+                "utf-8"
+            )
+            return content, "application/json", f"{template_name}.json"
+        if output_format == "pdf":
+            if self.pdf_service is None:
+                raise HTTPException(status_code=501, detail="PDF export not enabled")
+            content = self.pdf_service.generate_pdf_from_form(template_bytes, form_data)
+            return content, "application/pdf", f"{template_name}.pdf"
+        raise HTTPException(status_code=400, detail="Unsupported format")
+
+    def _export_batch(
+        self,
+        template_name: str,
+        template_bytes: bytes,
+        schema: dict,
+        response: MapperRunResponse,
+        output_format: Literal["aasx", "json", "pdf"],
+    ) -> tuple[bytes, str, str]:
+        import io
+        import zipfile
+
+        outputs = response.form_data_batch or []
+        zip_buffer = io.BytesIO()
+        errors_report: list[dict] = []
+
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for idx, form_data in enumerate(outputs, start=1):
+                errors, warnings = validate_form_data(schema, form_data)
+                if errors:
+                    errors_report.append(
+                        {
+                            "row": idx,
+                            "errors": [e.model_dump() for e in errors],
+                            "warnings": [w.model_dump() for w in warnings],
+                        }
+                    )
+                    continue
+                content, _, filename = self._export_single(
+                    template_name,
+                    template_bytes,
+                    form_data,
+                    output_format,
+                )
+                zipf.writestr(f"{idx}-{filename}", content)
+
+            if errors_report or response.diagnostics:
+                zipf.writestr(
+                    "errors.json",
+                    json.dumps(
+                        {
+                            "validation": errors_report,
+                            "mapping": [d.model_dump() for d in response.diagnostics],
+                        },
+                        indent=2,
+                    ),
+                )
+
+        return (
+            zip_buffer.getvalue(),
+            "application/zip",
+            f"{template_name}-batch.zip",
+        )
+
+    async def _fetch_template_bytes(
+        self, template_name: str, status: str, version: str | None
+    ) -> bytes:
+        template_path = f"{status}/{template_name}"
+        if version:
+            template_path = f"{template_path}/{version}"
+        return await self.fetcher.fetch_template_aasx(template_path)
+
+    def _store_profile(
+        self,
+        profile: DatasetProfile,
+        file_path: Path,
+        file_type: str,
+        sheet: str | None,
+        header_fingerprint: str | None,
+    ) -> None:
+        data = profile.model_dump()
+        data.update(
+            {
+                "file_path": str(file_path),
+                "file_type": file_type,
+                "sheet": sheet,
+                "header_row": profile.header_row,
+                "header_fingerprint": header_fingerprint,
+            }
+        )
+        (self.profile_dir / f"{profile.profile_id}.json").write_text(
+            json.dumps(data, indent=2)
+        )
+
+    def _load_profile(self, profile_id: str) -> dict:
+        profile_path = self.profile_dir / f"{profile_id}.json"
+        if not profile_path.exists():
+            raise HTTPException(status_code=404, detail="Profile not found")
+        return json.loads(profile_path.read_text())
+
+    @staticmethod
+    def _detect_file_type(filename: str | None, content_type: str | None) -> str:
+        if filename:
+            lower = filename.lower()
+            if lower.endswith(".xlsx"):
+                return "xlsx"
+            if lower.endswith(".csv"):
+                return "csv"
+        if content_type and "excel" in content_type:
+            return "xlsx"
+        return "csv"

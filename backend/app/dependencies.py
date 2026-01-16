@@ -15,6 +15,7 @@ from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService, PDFExportService
 from app.services.parser import ParserService
 from app.services.semantic import SemanticService
+from app.services.mapper import MapperService
 
 # Security scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
@@ -48,6 +49,16 @@ def get_semantic_service() -> SemanticService:
     """Get cached semantic service instance."""
     return SemanticService()
 
+
+@lru_cache
+def get_mapper_service() -> MapperService:
+    """Get cached mapper service instance."""
+    return MapperService(
+        fetcher=get_fetcher(),
+        parser=get_parser(),
+        hydrator=get_hydrator(),
+        pdf_service=get_pdf_service(),
+    )
 
 def get_pdf_service() -> PDFExportService | None:
     """

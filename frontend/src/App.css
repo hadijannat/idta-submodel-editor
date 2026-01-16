@@ -1456,3 +1456,198 @@ body {
     border-top: 1px solid var(--color-border);
   }
 }
+
+/* ============================================================================
+   Smart Mapper
+   ============================================================================ */
+
+.smart-mapper {
+  gap: var(--spacing-lg);
+}
+
+.smart-mapper-upload {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.smart-mapper-upload-card,
+.smart-mapper-recipe-card {
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.smart-mapper-upload-card input[type='file'] {
+  border: 1px dashed var(--color-border);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.smart-mapper-upload-label {
+  font-weight: 600;
+}
+
+.smart-mapper-meta {
+  color: var(--color-text-light);
+  font-size: 0.85rem;
+}
+
+.smart-mapper-error {
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+.smart-mapper-layout {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 0.9fr;
+  gap: var(--spacing-lg);
+}
+
+.smart-mapper-panel {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-height: 480px;
+}
+
+.smart-mapper-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.smart-mapper-column-list,
+.smart-mapper-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 520px;
+  overflow: auto;
+}
+
+.smart-mapper-column {
+  display: grid;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.smart-mapper-column select {
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+.smart-mapper-column-meta {
+  display: block;
+  color: var(--color-text-light);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.smart-mapper-target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.smart-mapper-target.mapped {
+  border-color: rgba(46, 125, 50, 0.35);
+  background: rgba(46, 125, 50, 0.08);
+}
+
+.smart-mapper-target .badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  background: rgba(33, 150, 243, 0.15);
+  color: #1a73e8;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.smart-mapper-validation-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.smart-mapper-warning {
+  background: rgba(255, 152, 0, 0.12);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: #d97706;
+}
+
+.smart-mapper-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+}
+
+.smart-mapper-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.smart-mapper-run-controls {
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.smart-mapper-run-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: 0.85rem;
+}
+
+.smart-mapper-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: 0.8rem;
+}
+
+.smart-mapper-diagnostics .diag {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.smart-mapper-diagnostics .diag.error {
+  border-color: rgba(229, 62, 62, 0.4);
+  background: rgba(229, 62, 62, 0.1);
+  color: var(--color-danger);
+}
+
+.smart-mapper-diagnostics .diag.warning {
+  border-color: rgba(221, 107, 32, 0.4);
+  background: rgba(221, 107, 32, 0.1);
+  color: var(--color-warning);
+}
+
+@media (max-width: 1200px) {
+  .smart-mapper-layout {
+    grid-template-columns: 1fr;
+  }
+}
