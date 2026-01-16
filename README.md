@@ -67,12 +67,17 @@ Smart Mapper lets you upload a spreadsheet, map columns to template fields, and
 apply the results directly into the editor form. Save recipes for monthly
 imports and re-run with minimal setup.
 
+Live demo (Smart Mapper in action):
+
+![Smart Mapper Live Demo](docs/mapper/smart-mapper-live-demo.gif)
+
 - Profile CSV/XLSX headers + sample rows
 - Drag-and-drop columns onto targets with a visual mapping canvas
 - Map columns → idShortPath targets (including list paths via `[]`)
 - Import modes: single, row-per-submodel, and grouped (build list items per group)
 - Save recipes locally or to the server (OIDC-aware scoping)
 - Run mapping and apply to the live form
+- Validation panel flags unmapped required fields and parsing warnings
 
 ## Architecture
 

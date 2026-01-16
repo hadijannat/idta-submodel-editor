@@ -26,9 +26,9 @@ router = APIRouter(prefix="/api/mapper", tags=["mapper"])
 @router.post("/profile", response_model=DatasetProfile)
 async def profile_dataset(
     file: Annotated[UploadFile, File(...)],
-    sheet: Annotated[str | None, Form(None)] = None,
-    header_row: Annotated[int | None, Form(None)] = None,
-    sample_rows: Annotated[int, Form(200)] = 200,
+    sheet: Annotated[str | None, Form()] = None,
+    header_row: Annotated[int | None, Form()] = None,
+    sample_rows: Annotated[int, Form()] = 200,
     mapper: Annotated[MapperService, Depends(get_mapper_service)] = None,
 ) -> DatasetProfile:
     try:
