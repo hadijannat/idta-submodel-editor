@@ -71,12 +71,15 @@ Live demo (Smart Mapper in action):
 
 ![Smart Mapper Live Demo](docs/mapper/smart-mapper-live-demo.gif)
 
-- Profile CSV/XLSX headers + sample rows
+- Profile CSV/XLSX headers + sample rows with **column statistics** (null rate, distinct count)
 - Drag-and-drop columns onto targets with a visual mapping canvas
+- **Semantic-aware auto-mapping** suggests matches using semantic synonyms and field names
 - Map columns → idShortPath targets (including list paths via `[]`)
+- **Transformation options** per mapping: trim whitespace, decimal/thousands separators, date format
 - Import modes: single, row-per-submodel, and grouped (build list items per group)
 - Save recipes locally or to the server (OIDC-aware scoping)
-- Run mapping and apply to the live form
+- **Template version tracking** warns when the template has been updated since the recipe was saved
+- **Dry-run preview** shows mapped values before applying to the form
 - Validation panel flags unmapped required fields and parsing warnings
 
 ## Architecture
@@ -226,7 +229,8 @@ npm run type-check
 
 ### Mapper
 
-- `POST /api/mapper/profile` - Profile CSV/XLSX headers + sample rows
+- `POST /api/mapper/profile` - Profile CSV/XLSX headers + sample rows (includes column statistics)
+- `POST /api/mapper/auto-suggest` - Auto-suggest column mappings using semantic matching
 - `POST /api/mapper/run` - Run mapping (form or export output)
 - `GET /api/mapper/recipes` - List saved recipes (scoped by OIDC user if enabled)
 - `POST /api/mapper/recipes` - Save recipe to server
