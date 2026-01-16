@@ -1537,6 +1537,7 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: var(--spacing-sm);
+  flex-wrap: wrap;
 }
 
 .smart-mapper-column-list,
@@ -1577,6 +1578,7 @@ body {
   padding: var(--spacing-xs);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
+  width: 100%;
 }
 
 .smart-mapper-column-meta {
@@ -1629,6 +1631,10 @@ body {
   justify-content: space-between;
   gap: var(--spacing-sm);
   font-size: 0.85rem;
+}
+
+.smart-mapper-canvas-row span {
+  word-break: break-word;
 }
 
 .smart-mapper-canvas-row .btn {
@@ -1685,6 +1691,11 @@ body {
   font-size: 0.85rem;
 }
 
+.smart-mapper-run-controls select,
+.smart-mapper-run-controls input {
+  width: 100%;
+}
+
 .smart-mapper-groupby {
   display: flex;
   flex-direction: column;
@@ -1736,8 +1747,42 @@ body {
   color: var(--color-warning);
 }
 
+@media (max-width: 1400px) {
+  .smart-mapper-layout {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (max-width: 1200px) {
   .smart-mapper-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-mapper-panel {
+    min-height: auto;
+  }
+
+  .smart-mapper-column-list,
+  .smart-mapper-target-list {
+    max-height: 360px;
+  }
+
+  .smart-mapper-canvas-list {
+    max-height: 200px;
+  }
+}
+
+@media (max-width: 900px) {
+  .smart-mapper-upload {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-mapper-recipe-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .smart-mapper-groupby-list {
     grid-template-columns: 1fr;
   }
 }
