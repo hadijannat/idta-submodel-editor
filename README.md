@@ -19,7 +19,9 @@ Attach standardized semantic identifiers (ECLASS / IEC CDD) to SubmodelElements.
 This is especially important for “generic frame” templates (e.g., Technical Data)
 where users must define domain-specific properties and need correct semantics.
 
-![Semantic Lookup Modal](docs/semantic/semantic-lookup.png)
+Live demo (Semantic Lookup in action):
+
+![Semantic Lookup Live Demo](docs/semantic/semantic-lookup-live-demo.gif)
 
 ### Goal
 
