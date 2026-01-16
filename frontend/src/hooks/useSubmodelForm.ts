@@ -69,7 +69,7 @@ interface UseSubmodelFormReturn {
  */
 function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
   const required = isRequired(element.cardinality);
-  const withSemanticFields = (schema: z.ZodObject<any>) =>
+  const withSemanticFields = (schema: z.AnyZodObject) =>
     schema.extend({
       semanticId: z.string().optional().nullable(),
       valueId: z.string().optional().nullable(),
