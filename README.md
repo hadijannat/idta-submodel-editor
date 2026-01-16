@@ -11,6 +11,52 @@ A metamodel-driven application for editing any IDTA submodel template without co
 - **Template Discovery**: Automatically fetches templates from the official IDTA repository
 - **Validation**: Client-side and server-side validation based on cardinality and type constraints (server-side enforced on hydrate/export)
 - **Template Status + Versions**: Browse published/deprecated templates and select versions where available
+- **Semantic Dictionary Lookup**: Search ECLASS / IEC CDD, resolve semantics, and apply to fields with typing hints
+
+## Semantic Dictionary Lookup + Resolver
+
+Attach standardized semantic identifiers (ECLASS / IEC CDD) to SubmodelElements.
+This is especially important for “generic frame” templates (e.g., Technical Data)
+where users must define domain-specific properties and need correct semantics.
+
+![Semantic Lookup Modal](docs/semantic/semantic-lookup.png)
+
+### Goal
+
+Enable users to search, select, and apply standardized semantic identifiers while
+preserving metadata and keeping the Fetcher → Parser → Hydrator → Validation
+pipeline intact.
+
+### Why this is demanded (and why it’s tricky)
+
+1. AAS semantics are required for interoperability (matching strategies and ID examples).
+2. IDTA submodel context stresses dictionaries like ECLASS and IEC CDD.
+3. ECLASS access is certificate-authenticated and costed per IRDI → caching + throttling are required.
+4. Dictionary data types can suggest correct AAS element type/valueType (e.g., STRING_TRANSLATABLE).
+
+### Scope (MVP)
+
+- **Semantic Search UI**: search box + provider/kind/language filters, results list, details drawer, apply-to-field
+- **Backend semantic service**: `/api/semantic/providers`, `/api/semantic/search`, `/api/semantic/resolve`, `/api/semantic/apply-preview`
+- **ECLASS provider**: offline index + optional online webservice (mTLS, rate-limited)
+- **IEC CDD provider**: offline index first, pluggable for future APIs
+- **Resolver**: given semanticId, show label/definition from available providers
+
+Out of scope (initially):
+- Global ConceptDescription registry sync
+- ECLASS↔IEC CDD reconciliation
+- Bundling licensed datasets in the repo
+
+### Apply logic
+
+- Prefer IRI when available, otherwise IRDI string.
+- Apply preview suggests element type/valueType based on dictionary datatype.
+- Optional ConceptDescription embedding at export time (configurable).
+
+### Offline index
+
+The offline index supports JSON/CSV and SQLite FTS. See:
+`docs/semantic/indexing.md`
 
 ## Architecture
 
@@ -114,6 +160,22 @@ npm run type-check
 | `OIDC_ISSUER_URL` | OIDC issuer URL | - |
 | `OIDC_AUDIENCE` | OIDC audience | - |
 | `REDIS_URL` | Redis URL for distributed caching | Optional |
+| `SEMANTIC_ENABLED` | Enable semantic lookup | true |
+| `SEMANTIC_PREFER_IRI` | Prefer IRI when available | true |
+| `SEMANTIC_ECLASS_OFFLINE_ENABLED` | Enable ECLASS offline index | true |
+| `SEMANTIC_IEC_CDD_OFFLINE_ENABLED` | Enable IEC CDD offline index | true |
+| `SEMANTIC_ECLASS_ONLINE_ENABLED` | Enable ECLASS online webservice | false |
+| `ECLASS_API_BASE` | ECLASS webservice base URL | - |
+| `ECLASS_SEARCH_URL` | Search endpoint (relative or absolute) | - |
+| `ECLASS_RESOLVE_URL` | Resolve endpoint (relative or absolute) | - |
+| `ECLASS_CERT_PATH` | Client certificate path | - |
+| `ECLASS_KEY_PATH` | Client key path | - |
+| `SEMANTIC_CACHE_TTL_SECONDS` | Semantic cache TTL (sec) | 86400 |
+| `SEMANTIC_SEARCH_RATE_LIMIT_PER_MIN` | Search rate limit | 60 |
+| `SEMANTIC_RESOLVE_RATE_LIMIT_PER_MIN` | Resolve rate limit | 120 |
+| `ECLASS_INDEX_PATH` | Offline index path (JSON/CSV/SQLite) | ./cache/semantic/eclass.json |
+| `IEC_CDD_INDEX_PATH` | Offline index path (JSON/CSV/SQLite) | ./cache/semantic/iec_cdd.json |
+| `SEMANTIC_EMBED_CONCEPT_DESCRIPTIONS` | Embed ConceptDescriptions on export | false |
 
 #### Frontend
 
@@ -143,6 +205,13 @@ npm run type-check
 - `POST /api/export/{name}?format=aasx|json|pdf` - Export filled submodel (validates server-side)
 - `GET /api/export/{name}/preview` - Get template preview (`status=published|deprecated`, `version=...`)
 - `POST /api/export/batch` - Batch export as ZIP
+
+### Semantic
+
+- `GET /api/semantic/providers` - List available semantic providers
+- `GET /api/semantic/search` - Search semantic dictionaries
+- `GET /api/semantic/resolve` - Resolve an ID/IRI to metadata
+- `POST /api/semantic/apply-preview` - Suggest semanticId + type warnings
 
 ## Supported Element Types
 
