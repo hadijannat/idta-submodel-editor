@@ -1,0 +1,50 @@
+[
+  {
+    "canonicalId": "0173-1#02-AAO677#002",
+    "canonicalIri": "https://api.eclass-cdp.com/0173-1#02-AAO677#002",
+    "preferredName": {
+      "en": "Torque",
+      "de": "Drehmoment"
+    },
+    "definition": {
+      "en": "Measure of rotational force.",
+      "de": "Mass fuer die Drehkraft."
+    },
+    "kind": "property",
+    "datatypeHint": "REAL_MEASURE",
+    "unitHint": "N.m",
+    "synonyms": ["rotational torque"]
+  },
+  {
+    "canonicalId": "0173-1#02-AAB113#004",
+    "canonicalIri": "https://api.eclass-cdp.com/0173-1#02-AAB113#004",
+    "preferredName": {
+      "en": "Manufacturer name",
+      "de": "Herstellername"
+    },
+    "definition": {
+      "en": "Name of the manufacturer.",
+      "de": "Name des Herstellers."
+    },
+    "kind": "property",
+    "datatypeHint": "STRING_TRANSLATABLE",
+    "unitHint": null,
+    "synonyms": ["maker", "producer"]
+  },
+  {
+    "canonicalId": "0173-1#02-BAA122#005",
+    "canonicalIri": "https://api.eclass-cdp.com/0173-1#02-BAA122#005",
+    "preferredName": {
+      "en": "Rated voltage",
+      "de": "Nennspannung"
+    },
+    "definition": {
+      "en": "Nominal operating voltage.",
+      "de": "Nennbetriebsspannung."
+    },
+    "kind": "property",
+    "datatypeHint": "REAL_MEASURE",
+    "unitHint": "V",
+    "synonyms": ["nominal voltage"]
+  }
+]

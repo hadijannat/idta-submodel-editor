@@ -20,12 +20,15 @@ class ElementFormData(BaseModel):
 
     # Common value field for simple types
     value: Any = None
+    semanticId: str | None = None
+    valueId: str | None = None
 
     # For SubmodelElementCollection
     elements: dict[str, "ElementFormData"] | None = None
 
     # For SubmodelElementList
     items: list["ElementFormData"] | None = None
+    semanticIdListElement: str | None = None
 
     # For Range
     min: Any = None

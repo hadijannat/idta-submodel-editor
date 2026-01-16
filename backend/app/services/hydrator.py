@@ -15,6 +15,7 @@ from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
 
 from app.utils.aasx_reader import SafeAASXReader
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,10 @@ class HydratorService:
         # Hydrate the submodel elements
         elements_data = form_data.get("elements", {})
         self._hydrate_elements(submodel.submodel_element, elements_data)
+
+        settings = get_settings()
+        if settings.semantic_embed_concept_descriptions:
+            self._embed_concept_descriptions(object_store, submodel)
 
         # Write back to AASX
         output = BytesIO()
@@ -117,6 +122,10 @@ class HydratorService:
 
         elements_data = form_data.get("elements", {})
         self._hydrate_elements(submodel.submodel_element, elements_data)
+
+        settings = get_settings()
+        if settings.semantic_embed_concept_descriptions:
+            self._embed_concept_descriptions(object_store, submodel)
 
         # Serialize to JSON
         output = BytesIO()
@@ -221,6 +230,8 @@ class HydratorService:
 
         Handles each element type appropriately.
         """
+        self._apply_semantic_fields(element, value_data)
+
         if isinstance(element, model.Property):
             self._hydrate_property(element, value_data)
 
@@ -253,6 +264,52 @@ class HydratorService:
 
         elif isinstance(element, model.AnnotatedRelationshipElement):
             self._hydrate_annotated_relationship(element, value_data)
+
+    def _apply_semantic_fields(
+        self,
+        element: model.SubmodelElement,
+        value_data: dict[str, Any],
+    ) -> None:
+        """Apply semanticId/valueId updates when present in form data."""
+        if not isinstance(value_data, dict):
+            return
+
+        def normalize(value: Any) -> str | None:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                trimmed = value.strip()
+                return trimmed if trimmed else None
+            return str(value)
+
+        if "semanticId" in value_data:
+            semantic_id = normalize(value_data.get("semanticId"))
+            if semantic_id is None:
+                element.semantic_id = None
+            else:
+                element.semantic_id = self._build_reference(
+                    semantic_id, getattr(element, "semantic_id", None)
+                )
+
+        if "valueId" in value_data and hasattr(element, "value_id"):
+            value_id = normalize(value_data.get("valueId"))
+            if value_id is None:
+                element.value_id = None
+            else:
+                element.value_id = self._build_reference(
+                    value_id, getattr(element, "value_id", None)
+                )
+
+        if "semanticIdListElement" in value_data and hasattr(
+            element, "semantic_id_list_element"
+        ):
+            list_semantic_id = normalize(value_data.get("semanticIdListElement"))
+            if list_semantic_id is None:
+                element.semantic_id_list_element = None
+            else:
+                element.semantic_id_list_element = self._build_reference(
+                    list_semantic_id, getattr(element, "semantic_id_list_element", None)
+                )
 
     def _hydrate_property(
         self,
@@ -586,6 +643,62 @@ class HydratorService:
         """Ensure list items comply with AASd-120 (no idShort)."""
         if hasattr(item, "id_short") and item.id_short is not None:
             item.id_short = None
+
+    def _embed_concept_descriptions(
+        self,
+        object_store: model.DictObjectStore,
+        submodel: model.Submodel,
+    ) -> None:
+        """Ensure ConceptDescriptions exist for external semantic references."""
+        from basyx.aas import model
+
+        existing_ids: set[str] = {
+            getattr(obj, "id", None)
+            for obj in object_store
+            if isinstance(obj, model.ConceptDescription) and getattr(obj, "id", None)
+        }
+
+        def ensure_for_reference(semantic_ref, id_short: str | None) -> None:
+            if semantic_ref is None:
+                return
+            if isinstance(semantic_ref, model.ModelReference):
+                try:
+                    resolved = semantic_ref.resolve(object_store)
+                    if isinstance(resolved, model.ConceptDescription):
+                        return
+                except (KeyError, model.UnexpectedTypeError):
+                    return
+            if isinstance(semantic_ref, model.ExternalReference):
+                keys = semantic_ref.key or ()
+                if not keys:
+                    return
+                semantic_id = keys[0].value
+                if semantic_id in existing_ids:
+                    return
+                cd = model.ConceptDescription(id=semantic_id)
+                if id_short:
+                    cd.id_short = id_short
+                    cd.display_name = model.MultiLanguageTextType({"en": id_short})
+                object_store.add(cd)
+                existing_ids.add(semantic_id)
+
+        ensure_for_reference(getattr(submodel, "semantic_id", None), submodel.id_short)
+
+        for element in self._iterate_elements(submodel.submodel_element):
+            ensure_for_reference(getattr(element, "semantic_id", None), element.id_short)
+
+    def _iterate_elements(self, elements):
+        """Yield all nested SubmodelElements."""
+        from basyx.aas import model
+
+        for element in elements:
+            yield element
+            if isinstance(element, model.SubmodelElementCollection):
+                yield from self._iterate_elements(element.value)
+            elif isinstance(element, model.SubmodelElementList):
+                yield from self._iterate_elements(element.value)
+            elif isinstance(element, model.Entity):
+                yield from self._iterate_elements(element.statement)
 
     def _clone_element(self, element: model.SubmodelElement) -> model.SubmodelElement:
         """

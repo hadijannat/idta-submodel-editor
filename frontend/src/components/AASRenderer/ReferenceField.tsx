@@ -4,10 +4,12 @@
  * Allows users to enter reference identifiers (IRIs, IRDIs, etc.).
  */
 
-import React from 'react';
-import { useFormContext, Controller } from 'react-hook-form';
+import React, { useState } from 'react';
+import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import DescriptionText from './DescriptionText';
+import SemanticChip from '../semantic/SemanticChip';
+import SemanticLookupModal from '../semantic/SemanticLookupModal';
 
 interface ReferenceFieldProps {
   /** Form path for the reference value */
@@ -18,6 +20,8 @@ interface ReferenceFieldProps {
   label: string;
   /** Whether the field is required */
   required: boolean;
+  /** Show semantic lookup controls */
+  showSemantic?: boolean;
 }
 
 /**
@@ -46,8 +50,15 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
   schema,
   label,
   required,
+  showSemantic = true,
 }) => {
-  const { control } = useFormContext();
+  const { control, setValue } = useFormContext();
+  const [isSemanticOpen, setSemanticOpen] = useState(false);
+  const basePath = path.replace(/\.value$/, '');
+  const semanticId = useWatch({
+    control,
+    name: `${basePath}.semanticId`,
+  }) as string | null | undefined;
 
   return (
     <div className="aas-field aas-field-reference">
@@ -55,6 +66,19 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
         {label}
         {required && <span className="aas-required">*</span>}
       </label>
+
+      {showSemantic && (
+        <div className="semantic-row">
+          <span className="aas-sublabel">Semantic</span>
+          <SemanticChip
+            semanticId={semanticId}
+            onOpen={() => setSemanticOpen(true)}
+            onClear={() =>
+              setValue(`${basePath}.semanticId`, null, { shouldDirty: true })
+            }
+          />
+        </div>
+      )}
 
       <DescriptionText description={schema.description} />
 
@@ -92,6 +116,20 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
       <p className="aas-help-text">
         Enter an IRI (URL) or IRDI (e.g., ECLASS identifier) to reference another element.
       </p>
+
+      {showSemantic && (
+        <SemanticLookupModal
+          isOpen={isSemanticOpen}
+          onClose={() => setSemanticOpen(false)}
+          onApply={(value) =>
+            setValue(`${basePath}.semanticId`, value, { shouldDirty: true })
+          }
+          currentSemanticId={semanticId ?? undefined}
+          elementType={schema.modelType}
+          valueType={schema.valueType}
+          defaultKind="property"
+        />
+      )}
     </div>
   );
 };

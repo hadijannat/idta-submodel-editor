@@ -14,6 +14,7 @@ from app.config import Settings, get_settings
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService, PDFExportService
 from app.services.parser import ParserService
+from app.services.semantic import SemanticService
 
 # Security scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
@@ -40,6 +41,12 @@ def get_parser() -> ParserService:
 def get_hydrator() -> HydratorService:
     """Get cached hydrator service instance."""
     return HydratorService()
+
+
+@lru_cache
+def get_semantic_service() -> SemanticService:
+    """Get cached semantic service instance."""
+    return SemanticService()
 
 
 def get_pdf_service() -> PDFExportService | None:

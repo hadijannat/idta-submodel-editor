@@ -141,6 +141,7 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
                 }}
                 label="Global Asset ID"
                 required={false}
+                showSemantic={false}
               />
             )}
             {schema.statements?.map((stmtSchema) => (
@@ -173,12 +174,14 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
                 schema={schema}
                 label="First"
                 required={required}
+                showSemantic={false}
               />
               <ReferenceField
                 path={`${path}.second`}
                 schema={schema}
                 label="Second"
                 required={required}
+                showSemantic={false}
               />
             </div>
           </div>

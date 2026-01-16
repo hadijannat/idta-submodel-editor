@@ -14,7 +14,8 @@ import type { SubmodelFormData, UploadResponse } from '../types/aas-elements';
 /**
  * API configuration.
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /**
  * Custom error class for API errors.
@@ -33,7 +34,7 @@ export class ApiError extends Error {
 /**
  * Base fetch wrapper with error handling.
  */
-async function apiFetch<T>(
+export async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {

@@ -10,12 +10,15 @@
 export interface ElementFormData {
   // Common value field
   value?: unknown;
+  semanticId?: string | null;
+  valueId?: string | null;
 
   // For SubmodelElementCollection
   elements?: Record<string, ElementFormData>;
 
   // For SubmodelElementList
   items?: ElementFormData[];
+  semanticIdListElement?: string | null;
 
   // For Range
   min?: unknown;

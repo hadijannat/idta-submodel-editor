@@ -2,10 +2,12 @@
  * PropertyField component for rendering Property elements.
  */
 
-import React from 'react';
-import { useFormContext, Controller } from 'react-hook-form';
+import React, { useState } from 'react';
+import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import DescriptionText from './DescriptionText';
+import SemanticChip from '../semantic/SemanticChip';
+import SemanticLookupModal from '../semantic/SemanticLookupModal';
 
 interface PropertyFieldProps {
   /** Form path for the value */
@@ -16,6 +18,8 @@ interface PropertyFieldProps {
   label: string;
   /** Whether the field is required */
   required: boolean;
+  /** Show semantic lookup controls */
+  showSemantic?: boolean;
 }
 
 /**
@@ -28,8 +32,15 @@ export const PropertyField: React.FC<PropertyFieldProps> = ({
   schema,
   label,
   required,
+  showSemantic = true,
 }) => {
-  const { control } = useFormContext();
+  const { control, setValue } = useFormContext();
+  const [isSemanticOpen, setSemanticOpen] = useState(false);
+  const basePath = path.replace(/\.value$/, '');
+  const semanticId = useWatch({
+    control,
+    name: `${basePath}.semanticId`,
+  }) as string | null | undefined;
   const inputType = schema.inputType || 'text';
   const step = schema.step;
   const constraints = schema.constraints;
@@ -58,6 +69,18 @@ export const PropertyField: React.FC<PropertyFieldProps> = ({
   if (inputType === 'checkbox') {
     return (
       <div className="aas-field aas-field-checkbox">
+        {showSemantic && (
+          <div className="semantic-row">
+            <span className="aas-sublabel">Semantic</span>
+            <SemanticChip
+              semanticId={semanticId}
+              onOpen={() => setSemanticOpen(true)}
+              onClear={() =>
+                setValue(`${basePath}.semanticId`, null, { shouldDirty: true })
+              }
+            />
+          </div>
+        )}
         <Controller
           name={path}
           control={control}
@@ -80,6 +103,20 @@ export const PropertyField: React.FC<PropertyFieldProps> = ({
           )}
         />
         <DescriptionText description={schema.description} />
+
+        {showSemantic && (
+          <SemanticLookupModal
+            isOpen={isSemanticOpen}
+            onClose={() => setSemanticOpen(false)}
+            onApply={(value) =>
+              setValue(`${basePath}.semanticId`, value, { shouldDirty: true })
+            }
+            currentSemanticId={semanticId ?? undefined}
+            elementType={schema.modelType}
+            valueType={schema.valueType}
+            defaultKind="property"
+          />
+        )}
       </div>
     );
   }
@@ -94,6 +131,18 @@ export const PropertyField: React.FC<PropertyFieldProps> = ({
         {required && <span className="aas-required">*</span>}
         {unit && <span className="aas-unit">({unit})</span>}
       </label>
+      {showSemantic && (
+        <div className="semantic-row">
+          <span className="aas-sublabel">Semantic</span>
+          <SemanticChip
+            semanticId={semanticId}
+            onOpen={() => setSemanticOpen(true)}
+            onClear={() =>
+              setValue(`${basePath}.semanticId`, null, { shouldDirty: true })
+            }
+          />
+        </div>
+      )}
 
       <Controller
         name={path}
@@ -137,6 +186,20 @@ export const PropertyField: React.FC<PropertyFieldProps> = ({
       />
 
       <DescriptionText description={schema.description} />
+
+      {showSemantic && (
+        <SemanticLookupModal
+          isOpen={isSemanticOpen}
+          onClose={() => setSemanticOpen(false)}
+          onApply={(value) =>
+            setValue(`${basePath}.semanticId`, value, { shouldDirty: true })
+          }
+          currentSemanticId={semanticId ?? undefined}
+          elementType={schema.modelType}
+          valueType={schema.valueType}
+          defaultKind="property"
+        />
+      )}
     </div>
   );
 };

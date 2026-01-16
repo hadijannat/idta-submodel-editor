@@ -38,6 +38,29 @@ class Settings(BaseSettings):
     cache_dir: Path = Path("./cache/templates")
     cache_ttl_hours: int = 24
 
+    # Semantic dictionary lookup
+    semantic_enabled: bool = True
+    semantic_prefer_iri: bool = True
+    semantic_embed_concept_descriptions: bool = False
+    semantic_eclass_offline_enabled: bool = True
+    semantic_iec_cdd_offline_enabled: bool = True
+    semantic_eclass_online_enabled: bool = False
+    semantic_cache_ttl_seconds: int = 86400
+    semantic_cache_max_entries: int = 512
+    semantic_search_rate_limit_per_min: int = 60
+    semantic_resolve_rate_limit_per_min: int = 120
+    semantic_index_dir: Path = Path("./cache/semantic")
+    eclass_index_path: Path = Path("./cache/semantic/eclass.json")
+    iec_cdd_index_path: Path = Path("./cache/semantic/iec_cdd.json")
+
+    # ECLASS online provider
+    eclass_api_base: str = ""
+    eclass_search_url: str | None = None
+    eclass_resolve_url: str | None = None
+    eclass_cert_path: Path | None = None
+    eclass_key_path: Path | None = None
+    eclass_cert_password: str | None = None
+
     # File upload limits
     max_upload_size_mb: int = 50
 
@@ -79,6 +102,25 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return Path(v)
         return v
+
+    @field_validator(
+        "semantic_index_dir",
+        "eclass_index_path",
+        "iec_cdd_index_path",
+        mode="before",
+    )
+    @classmethod
+    def parse_semantic_paths(cls, v):
+        if isinstance(v, str):
+            return Path(v)
+        return v
+
+    @field_validator("eclass_cert_path", "eclass_key_path", mode="before")
+    @classmethod
+    def parse_cert_paths(cls, v):
+        if isinstance(v, str) and v.strip():
+            return Path(v)
+        return None
 
     model_config = {
         "env_file": ".env",

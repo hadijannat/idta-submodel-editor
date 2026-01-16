@@ -69,6 +69,12 @@ interface UseSubmodelFormReturn {
  */
 function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
   const required = isRequired(element.cardinality);
+  const withSemanticFields = (schema: z.ZodObject<any>) =>
+    schema.extend({
+      semanticId: z.string().optional().nullable(),
+      valueId: z.string().optional().nullable(),
+      semanticIdListElement: z.string().optional().nullable(),
+    });
 
   switch (element.modelType) {
     case 'Property': {
@@ -96,15 +102,19 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
           ? propSchema.min(1)
           : propSchema;
 
-      return z.object({
-        value: required ? valueSchema : valueSchema.optional().nullable(),
-      });
+      return withSemanticFields(
+        z.object({
+          value: required ? valueSchema : valueSchema.optional().nullable(),
+        })
+      );
     }
 
     case 'MultiLanguageProperty': {
-      return z.object({
-        value: z.record(z.string()).optional(),
-      });
+      return withSemanticFields(
+        z.object({
+          value: z.record(z.string()).optional(),
+        })
+      );
     }
 
     case 'SubmodelElementCollection': {
@@ -112,9 +122,11 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
       for (const child of element.elements || []) {
         elementsSchema[child.idShort] = generateZodSchema(child);
       }
-      return z.object({
-        elements: z.object(elementsSchema),
-      });
+      return withSemanticFields(
+        z.object({
+          elements: z.object(elementsSchema),
+        })
+      );
     }
 
     case 'SubmodelElementList': {
@@ -122,16 +134,21 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
         ? generateZodSchema(element.itemTemplate)
         : z.any();
       const minItems = element.cardinality === '[1..*]' ? 1 : 0;
-      return z.object({
-        items: z.array(itemSchema).min(minItems),
-      });
+      return withSemanticFields(
+        z.object({
+          items: z.array(itemSchema).min(minItems),
+          semanticIdListElement: z.string().optional().nullable(),
+        })
+      );
     }
 
     case 'File': {
-      return z.object({
-        value: required ? z.string().min(1) : z.string().optional(),
-        contentType: z.string().optional(),
-      });
+      return withSemanticFields(
+        z.object({
+          value: required ? z.string().min(1) : z.string().optional(),
+          contentType: z.string().optional(),
+        })
+      );
     }
 
     case 'Range': {
@@ -140,16 +157,20 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
         ? z.coerce.number().int()
         : z.coerce.number();
 
-      return z.object({
-        min: required ? numSchema : numSchema.optional().nullable(),
-        max: required ? numSchema : numSchema.optional().nullable(),
-      });
+      return withSemanticFields(
+        z.object({
+          min: required ? numSchema : numSchema.optional().nullable(),
+          max: required ? numSchema : numSchema.optional().nullable(),
+        })
+      );
     }
 
     case 'ReferenceElement': {
-      return z.object({
-        value: required ? z.string().min(1) : z.string().optional(),
-      });
+      return withSemanticFields(
+        z.object({
+          value: required ? z.string().min(1) : z.string().optional(),
+        })
+      );
     }
 
     case 'Entity': {
@@ -157,14 +178,16 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
       for (const stmt of element.statements || []) {
         statementsSchema[stmt.idShort] = generateZodSchema(stmt);
       }
-      return z.object({
-        globalAssetId: z.string().optional(),
-        statements: z.object(statementsSchema),
-      });
+      return withSemanticFields(
+        z.object({
+          globalAssetId: z.string().optional(),
+          statements: z.object(statementsSchema),
+        })
+      );
     }
 
     default:
-      return z.any();
+      return withSemanticFields(z.object({ value: z.any().optional() }));
   }
 }
 
@@ -196,21 +219,28 @@ function generateDefaultValues(schema: SubmodelUISchema): SubmodelFormData {
  * Generate default value for a single element.
  */
 function generateElementDefaults(element: UIElementSchema): ElementFormData {
+  const withSemanticDefaults = (defaults: ElementFormData): ElementFormData => ({
+    ...defaults,
+    semanticId: element.semanticId ?? null,
+    valueId: element.valueId ?? null,
+    semanticIdListElement: element.semanticIdListElement ?? null,
+  });
+
   switch (element.modelType) {
     case 'Property':
-      return { value: element.value ?? '' };
+      return withSemanticDefaults({ value: element.value ?? '' });
 
     case 'MultiLanguageProperty':
-      return {
+      return withSemanticDefaults({
         value: (element.value as Record<string, string>) ?? {},
-      };
+      });
 
     case 'SubmodelElementCollection': {
       const childElements: Record<string, ElementFormData> = {};
       for (const child of element.elements || []) {
         childElements[child.idShort] = generateElementDefaults(child);
       }
-      return { elements: childElements };
+      return withSemanticDefaults({ elements: childElements });
     }
 
     case 'SubmodelElementList': {
@@ -218,37 +248,40 @@ function generateElementDefaults(element: UIElementSchema): ElementFormData {
       for (const item of element.items || []) {
         items.push(generateElementDefaults(item));
       }
-      return { items };
+      return withSemanticDefaults({
+        items,
+        semanticIdListElement: element.semanticIdListElement ?? null,
+      });
     }
 
     case 'File':
-      return {
+      return withSemanticDefaults({
         value: element.value ?? '',
         contentType: element.contentType ?? '',
-      };
+      });
 
     case 'Range':
-      return {
+      return withSemanticDefaults({
         min: element.min ?? '',
         max: element.max ?? '',
-      };
+      });
 
     case 'ReferenceElement':
-      return { value: element.value ?? '' };
+      return withSemanticDefaults({ value: element.value ?? '' });
 
     case 'Entity': {
       const statements: Record<string, ElementFormData> = {};
       for (const stmt of element.statements || []) {
         statements[stmt.idShort] = generateElementDefaults(stmt);
       }
-      return {
+      return withSemanticDefaults({
         globalAssetId: element.globalAssetId ?? '',
         statements,
-      };
+      });
     }
 
     default:
-      return { value: element.value ?? '' };
+      return withSemanticDefaults({ value: element.value ?? '' });
   }
 }
 

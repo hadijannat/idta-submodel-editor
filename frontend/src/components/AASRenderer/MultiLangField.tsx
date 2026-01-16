@@ -5,9 +5,11 @@
  */
 
 import React, { useState } from 'react';
-import { useFormContext, Controller } from 'react-hook-form';
+import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import DescriptionText from './DescriptionText';
+import SemanticChip from '../semantic/SemanticChip';
+import SemanticLookupModal from '../semantic/SemanticLookupModal';
 
 interface MultiLangFieldProps {
   /** Form path for the value object */
@@ -44,9 +46,15 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
   label,
   required,
 }) => {
-  const { control, watch } = useFormContext();
+  const { control, watch, setValue } = useFormContext();
   const languages = schema.supportedLanguages || ['en', 'de'];
   const [activeTab, setActiveTab] = useState(0);
+  const [isSemanticOpen, setSemanticOpen] = useState(false);
+  const basePath = path.replace(/\.value$/, '');
+  const semanticId = useWatch({
+    control,
+    name: `${basePath}.semanticId`,
+  }) as string | null | undefined;
 
   // Watch all language values to show indicators
   const values = watch(path) as Record<string, string> | undefined;
@@ -67,6 +75,15 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
         <span className="aas-multilang-count">
           {filledCount}/{languages.length} translations
         </span>
+      </div>
+
+      <div className="semantic-row">
+        <span className="aas-sublabel">Semantic</span>
+        <SemanticChip
+          semanticId={semanticId}
+          onOpen={() => setSemanticOpen(true)}
+          onClear={() => setValue(`${basePath}.semanticId`, null, { shouldDirty: true })}
+        />
       </div>
 
       <DescriptionText description={schema.description} />
@@ -128,6 +145,18 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
           </div>
         ))}
       </div>
+
+      <SemanticLookupModal
+        isOpen={isSemanticOpen}
+        onClose={() => setSemanticOpen(false)}
+        onApply={(value) =>
+          setValue(`${basePath}.semanticId`, value, { shouldDirty: true })
+        }
+        currentSemanticId={semanticId ?? undefined}
+        elementType={schema.modelType}
+        valueType={schema.valueType}
+        defaultKind="property"
+      />
     </div>
   );
 };

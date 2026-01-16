@@ -4,11 +4,13 @@
  * Uses React Hook Form's useFieldArray for dynamic add/remove.
  */
 
-import React from 'react';
-import { useFormContext, useFieldArray } from 'react-hook-form';
+import React, { useState } from 'react';
+import { useFormContext, useFieldArray, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import type { ElementFormData } from '../../types/aas-elements';
 import { getMaxItems, getMinItems } from '../../types/aas-elements';
+import SemanticChip from '../semantic/SemanticChip';
+import SemanticLookupModal from '../semantic/SemanticLookupModal';
 
 interface ListFieldProps {
   /** Form path for the list */
@@ -29,34 +31,44 @@ interface ListFieldProps {
  * Create default value for a new list item.
  */
 function createDefaultItem(template: UIElementSchema | null): ElementFormData {
-  if (!template) return { value: '' };
+  const withSemanticDefaults = (
+    defaults: ElementFormData,
+    source?: UIElementSchema | null
+  ): ElementFormData => ({
+    ...defaults,
+    semanticId: source?.semanticId ?? null,
+    valueId: source?.valueId ?? null,
+    semanticIdListElement: source?.semanticIdListElement ?? null,
+  });
+
+  if (!template) return withSemanticDefaults({ value: '' });
 
   switch (template.modelType) {
     case 'Property':
-      return { value: template.value ?? '' };
+      return withSemanticDefaults({ value: template.value ?? '' }, template);
 
     case 'MultiLanguageProperty':
-      return { value: {} };
+      return withSemanticDefaults({ value: {} }, template);
 
     case 'SubmodelElementCollection': {
       const elements: Record<string, ElementFormData> = {};
       for (const child of template.elements || []) {
         elements[child.idShort] = createDefaultItem(child);
       }
-      return { elements };
+      return withSemanticDefaults({ elements }, template);
     }
 
     case 'Range':
-      return { min: '', max: '' };
+      return withSemanticDefaults({ min: '', max: '' }, template);
 
     case 'File':
-      return { value: '', contentType: '' };
+      return withSemanticDefaults({ value: '', contentType: '' }, template);
 
     case 'ReferenceElement':
-      return { value: '' };
+      return withSemanticDefaults({ value: '' }, template);
 
     default:
-      return { value: '' };
+      return withSemanticDefaults({ value: '' }, template);
   }
 }
 
@@ -69,7 +81,12 @@ export const ListField: React.FC<ListFieldProps> = ({
   depth,
   renderItem,
 }) => {
-  const { control } = useFormContext();
+  const { control, setValue } = useFormContext();
+  const [isSemanticOpen, setSemanticOpen] = useState(false);
+  const semanticIdListElement = useWatch({
+    control,
+    name: `${path}.semanticIdListElement`,
+  }) as string | null | undefined;
 
   const { fields, append, remove, move } = useFieldArray({
     control,
@@ -153,6 +170,17 @@ export const ListField: React.FC<ListFieldProps> = ({
         </button>
       </div>
 
+      <div className="semantic-row">
+        <span className="aas-sublabel">List semantic</span>
+        <SemanticChip
+          semanticId={semanticIdListElement}
+          onOpen={() => setSemanticOpen(true)}
+          onClear={() =>
+            setValue(`${path}.semanticIdListElement`, null, { shouldDirty: true })
+          }
+        />
+      </div>
+
       {schema.description?.en && (
         <p className="aas-list-description">{schema.description.en}</p>
       )}
@@ -218,6 +246,18 @@ export const ListField: React.FC<ListFieldProps> = ({
           })
         )}
       </div>
+
+      <SemanticLookupModal
+        isOpen={isSemanticOpen}
+        onClose={() => setSemanticOpen(false)}
+        onApply={(value) =>
+          setValue(`${path}.semanticIdListElement`, value, { shouldDirty: true })
+        }
+        currentSemanticId={semanticIdListElement ?? undefined}
+        elementType={schema.modelType}
+        valueType={schema.valueTypeListElement ?? undefined}
+        defaultKind="property"
+      />
     </div>
   );
 };

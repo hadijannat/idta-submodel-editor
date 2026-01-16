@@ -1,0 +1,47 @@
+[
+  {
+    "canonicalId": "0112/2///61360_4#AAA000_001",
+    "preferredName": {
+      "en": "Voltage",
+      "de": "Spannung"
+    },
+    "definition": {
+      "en": "Electric potential difference.",
+      "de": "Elektrische Potentialdifferenz."
+    },
+    "kind": "property",
+    "datatypeHint": "REAL_MEASURE",
+    "unitHint": "V",
+    "synonyms": ["electric voltage"]
+  },
+  {
+    "canonicalId": "0112/2///61360_4#AAA000_002",
+    "preferredName": {
+      "en": "Mass",
+      "de": "Masse"
+    },
+    "definition": {
+      "en": "Amount of matter.",
+      "de": "Menge an Materie."
+    },
+    "kind": "property",
+    "datatypeHint": "REAL_MEASURE",
+    "unitHint": "kg",
+    "synonyms": ["weight"]
+  },
+  {
+    "canonicalId": "0112/2///61360_4#AAA000_003",
+    "preferredName": {
+      "en": "Serial number",
+      "de": "Seriennummer"
+    },
+    "definition": {
+      "en": "Identifier assigned by the manufacturer.",
+      "de": "Kennung des Herstellers."
+    },
+    "kind": "property",
+    "datatypeHint": "STRING",
+    "unitHint": null,
+    "synonyms": ["serial no"]
+  }
+]
