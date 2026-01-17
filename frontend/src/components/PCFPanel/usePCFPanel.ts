@@ -41,6 +41,39 @@ interface PCFWorkspace {
   publicationDate: string;
 }
 
+type FormGetValues = UseFormReturn<SubmodelFormData>['getValues'];
+type FormSetValue = UseFormReturn<SubmodelFormData>['setValue'];
+type FormGetValuesPath = Parameters<FormGetValues>[0];
+type FormSetValuePath = Parameters<FormSetValue>[0];
+type FormSetValueValue = Parameters<FormSetValue>[1];
+type FormSetValueOptions = Parameters<FormSetValue>[2];
+
+const PCF_FIELD_DEFINITIONS: Record<
+  string,
+  { semanticId: string; idShorts: string[] }
+> = {
+  PcfCO2eq: {
+    semanticId: PCF_SEMANTIC_IDS.PcfCO2eq,
+    idShorts: ['PcfCO2eq', 'PCFCo2eq'],
+  },
+  ReferenceImpactUnitForCalculation: {
+    semanticId: PCF_SEMANTIC_IDS.ReferenceImpactUnitForCalculation,
+    idShorts: ['ReferenceImpactUnitForCalculation'],
+  },
+  QuantityOfMeasureForCalculation: {
+    semanticId: PCF_SEMANTIC_IDS.QuantityOfMeasureForCalculation,
+    idShorts: ['QuantityOfMeasureForCalculation'],
+  },
+  PublicationDate: {
+    semanticId: PCF_SEMANTIC_IDS.PublicationDate,
+    idShorts: ['PublicationDate'],
+  },
+  LifeCyclePhases: {
+    semanticId: PCF_SEMANTIC_IDS.LifeCyclePhases,
+    idShorts: ['LifeCyclePhases'],
+  },
+};
+
 interface UsePCFPanelOptions {
   schema: SubmodelUISchema | null;
   form: UseFormReturn<SubmodelFormData>;
@@ -144,36 +177,26 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
 
   const instanceKind = instanceContainer?.kind ?? null;
 
-  const fieldDefinitions: Record<
-    string,
-    { semanticId: string; idShorts: string[] }
-  > = {
-    PcfCO2eq: {
-      semanticId: PCF_SEMANTIC_IDS.PcfCO2eq,
-      idShorts: ['PcfCO2eq', 'PCFCo2eq'],
+  const getFormValue = useCallback(
+    (path: string): unknown => form.getValues(path as FormGetValuesPath),
+    [form]
+  );
+
+  const setFormValue = useCallback(
+    (path: string, value: unknown, options?: FormSetValueOptions) => {
+      form.setValue(
+        path as FormSetValuePath,
+        value as FormSetValueValue,
+        options
+      );
     },
-    ReferenceImpactUnitForCalculation: {
-      semanticId: PCF_SEMANTIC_IDS.ReferenceImpactUnitForCalculation,
-      idShorts: ['ReferenceImpactUnitForCalculation'],
-    },
-    QuantityOfMeasureForCalculation: {
-      semanticId: PCF_SEMANTIC_IDS.QuantityOfMeasureForCalculation,
-      idShorts: ['QuantityOfMeasureForCalculation'],
-    },
-    PublicationDate: {
-      semanticId: PCF_SEMANTIC_IDS.PublicationDate,
-      idShorts: ['PublicationDate'],
-    },
-    LifeCyclePhases: {
-      semanticId: PCF_SEMANTIC_IDS.LifeCyclePhases,
-      idShorts: ['LifeCyclePhases'],
-    },
-  };
+    [form]
+  );
 
   const resolveFieldPath = useCallback(
-    (fieldKey: keyof typeof fieldDefinitions): string | null => {
+    (fieldKey: keyof typeof PCF_FIELD_DEFINITIONS): string | null => {
       if (!instanceContainer) return null;
-      const definition = fieldDefinitions[fieldKey];
+      const definition = PCF_FIELD_DEFINITIONS[fieldKey];
       const containerElements = [
         ...(instanceContainer.itemSchema.elements ?? []),
         ...(instanceContainer.itemSchema.statements ?? []),
@@ -233,7 +256,7 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
 
     if (instanceContainer.kind === 'list') {
       const itemsPath = pathToFormItemsPath(instanceContainer.path);
-      const items = (form.getValues as any)(itemsPath);
+      const items = getFormValue(itemsPath);
       const count = Array.isArray(items) ? items.length : 0;
       setInstanceCount(count);
       setActiveInstanceIndex((prev) => {
@@ -245,12 +268,12 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
 
     setInstanceCount(1);
     setActiveInstanceIndex(0);
-  }, [form, instanceContainer]);
+  }, [getFormValue, instanceContainer]);
 
   useEffect(() => {
     const readValue = (path: string | null): string => {
       if (!path) return '';
-      const value = (form.getValues as any)(pathToFormPath(path));
+      const value = getFormValue(pathToFormPath(path));
       if (value == null) return '';
       return String(value);
     };
@@ -263,14 +286,14 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     }));
 
     if (pcfFieldPaths.lifeCyclePhases) {
-      const items = (form.getValues as any)(
+      const items = getFormValue(
         pathToFormItemsPath(pcfFieldPaths.lifeCyclePhases)
       );
       setLifeCyclePhaseCount(Array.isArray(items) ? items.length : 0);
     } else {
       setLifeCyclePhaseCount(0);
     }
-  }, [form, pcfFieldPaths]);
+  }, [getFormValue, pcfFieldPaths]);
 
   // Add a new activity
   const addActivity = useCallback((activity?: Partial<PCFActivity>) => {
@@ -404,8 +427,7 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     const formPath = pathToFormPath(pcfPath);
 
     // Set the value in the form using deep path
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (form.setValue as any)(formPath, String(workspace.totalCo2eKg));
+    setFormValue(formPath, String(workspace.totalCo2eKg));
 
     const activityList = findPcfActivityList(schema);
     if (activityList) {
@@ -414,8 +436,7 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
         workspace.activities,
         activityList.itemSchema
       );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (form.setValue as any)(itemsPath, items, { shouldDirty: true });
+      setFormValue(itemsPath, items, { shouldDirty: true });
     }
 
     const tracePayload = {
@@ -440,8 +461,7 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     };
 
     // Persist trace payload in metadata for export/audit purposes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (form.setValue as any)('metadata.pcf', tracePayload, {
+    setFormValue('metadata.pcf', tracePayload, {
       shouldDirty: true,
     });
 
@@ -451,7 +471,7 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     workspace.activities,
     workspace.warnings,
     schema,
-    form,
+    setFormValue,
     pcfFieldPaths.pcfCo2eq,
   ]);
 
@@ -462,14 +482,14 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
         referenceUnit: unit,
       }));
       if (pcfFieldPaths.referenceUnit) {
-        (form.setValue as any)(
+        setFormValue(
           pathToFormPath(pcfFieldPaths.referenceUnit),
           unit,
           { shouldDirty: true }
         );
       }
     },
-    [form, pcfFieldPaths.referenceUnit]
+    [pcfFieldPaths.referenceUnit, setFormValue]
   );
 
   const setReferenceQuantity = useCallback(
@@ -479,14 +499,14 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
         referenceQuantity: quantity,
       }));
       if (pcfFieldPaths.referenceQuantity) {
-        (form.setValue as any)(
+        setFormValue(
           pathToFormPath(pcfFieldPaths.referenceQuantity),
           quantity,
           { shouldDirty: true }
         );
       }
     },
-    [form, pcfFieldPaths.referenceQuantity]
+    [pcfFieldPaths.referenceQuantity, setFormValue]
   );
 
   const setPublicationDate = useCallback(
@@ -496,14 +516,14 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
         publicationDate: date,
       }));
       if (pcfFieldPaths.publicationDate) {
-        (form.setValue as any)(
+        setFormValue(
           pathToFormPath(pcfFieldPaths.publicationDate),
           date,
           { shouldDirty: true }
         );
       }
     },
-    [form, pcfFieldPaths.publicationDate]
+    [pcfFieldPaths.publicationDate, setFormValue]
   );
 
 
