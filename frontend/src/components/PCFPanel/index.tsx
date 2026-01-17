@@ -29,6 +29,7 @@ export default function PCFPanel({ schema, form }: PCFPanelProps) {
     validating,
     searchingFactors,
     factorResults,
+    factorsMeta,
     addActivity,
     updateActivity,
     removeActivity,
@@ -42,6 +43,14 @@ export default function PCFPanel({ schema, form }: PCFPanelProps) {
 
   return (
     <div className="pcf-panel">
+      {schema?.pcfActivityListInjected && (
+        <div className="pcf-panel__banner">
+          <p>
+            Activity list injected for export. Update the template to persist
+            PCF activities.
+          </p>
+        </div>
+      )}
       <div className="pcf-panel__section">
         <PCFCalculator
           activities={workspace.activities}
@@ -50,6 +59,7 @@ export default function PCFPanel({ schema, form }: PCFPanelProps) {
           calculating={calculating}
           searchingFactors={searchingFactors}
           factorResults={factorResults}
+          factorsMeta={factorsMeta}
           onAddActivity={addActivity}
           onUpdateActivity={updateActivity}
           onRemoveActivity={removeActivity}

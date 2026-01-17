@@ -21,7 +21,11 @@ class PCFActivity(BaseModel):
     unit: str
     factor_value: float
     factor_unit: str
+    factor_id: str | None = None
+    factor_name: str | None = None
     factor_source: str | None = None
+    factor_region: str | None = None
+    factor_year: int | None = None
     co2e_kg: float | None = None
 
 

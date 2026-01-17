@@ -122,18 +122,167 @@ def _has_value(
     semantic_id: str,
 ) -> bool:
     """Check if a field has a non-empty value in the form data."""
-    # Look up by idShort first
-    if field_name in form_elements:
-        element = form_elements[field_name]
-        if element is None:
-            return False
-        # Check for value in different element types
-        if isinstance(element, dict):
-            value = element.get("value")
-            if value is not None and value != "":
+    if not schema_elements:
+        return _has_value_in_form_elements(form_elements, field_name, semantic_id)
+
+    for schema_element in schema_elements:
+        element_id = schema_element.get("idShort")
+        form_element = (
+            form_elements.get(element_id) if element_id and form_elements else None
+        )
+        if _has_value_in_element(
+            schema_element,
+            form_element,
+            field_name,
+            semantic_id,
+        ):
+            return True
+    return _has_value_in_form_elements(form_elements, field_name, semantic_id)
+
+
+def _has_value_in_element(
+    schema_element: dict[str, Any],
+    form_element: dict[str, Any] | None,
+    field_name: str,
+    semantic_id: str,
+) -> bool:
+    if _matches_field(schema_element, form_element, field_name, semantic_id):
+        if _element_has_value(form_element):
+            return True
+
+    # Recurse into collections
+    for child in schema_element.get("elements", []) or []:
+        child_id = child.get("idShort")
+        child_form = (
+            (form_element or {}).get("elements", {}).get(child_id)
+            if child_id
+            else None
+        )
+        if _has_value_in_element(child, child_form, field_name, semantic_id):
+            return True
+
+    # Recurse into entity statements
+    for stmt in schema_element.get("statements", []) or []:
+        stmt_id = stmt.get("idShort")
+        stmt_form = (
+            (form_element or {}).get("statements", {}).get(stmt_id)
+            if stmt_id
+            else None
+        )
+        if _has_value_in_element(stmt, stmt_form, field_name, semantic_id):
+            return True
+
+    # Recurse into list items
+    item_template = schema_element.get("itemTemplate")
+    item_schemas = schema_element.get("items") or []
+    form_items = (form_element or {}).get("items") or []
+    if item_template or item_schemas:
+        for index, item_form in enumerate(form_items):
+            item_schema = None
+            if item_schemas and index < len(item_schemas):
+                item_schema = item_schemas[index]
+            else:
+                item_schema = item_template
+            if item_schema and _has_value_in_element(
+                item_schema, item_form, field_name, semantic_id
+            ):
                 return True
-            # Check for items in lists
-            items = element.get("items")
-            if items and len(items) > 0:
-                return True
+
     return False
+
+
+def _matches_field(
+    schema_element: dict[str, Any],
+    form_element: dict[str, Any] | None,
+    field_name: str,
+    semantic_id: str,
+) -> bool:
+    schema_semantic_id = schema_element.get("semanticId") or ""
+    form_semantic_id = (form_element or {}).get("semanticId") or ""
+    if semantic_id and (
+        semantic_id in schema_semantic_id or semantic_id in form_semantic_id
+    ):
+        return True
+
+    id_short = schema_element.get("idShort") or ""
+    if id_short.lower() == field_name.lower():
+        return True
+
+    return False
+
+
+def _element_has_value(element: dict[str, Any] | None) -> bool:
+    if not element:
+        return False
+
+    if "value" in element and _is_non_empty_value(element.get("value")):
+        return True
+
+    if _is_non_empty_value(element.get("min")) or _is_non_empty_value(
+        element.get("max")
+    ):
+        return True
+
+    items = element.get("items")
+    if items and len(items) > 0:
+        return True
+
+    elements = element.get("elements") or {}
+    for child in elements.values():
+        if _element_has_value(child):
+            return True
+
+    statements = element.get("statements") or {}
+    for child in statements.values():
+        if _element_has_value(child):
+            return True
+
+    return False
+
+
+def _has_value_in_form_elements(
+    form_elements: dict[str, Any],
+    field_name: str,
+    semantic_id: str,
+) -> bool:
+    for key, element in (form_elements or {}).items():
+        if key.lower() == field_name.lower() and _element_has_value(element):
+            return True
+        if semantic_id and semantic_id in ((element or {}).get("semanticId") or ""):
+            if _element_has_value(element):
+                return True
+        if isinstance(element, dict):
+            if _has_value_in_form_elements(
+                element.get("elements") or {}, field_name, semantic_id
+            ):
+                return True
+            if _has_value_in_form_elements(
+                element.get("statements") or {}, field_name, semantic_id
+            ):
+                return True
+            for item in element.get("items") or []:
+                if semantic_id and semantic_id in ((item or {}).get("semanticId") or ""):
+                    if _element_has_value(item):
+                        return True
+                if isinstance(item, dict):
+                    if _has_value_in_form_elements(
+                        item.get("elements") or {}, field_name, semantic_id
+                    ):
+                        return True
+                    if _has_value_in_form_elements(
+                        item.get("statements") or {}, field_name, semantic_id
+                    ):
+                        return True
+    return False
+
+
+def _is_non_empty_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip() != ""
+    if isinstance(value, dict):
+        return any(_is_non_empty_value(v) for v in value.values())
+    if isinstance(value, list):
+        return len(value) > 0
+    return True

@@ -1,0 +1,89 @@
+{
+  "list": {
+    "idShort": "PCFActivities",
+    "semanticId": "urn:idta-submodel-editor:pcf:activity-list:1:0",
+    "semanticIdSource": "custom",
+    "semanticIdListElement": null,
+    "cardinality": "[0..*]",
+    "description": {
+      "en": "List of emission activities used in the PCF calculation"
+    }
+  },
+  "item": {
+    "idShort": "PCFActivity",
+    "semanticId": "urn:idta-submodel-editor:pcf:activity:1:0",
+    "semanticIdSource": "custom",
+    "elements": [
+      {
+        "idShort": "ActivityName",
+        "semanticId": "urn:idta-submodel-editor:pcf:activity:name:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:string",
+        "cardinality": "[1]"
+      },
+      {
+        "idShort": "ActivityCategory",
+        "semanticId": "urn:idta-submodel-editor:pcf:activity:category:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:string",
+        "cardinality": "[1]"
+      },
+      {
+        "idShort": "ActivityQuantity",
+        "semanticId": "urn:idta-submodel-editor:pcf:activity:quantity:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:double",
+        "cardinality": "[1]"
+      },
+      {
+        "idShort": "ActivityUnit",
+        "semanticId": "urn:idta-submodel-editor:pcf:activity:unit:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:string",
+        "cardinality": "[1]"
+      },
+      {
+        "idShort": "EmissionFactorValue",
+        "semanticId": "urn:idta-submodel-editor:pcf:factor:value:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:double",
+        "cardinality": "[1]"
+      },
+      {
+        "idShort": "EmissionFactorUnit",
+        "semanticId": "urn:idta-submodel-editor:pcf:factor:unit:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:string",
+        "cardinality": "[1]"
+      },
+      {
+        "idShort": "EmissionFactorSource",
+        "semanticId": "urn:idta-submodel-editor:pcf:factor:source:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:string",
+        "cardinality": "[0..1]"
+      },
+      {
+        "idShort": "EmissionFactorRegion",
+        "semanticId": "urn:idta-submodel-editor:pcf:factor:region:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:string",
+        "cardinality": "[0..1]"
+      },
+      {
+        "idShort": "EmissionFactorYear",
+        "semanticId": "urn:idta-submodel-editor:pcf:factor:year:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:int",
+        "cardinality": "[0..1]"
+      },
+      {
+        "idShort": "ActivityCO2eKg",
+        "semanticId": "urn:idta-submodel-editor:pcf:activity:co2e-kg:1:0",
+        "semanticIdSource": "custom",
+        "valueType": "xs:double",
+        "cardinality": "[0..1]"
+      }
+    ]
+  }
+}

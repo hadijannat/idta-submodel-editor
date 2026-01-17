@@ -7,6 +7,7 @@ the UI didn't render.
 """
 
 import copy
+import json
 import logging
 from io import BytesIO
 from typing import Any
@@ -16,6 +17,7 @@ from basyx.aas.adapter import aasx, json as aas_json
 
 from app.utils.aasx_reader import SafeAASXReader
 from app.config import get_settings
+from app.services.pcf.activity_list import ensure_activity_list_in_submodel
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,8 @@ class HydratorService:
         logger.info(f"Hydrating submodel: {submodel.id_short}")
 
         self._apply_metadata(submodel, form_data.get("metadata"))
+        self._apply_pcf_trace(submodel, file_store, form_data.get("metadata"))
+        ensure_activity_list_in_submodel(submodel, form_data)
 
         # Hydrate the submodel elements
         elements_data = form_data.get("elements", {})
@@ -119,6 +123,8 @@ class HydratorService:
             raise ValueError("No Submodel found in template")
 
         self._apply_metadata(submodel, form_data.get("metadata"))
+        self._apply_pcf_trace(submodel, file_store, form_data.get("metadata"))
+        ensure_activity_list_in_submodel(submodel, form_data)
 
         elements_data = form_data.get("elements", {})
         self._hydrate_elements(submodel.submodel_element, elements_data)
@@ -201,6 +207,46 @@ class HydratorService:
                     submodel.administration.revision = revision
                 if template_id is not None:
                     submodel.administration.template_id = template_id
+
+    def _apply_pcf_trace(
+        self,
+        submodel: model.Submodel,
+        file_store: aasx.DictSupplementaryFileContainer,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        if not metadata or not isinstance(metadata, dict):
+            return
+
+        pcf_trace = metadata.get("pcf")
+        if not isinstance(pcf_trace, dict):
+            return
+
+        # Remove prior trace qualifiers to keep output clean
+        for qualifier_type in ("PCFCalculationTrace", "PCFCalculationTraceFile"):
+            try:
+                submodel.remove_qualifier_by_type(qualifier_type)
+            except Exception:
+                pass
+
+        trace_compact = json.dumps(pcf_trace, separators=(",", ":"), ensure_ascii=True)
+        submodel.add_qualifier(
+            model.Qualifier(
+                type_="PCFCalculationTrace",
+                value_type=str,
+                value=trace_compact,
+            )
+        )
+
+        trace_pretty = json.dumps(pcf_trace, indent=2, ensure_ascii=True)
+        filename = "pcf-calculation.json"
+        file_store.add_file(filename, BytesIO(trace_pretty.encode("utf-8")), "application/json")
+        submodel.add_qualifier(
+            model.Qualifier(
+                type_="PCFCalculationTraceFile",
+                value_type=str,
+                value=filename,
+            )
+        )
 
     def _hydrate_elements(
         self,

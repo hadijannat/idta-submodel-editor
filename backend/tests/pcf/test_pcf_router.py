@@ -187,3 +187,6 @@ def test_health_check(client):
     assert data["status"] == "healthy"
     assert "calculator" in data["services"]
     assert "validator" in data["services"]
+    assert "factors" in data["services"]
+    assert "factors" in data
+    assert "version" in data["factors"]

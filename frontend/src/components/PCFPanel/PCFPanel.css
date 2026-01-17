@@ -15,6 +15,19 @@
   overflow: hidden;
 }
 
+.pcf-panel__banner {
+  padding: 0.75rem 1rem;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  border-radius: 6px;
+}
+
+.pcf-panel__banner p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #8a6d1d;
+}
+
 .pcf-panel__error {
   padding: 0.75rem 1rem;
   background: rgba(220, 53, 69, 0.1);

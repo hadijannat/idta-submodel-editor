@@ -21,7 +21,11 @@ export interface PCFActivity {
   unit: string;
   factor_value: number;
   factor_unit: string;
+  factor_id?: string | null;
+  factor_name?: string | null;
   factor_source?: string | null;
+  factor_region?: string | null;
+  factor_year?: number | null;
   co2e_kg?: number | null;
 }
 
@@ -91,6 +95,13 @@ export interface PCFHealthResponse {
   services: {
     calculator: string;
     validator: string;
+    factors?: string;
+  };
+  factors?: {
+    version?: string | null;
+    sources?: string[];
+    count?: number;
+    path?: string;
   };
 }
 

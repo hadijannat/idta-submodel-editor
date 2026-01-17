@@ -8,10 +8,14 @@ import {
   isPCFTemplate,
   findFieldBySemanticId,
   findPcfCO2eqPath,
+  findPcfActivityList,
   pathToFormPath,
+  pathToFormItemsPath,
+  buildActivityListItems,
   generateActivityId,
 } from '../pcfUtils';
 import { PCF_SEMANTIC_IDS } from '../../../types/pcf';
+import type { PCFActivity } from '../../../types/pcf';
 
 // Helper to create a minimal schema
 const createSchema = (
@@ -44,6 +48,31 @@ const createElement = (
   category: null,
   valueType: 'xs:string',
   elements,
+});
+
+const createListElement = (
+  idShort: string,
+  itemElements: UIElementSchema[]
+): UIElementSchema => ({
+  idShort,
+  modelType: 'SubmodelElementList',
+  semanticId: null,
+  semanticLabel: null,
+  description: null,
+  qualifiers: [],
+  cardinality: '[0..*]',
+  category: null,
+  itemTemplate: {
+    idShort: 'ActivityItem',
+    modelType: 'SubmodelElementCollection',
+    semanticId: null,
+    semanticLabel: null,
+    description: null,
+    qualifiers: [],
+    cardinality: '[1]',
+    category: null,
+    elements: itemElements,
+  },
 });
 
 describe('isPCFTemplate', () => {
@@ -146,6 +175,63 @@ describe('pathToFormPath', () => {
     expect(pathToFormPath('List[0].Field')).toBe(
       'elements.List.items.0.Field.value'
     );
+  });
+});
+
+describe('pathToFormItemsPath', () => {
+  it('converts list path to items path', () => {
+    expect(pathToFormItemsPath('PCFActivities')).toBe(
+      'elements.PCFActivities.items'
+    );
+  });
+
+  it('converts nested list path to items path', () => {
+    expect(pathToFormItemsPath('Parent.PCFActivities')).toBe(
+      'elements.Parent.elements.PCFActivities.items'
+    );
+  });
+});
+
+describe('findPcfActivityList', () => {
+  it('finds list element with required activity fields', () => {
+    const listElement = createListElement('PCFActivities', [
+      createElement('ActivityName'),
+      createElement('ActivityQuantity'),
+      createElement('ActivityUnit'),
+    ]);
+    const schema = createSchema('test', [listElement]);
+    const result = findPcfActivityList(schema);
+    expect(result?.path).toBe('PCFActivities');
+  });
+});
+
+describe('buildActivityListItems', () => {
+  it('maps activity values into list item elements', () => {
+    const listElement = createListElement('PCFActivities', [
+      createElement('ActivityName'),
+      createElement('ActivityQuantity'),
+      createElement('ActivityUnit'),
+      createElement('EmissionFactorValue'),
+    ]);
+    const itemSchema = listElement.itemTemplate as UIElementSchema;
+    const activity: PCFActivity = {
+      id: 'act-1',
+      name: 'Electricity',
+      category: 'scope2',
+      quantity: 100,
+      unit: 'kWh',
+      factor_value: 0.42,
+      factor_unit: 'kg CO2e/kWh',
+      factor_source: 'EPA',
+      co2e_kg: 42,
+    };
+
+    const items = buildActivityListItems([activity], itemSchema);
+    expect(items.length).toBe(1);
+    expect(items[0].elements?.ActivityName?.value).toBe('Electricity');
+    expect(items[0].elements?.ActivityQuantity?.value).toBe(100);
+    expect(items[0].elements?.ActivityUnit?.value).toBe('kWh');
+    expect(items[0].elements?.EmissionFactorValue?.value).toBe(0.42);
   });
 });
 

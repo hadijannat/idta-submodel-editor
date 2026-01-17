@@ -136,6 +136,7 @@ class SubmodelUISchema(BaseModel):
     administration: AdministrationSchema | None = None
     elements: list[ElementSchema]
     supplementaryFiles: list[str] = Field(default_factory=list)
+    pcfActivityListInjected: bool | None = None
 
 
 class TemplateInfo(BaseModel):

@@ -9,7 +9,7 @@
  * - Apply the result to the form's PcfCO2eq field
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   EmissionFactor,
   PCFActivity,
@@ -24,6 +24,11 @@ interface PCFCalculatorProps {
   calculating: boolean;
   searchingFactors: boolean;
   factorResults: EmissionFactor[];
+  factorsMeta: {
+    version?: string | null;
+    sources?: string[];
+    count?: number;
+  } | null;
   onAddActivity: (activity?: Partial<PCFActivity>) => void;
   onUpdateActivity: (id: string, updates: Partial<PCFActivity>) => void;
   onRemoveActivity: (id: string) => void;
@@ -40,7 +45,7 @@ const CATEGORY_OPTIONS: { value: PCFActivityCategory; label: string }[] = [
   { value: 'scope3', label: 'Scope 3 (Indirect)' },
 ];
 
-const UNIT_OPTIONS = ['kg', 't', 'kWh', 'MJ', 'km', 'L', 'm³'];
+const UNIT_OPTIONS = ['kg', 't', 'kWh', 'MJ', 'km', 'tkm', 'L', 'm³'];
 
 export default function PCFCalculator({
   activities,
@@ -49,6 +54,7 @@ export default function PCFCalculator({
   calculating,
   searchingFactors,
   factorResults,
+  factorsMeta,
   onAddActivity,
   onUpdateActivity,
   onRemoveActivity,
@@ -81,8 +87,6 @@ export default function PCFCalculator({
   const handleOpenFactorSearch = (activityId: string) => {
     setSearchingForActivityId(activityId);
     setSearchQuery('');
-    // Load initial results (empty query returns all)
-    onSearchFactors('');
   };
 
   const handleCloseFactorSearch = () => {
@@ -100,11 +104,19 @@ export default function PCFCalculator({
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
-    onSearchFactors(query);
   };
 
   const hasActivities = activities.length > 0;
-  const canApply = totalCo2eKg > 0;
+  const canApply =
+    hasActivities && activities.every((activity) => activity.co2e_kg != null);
+
+  useEffect(() => {
+    if (!searchingForActivityId) return;
+    const handle = setTimeout(() => {
+      onSearchFactors(searchQuery);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery, searchingForActivityId, onSearchFactors]);
 
   return (
     <div className="pcf-calculator">
@@ -114,6 +126,15 @@ export default function PCFCalculator({
           Add emission activities to calculate the total Product Carbon
           Footprint (PCF).
         </p>
+        {factorsMeta && (factorsMeta.version || factorsMeta.count) && (
+          <p className="pcf-calculator__meta">
+            Factors dataset
+            {factorsMeta.version ? ` v${factorsMeta.version}` : ''}
+            {typeof factorsMeta.count === 'number'
+              ? ` • ${factorsMeta.count} factors`
+              : ''}
+          </p>
+        )}
       </div>
 
       {!hasActivities ? (
@@ -187,7 +208,6 @@ export default function PCFCalculator({
                             e.target.value
                           )
                         }
-                        min="0"
                         step="any"
                         className="pcf-calculator__input pcf-calculator__input--number"
                       />
@@ -391,7 +411,7 @@ export default function PCFCalculator({
             title={
               canApply
                 ? 'Apply total to PcfCO2eq field'
-                : 'Calculate first before applying'
+                : 'Calculate all activities before applying'
             }
           >
             Apply to Form

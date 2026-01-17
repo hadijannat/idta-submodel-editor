@@ -21,6 +21,8 @@ from app.schemas.ui_schema import SubmodelUISchema
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
+from app.services.pcf.activity_list import ensure_activity_list_schema
+from app.services.pcf.validator import is_pcf_template
 from app.services.validation import validate_form_data
 from app.utils.aasx_reader import SafeAASXReader
 from app.utils.semantic_resolver import (
@@ -55,6 +57,8 @@ async def get_template_schema(
             template_path = f"{template_path}/{version}"
         aasx_bytes = await fetcher.fetch_template_aasx(template_path)
         schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+        if is_pcf_template(schema):
+            schema = ensure_activity_list_schema(schema)
         schema["templateName"] = template_name
         schema["templatePath"] = template_path
         return SubmodelUISchema(**schema)
@@ -144,6 +148,8 @@ async def hydrate_template(
             template_path = f"{template_path}/{version}"
         template_bytes = await fetcher.fetch_template_aasx(template_path)
         schema = parser.parse_aasx_to_ui_schema(template_bytes)
+        if is_pcf_template(schema):
+            schema = ensure_activity_list_schema(schema)
         errors, warnings = validate_form_data(schema, form_data.model_dump())
         if errors:
             raise HTTPException(
@@ -192,6 +198,8 @@ async def hydrate_template_json(
             template_path = f"{template_path}/{version}"
         template_bytes = await fetcher.fetch_template_aasx(template_path)
         schema = parser.parse_aasx_to_ui_schema(template_bytes)
+        if is_pcf_template(schema):
+            schema = ensure_activity_list_schema(schema)
         errors, warnings = validate_form_data(schema, form_data.model_dump())
         if errors:
             raise HTTPException(
@@ -253,6 +261,8 @@ async def upload_aasx(
 
         # Parse the AASX
         schema = parser.parse_aasx_to_ui_schema(contents)
+        if is_pcf_template(schema):
+            schema = ensure_activity_list_schema(schema)
 
         return UploadResponse(
             success=True,
@@ -297,6 +307,8 @@ async def validate_form_data(
             template_path = f"{template_path}/{version}"
         aasx_bytes = await fetcher.fetch_template_aasx(template_path)
         schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+        if is_pcf_template(schema):
+            schema = ensure_activity_list_schema(schema)
 
         errors, warnings = validate_form_data(schema, form_data.model_dump())
 

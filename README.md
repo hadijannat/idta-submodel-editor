@@ -96,15 +96,20 @@ Live demo (PCF Calculator in action):
 Build emission activity tables and compute total CO₂e with a few clicks:
 
 - **Add emission activities** with name, GHG Protocol category (Scope 1/2/3), quantity, and unit
-- **Search emission factors** from a built-in database (EPA, DEFRA, ecoinvent, IEA sources)
-- **Automatic calculation** with unit conversion support (kg, t, kWh, MJ, km, L, m³)
+- **Search emission factors** from a curated dataset with source, region, and year metadata
+- **Dataset transparency** shows the emission factor dataset version and factor count in the UI
+- **Unit-aware calculations** with kg↔t conversion, freight `tkm` support, and warnings for incompatible units
+- **Per-activity + total CO₂e** plus support for negative quantities (offsets) with warnings
 - **Apply to form** writes the calculated total directly to the `PcfCO2eq` field
+- **Activity traceability** stores the full calculation payload (activities + factor metadata) in `metadata.pcf`
+- **PCFActivities list** auto-injected on export when missing, populated with activity details and `ActivityCO2eKg`
+- **Export trace** adds PCF calculation qualifiers and attaches `pcf-calculation.json` for audit-ready provenance
 
 | Screenshot | Description |
 |------------|-------------|
 | ![Add Activities](docs/pcf/pcf-step-1-activities.png) | Add emission activities with quantities and factors |
 | ![Search Factors](docs/pcf/pcf-step-2-search-factors.png) | Search and select from 20+ emission factors |
-| ![Calculate](docs/pcf/pcf-step-3-calculate.png) | Calculate total and apply to form |
+| ![Calculate](docs/pcf/pcf-step-3-calculate.png) | Calculate totals with dataset metadata and per-activity CO₂e |
 
 ### IDTA 02023 Validator
 
@@ -128,7 +133,7 @@ The built-in database includes common emission factors from recognized authoriti
 | Materials | Steel, aluminum, plastics (primary & recycled) | ecoinvent |
 | Water | Supply and treatment | DEFRA |
 
-Factors include value, unit, source reference, region, and year for full traceability.
+Factors include value, unit, source reference, region, and year for full traceability. The UI surfaces dataset version/count via `/api/pcf/health`.
 
 ## Architecture
 
@@ -291,7 +296,7 @@ npm run type-check
 - `POST /api/pcf/validate` - Validate PCF form data against IDTA 02023 rules
 - `GET /api/pcf/factors/search` - Search emission factors by name, source, or region
 - `GET /api/pcf/factors/{factor_id}` - Get a specific emission factor by ID
-- `GET /api/pcf/health` - Check PCF service health status
+- `GET /api/pcf/health` - PCF service health + emission factor dataset metadata
 
 ## Supported Element Types
 

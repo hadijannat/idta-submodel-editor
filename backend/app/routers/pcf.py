@@ -16,6 +16,7 @@ from app.schemas.pcf import (
 from app.services.pcf.calculator import calculate_co2e
 from app.services.pcf.emission_factors import (
     get_emission_factor_by_id,
+    get_emission_factors_metadata,
     search_emission_factors,
 )
 from app.services.pcf.validator import validate_pcf
@@ -67,6 +68,7 @@ def health_check() -> dict:
             "validator": "available",
             "factors": "available",
         },
+        "factors": get_emission_factors_metadata(),
     }
 
 

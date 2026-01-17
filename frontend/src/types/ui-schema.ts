@@ -140,6 +140,7 @@ export interface SubmodelUISchema {
   administration: AdministrationSchema | null;
   elements: UIElementSchema[];
   supplementaryFiles: string[];
+  pcfActivityListInjected?: boolean | null;
 }
 
 /**

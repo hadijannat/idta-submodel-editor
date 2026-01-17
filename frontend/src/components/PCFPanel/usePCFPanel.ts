@@ -2,7 +2,7 @@
  * Hook for managing PCF Calculator & Validator state.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelUISchema } from '../../types/ui-schema';
 import type { SubmodelFormData } from '../../types/aas-elements';
@@ -10,16 +10,21 @@ import type {
   EmissionFactor,
   PCFActivity,
   PCFCalculateResponse,
+  PCFHealthResponse,
   PCFValidateResponse,
 } from '../../types/pcf';
 import {
   calculatePCF,
+  checkPCFHealth,
   searchEmissionFactors,
   validatePCF,
 } from '../../services/pcfApi';
 import {
   findPcfCO2eqPath,
+  findPcfActivityList,
+  buildActivityListItems,
   generateActivityId,
+  pathToFormItemsPath,
   pathToFormPath,
 } from './pcfUtils';
 
@@ -48,6 +53,8 @@ interface UsePCFPanelReturn {
   searchingFactors: boolean;
   /** Emission factor search results */
   factorResults: EmissionFactor[];
+  /** Emission factors metadata */
+  factorsMeta: PCFHealthResponse['factors'] | null;
   /** Error message */
   error: string | null;
   /** Add a new activity */
@@ -94,7 +101,27 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
   const [validating, setValidating] = useState(false);
   const [searchingFactors, setSearchingFactors] = useState(false);
   const [factorResults, setFactorResults] = useState<EmissionFactor[]>([]);
+  const [factorsMeta, setFactorsMeta] = useState<
+    PCFHealthResponse['factors'] | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!schema) return () => undefined;
+    checkPCFHealth()
+      .then((response) => {
+        if (!active) return;
+        setFactorsMeta(response.factors ?? null);
+      })
+      .catch(() => {
+        if (!active) return;
+        setFactorsMeta(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [schema]);
 
   // Add a new activity
   const addActivity = useCallback((activity?: Partial<PCFActivity>) => {
@@ -106,7 +133,11 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
       unit: activity?.unit ?? 'kg',
       factor_value: activity?.factor_value ?? 0,
       factor_unit: activity?.factor_unit ?? 'kg CO2e/kg',
+      factor_id: activity?.factor_id ?? null,
+      factor_name: activity?.factor_name ?? null,
       factor_source: activity?.factor_source ?? null,
+      factor_region: activity?.factor_region ?? null,
+      factor_year: activity?.factor_year ?? null,
       co2e_kg: null,
     };
 
@@ -202,8 +233,11 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
 
   // Apply calculated total to form
   const applyToForm = useCallback(() => {
-    if (workspace.totalCo2eKg === 0) {
-      setError('Calculate first before applying to form');
+    const hasCalculated =
+      workspace.activities.length > 0 &&
+      workspace.activities.every((activity) => activity.co2e_kg != null);
+    if (!hasCalculated) {
+      setError('Calculate all activities before applying to form');
       return;
     }
 
@@ -224,8 +258,46 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (form.setValue as any)(formPath, String(workspace.totalCo2eKg));
 
+    const activityList = findPcfActivityList(schema);
+    if (activityList) {
+      const itemsPath = pathToFormItemsPath(activityList.path);
+      const items = buildActivityListItems(
+        workspace.activities,
+        activityList.itemSchema
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (form.setValue as any)(itemsPath, items, { shouldDirty: true });
+    }
+
+    const tracePayload = {
+      generatedAt: new Date().toISOString(),
+      totalCo2eKg: workspace.totalCo2eKg,
+      warnings: workspace.warnings,
+      activities: workspace.activities.map((activity) => ({
+        id: activity.id,
+        name: activity.name,
+        category: activity.category,
+        quantity: activity.quantity,
+        unit: activity.unit,
+        factor_value: activity.factor_value,
+        factor_unit: activity.factor_unit,
+        factor_id: activity.factor_id ?? null,
+        factor_name: activity.factor_name ?? null,
+        factor_source: activity.factor_source ?? null,
+        factor_region: activity.factor_region ?? null,
+        factor_year: activity.factor_year ?? null,
+        co2e_kg: activity.co2e_kg ?? null,
+      })),
+    };
+
+    // Persist trace payload in metadata for export/audit purposes
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (form.setValue as any)('metadata.pcf', tracePayload, {
+      shouldDirty: true,
+    });
+
     setError(null);
-  }, [workspace.totalCo2eKg, schema, form]);
+  }, [workspace.totalCo2eKg, workspace.activities, workspace.warnings, schema, form]);
 
   // Set declared unit
   const setDeclaredUnit = useCallback((unit: string) => {
@@ -270,6 +342,10 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
                 factor_value: factor.factor_value,
                 factor_unit: factor.factor_unit,
                 factor_source: factor.source,
+                factor_id: factor.id,
+                factor_name: factor.name,
+                factor_region: factor.region ?? null,
+                factor_year: factor.year ?? null,
                 name: a.name || factor.name,
                 co2e_kg: null, // Reset calculated value
               }
@@ -289,6 +365,7 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     validating,
     searchingFactors,
     factorResults,
+    factorsMeta,
     error,
     addActivity,
     updateActivity,

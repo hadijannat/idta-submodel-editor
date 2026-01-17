@@ -27,6 +27,12 @@
   color: var(--text-secondary, #666);
 }
 
+.pcf-calculator__meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #666);
+}
+
 /* Empty state */
 .pcf-calculator__empty {
   display: flex;

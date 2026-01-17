@@ -221,3 +221,54 @@ def test_activity_preserves_existing_co2e_if_provided():
 
     # Should recalculate, not use the preset value
     assert response.activities[0].co2e_kg == pytest.approx(50.0)
+
+
+def test_calculate_with_unit_mismatch_skips_activity():
+    """Incompatible units should skip calculation and emit warning."""
+    from app.schemas.pcf import PCFActivity, PCFCalculateRequest
+    from app.services.pcf.calculator import calculate_co2e
+
+    request = PCFCalculateRequest(
+        activities=[
+            PCFActivity(
+                id="act-mismatch",
+                name="Mismatch",
+                category="scope2",
+                quantity=100.0,
+                unit="kg",
+                factor_value=0.42,
+                factor_unit="kg CO2e/kWh",
+            )
+        ]
+    )
+
+    response = calculate_co2e(request)
+
+    assert response.activities[0].co2e_kg is None
+    assert response.total_co2e_kg == pytest.approx(0.0)
+    assert any("does not match" in w.lower() for w in response.warnings)
+
+
+def test_calculate_with_tkm_unit():
+    """Transport unit tkm should calculate normally."""
+    from app.schemas.pcf import PCFActivity, PCFCalculateRequest
+    from app.services.pcf.calculator import calculate_co2e
+
+    request = PCFCalculateRequest(
+        activities=[
+            PCFActivity(
+                id="act-tkm",
+                name="Road Freight",
+                category="scope3",
+                quantity=200.0,
+                unit="tkm",
+                factor_value=0.1,
+                factor_unit="kg CO2e/tkm",
+            )
+        ]
+    )
+
+    response = calculate_co2e(request)
+
+    assert response.activities[0].co2e_kg == pytest.approx(20.0)
+    assert response.total_co2e_kg == pytest.approx(20.0)

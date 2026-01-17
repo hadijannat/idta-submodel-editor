@@ -23,7 +23,7 @@ The following screenshots are referenced in the main README and should be captur
 |------|-------------|
 | `pcf-step-1-activities.png` | Activity table with 2-3 emission activities added (electricity, transport, materials) |
 | `pcf-step-2-search-factors.png` | Emission factor search modal open with search results visible |
-| `pcf-step-3-calculate.png` | Calculated results showing total CO2e and individual activity values |
+| `pcf-step-3-calculate.png` | Calculated results showing dataset metadata, total CO2e, and per-activity values |
 
 ## Capturing Screenshots
 
@@ -47,7 +47,7 @@ Example activities to add for visually appealing screenshots:
 | Activity | Category | Quantity | Unit | Factor | Factor Unit |
 |----------|----------|----------|------|--------|-------------|
 | Grid Electricity | Scope 2 | 10000 | kWh | 0.417 | kg CO2e/kWh |
-| Truck Transport | Scope 3 | 500 | km | 0.107 | kg CO2e/tkm |
+| Truck Transport | Scope 3 | 500 | tkm | 0.107 | kg CO2e/tkm |
 | Steel Components | Scope 3 | 100 | kg | 2.1 | kg CO2e/kg |
 
 This gives a total of ~4,393.5 kg CO2e - a realistic value for demonstration.
@@ -60,6 +60,8 @@ Use a screen recording tool (e.g., Kap on macOS, LICEcap, or ShareX on Windows) 
 - Frame rate: 10-15 fps
 - Duration: 30-60 seconds
 - Focus on the PCF panel area
+- Ensure the dataset metadata banner is visible (version + factor count)
+- The PCF activity list injection banner should appear if the template lacks `PCFActivities`
 
 ## Feature Overview
 
@@ -68,6 +70,7 @@ Use a screen recording tool (e.g., Kap on macOS, LICEcap, or ShareX on Windows) 
 - **PCFCalculator**: Activity table with factor search integration
 - **PCFValidator**: IDTA 02023 compliance checker
 - **PCFPanel**: Container combining both tools
+- **PCFActivities injection**: Adds a list-based activity trace when the template is missing one
 
 ### API Endpoints
 
@@ -77,6 +80,7 @@ Use a screen recording tool (e.g., Kap on macOS, LICEcap, or ShareX on Windows) 
 | `/api/pcf/validate` | POST | Validate against IDTA 02023 |
 | `/api/pcf/factors/search` | GET | Search emission factors |
 | `/api/pcf/factors/{id}` | GET | Get factor by ID |
+| `/api/pcf/health` | GET | Health + emission factor dataset metadata |
 
 ### Emission Factors Database
 
