@@ -5,10 +5,15 @@
  * Passport mode renders a card visualization of the form data.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useTransition, useRef } from 'react';
 import type { SubmodelUISchema } from '../../types/ui-schema';
 import type { SubmodelFormData } from '../../types/aas-elements';
 import PassportCard from './PassportCard';
+import PassportSkeleton from './PassportSkeleton';
+import { ErrorBoundary } from './ErrorBoundary';
+import { ExportButton } from './ExportButton';
+import { detectPassportType } from './utils/passportRegistry';
+import { usePassportI18n } from './i18n';
 import './PassportMode.css';
 
 const STORAGE_KEY = 'passport-mode-preference';
@@ -31,8 +36,10 @@ export function PassportModeToggle({
   editorId,
   passportId,
 }: PassportModeToggleProps) {
+  const { t } = usePassportI18n();
+
   return (
-    <div className="passport-mode-toggle" role="group" aria-label="View mode">
+    <div className="passport-mode-toggle" role="group" aria-label={t('toggle.viewModeLabel')}>
       <button
         type="button"
         aria-pressed={mode === 'editor'}
@@ -46,7 +53,7 @@ export function PassportModeToggle({
             <path d="M12.146.854a.5.5 0 0 1 .708 0l2.292 2.292a.5.5 0 0 1 0 .708l-9.5 9.5a.5.5 0 0 1-.168.11l-4 1.5a.5.5 0 0 1-.65-.65l1.5-4a.5.5 0 0 1 .11-.168l9.5-9.5zM11.207 2L2 11.207V12h.793L12 2.793 11.207 2z" />
           </svg>
         </span>
-        Editor
+        {t('toggle.editor')}
       </button>
       <button
         type="button"
@@ -62,7 +69,7 @@ export function PassportModeToggle({
             <path d="M6 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0h2a.5.5 0 0 0 0-1H9a.5.5 0 0 0 0 1zm-3 2a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0h2a.5.5 0 0 0 0-1H9a.5.5 0 0 0 0 1z" />
           </svg>
         </span>
-        Passport View
+        {t('toggle.passportView')}
       </button>
     </div>
   );
@@ -79,6 +86,7 @@ interface PassportViewProps {
  *
  * Renders either the editor (children) or the passport card visualization.
  * Uses CSS display:none to hide the inactive view, preserving form state.
+ * Shows a skeleton during mode transitions for smoother UX.
  */
 export function PassportView({ schema, formData, children }: PassportViewProps) {
   const [mode, setMode] = useState<ViewMode>(() => {
@@ -91,6 +99,28 @@ export function PassportView({ schema, formData, children }: PassportViewProps) 
     }
     return 'editor';
   });
+
+  // Use transition for smoother mode switches
+  const [isPending, startTransition] = useTransition();
+  const [showSkeleton, setShowSkeleton] = useState(false);
+
+  // Ref for the passport card container (used for export)
+  const cardContainerRef = useRef<HTMLDivElement>(null);
+
+  // Handle mode change with transition
+  const handleModeChange = (newMode: ViewMode) => {
+    if (newMode === 'passport' && mode !== 'passport') {
+      // Show skeleton briefly when switching to passport mode
+      setShowSkeleton(true);
+      startTransition(() => {
+        setMode(newMode);
+      });
+      // Hide skeleton after a short delay
+      setTimeout(() => setShowSkeleton(false), 150);
+    } else {
+      setMode(newMode);
+    }
+  };
 
   // Persist preference
   useEffect(() => {
@@ -105,15 +135,28 @@ export function PassportView({ schema, formData, children }: PassportViewProps) 
   const passportId = 'passport-card-panel';
   const isEditor = mode === 'editor';
   const isPassport = mode === 'passport';
+  const cardType = detectPassportType(schema);
+  const isCardVisible = isPassport && !showSkeleton && !isPending;
 
   return (
     <>
-      <PassportModeToggle
-        mode={mode}
-        onModeChange={setMode}
-        editorId={editorId}
-        passportId={passportId}
-      />
+      <div className="passport-mode-header">
+        <PassportModeToggle
+          mode={mode}
+          onModeChange={handleModeChange}
+          editorId={editorId}
+          passportId={passportId}
+        />
+
+        {/* Export button - only visible in passport mode */}
+        {isPassport && (
+          <ExportButton
+            cardRef={cardContainerRef}
+            passportType={cardType}
+            disabled={!isCardVisible}
+          />
+        )}
+      </div>
 
       {/* Editor content - hidden via CSS when in passport mode */}
       <div
@@ -132,7 +175,17 @@ export function PassportView({ schema, formData, children }: PassportViewProps) 
         hidden={!isPassport}
         aria-hidden={!isPassport}
       >
-        {isPassport && <PassportCard schema={schema} formData={formData} />}
+        {isPassport && (
+          <ErrorBoundary>
+            {(showSkeleton || isPending) ? (
+              <PassportSkeleton cardType={cardType} />
+            ) : (
+              <div ref={cardContainerRef} className="passport-card-export-container">
+                <PassportCard schema={schema} formData={formData} />
+              </div>
+            )}
+          </ErrorBoundary>
+        )}
       </div>
     </>
   );
@@ -175,6 +228,14 @@ export function usePassportMode() {
 }
 
 export { PassportCard };
+export { default as PassportSkeleton } from './PassportSkeleton';
+export { ErrorBoundary };
+export { ExportButton } from './ExportButton';
 // eslint-disable-next-line react-refresh/only-export-components
 export { detectPassportType, getCardTypeLabel } from './utils/passportRegistry';
 export type { PassportCardType } from './utils/passportRegistry';
+
+// i18n exports
+// eslint-disable-next-line react-refresh/only-export-components
+export { usePassportI18n, PassportI18nProvider, detectLocale, DEFAULT_LOCALE } from './i18n';
+export type { PassportLocale, PassportTranslations, TranslationKey } from './i18n';

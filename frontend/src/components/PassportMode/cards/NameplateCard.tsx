@@ -17,6 +17,8 @@ import {
   findMatchingElements,
   resolveSchemaElements,
 } from '../utils/schemaIndex';
+import { usePassportI18n } from '../i18n';
+import type { TranslationKey } from '../i18n';
 
 interface NameplateCardProps {
   schema: SubmodelUISchema; // Used for type consistency with other cards
@@ -30,7 +32,7 @@ interface NameplateCardProps {
  */
 interface NameplateField {
   key: string;
-  label: string;
+  labelKey: TranslationKey;
   semanticIdPatterns?: RegExp[];
   idShortPatterns?: RegExp[];
   fullWidth?: boolean;
@@ -40,7 +42,7 @@ interface NameplateField {
 const NAMEPLATE_FIELDS: NameplateField[] = [
   {
     key: 'serial',
-    label: 'Serial Number',
+    labelKey: 'nameplate.fields.serialNumber',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABA951#009/i],
     idShortPatterns: [/SerialNumber/i],
     fullWidth: true,
@@ -48,54 +50,54 @@ const NAMEPLATE_FIELDS: NameplateField[] = [
   },
   {
     key: 'productType',
-    label: 'Manufacturer Product Type',
+    labelKey: 'nameplate.fields.manufacturerProductType',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABA300#008/i],
     idShortPatterns: [/ManufacturerProductType/i],
   },
   {
     key: 'year',
-    label: 'Year of Construction',
+    labelKey: 'nameplate.fields.yearOfConstruction',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABP000#002/i],
     idShortPatterns: [/YearOfConstruction/i],
   },
   {
     key: 'country',
-    label: 'Country of Origin',
+    labelKey: 'nameplate.fields.countryOfOrigin',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABP462#001/i],
     idShortPatterns: [/CountryOfOrigin/i],
   },
   {
     key: 'orderCode',
-    label: 'Order Code',
+    labelKey: 'nameplate.fields.orderCode',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABA950#008/i],
     idShortPatterns: [/OrderCodeOfManufacturer/i, /OrderCode/i],
   },
   {
     key: 'batch',
-    label: 'Batch Number',
+    labelKey: 'nameplate.fields.batchNumber',
     idShortPatterns: [/BatchNumber/i],
   },
   {
     key: 'articleNumber',
-    label: 'Product Article Number',
+    labelKey: 'nameplate.fields.productArticleNumber',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABA581#007/i],
     idShortPatterns: [/ProductArticleNumberOfManufacturer/i, /ProductArticleNumber/i],
   },
   {
     key: 'hardware',
-    label: 'Hardware Version',
+    labelKey: 'nameplate.fields.hardwareVersion',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABA926#008/i],
     idShortPatterns: [/HardwareVersion/i],
   },
   {
     key: 'firmware',
-    label: 'Firmware Version',
+    labelKey: 'nameplate.fields.firmwareVersion',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABA302#006/i],
     idShortPatterns: [/FirmwareVersion/i],
   },
   {
     key: 'software',
-    label: 'Software Version',
+    labelKey: 'nameplate.fields.softwareVersion',
     semanticIdPatterns: [/0112\/2\/\/\/61987#ABA601#008/i],
     idShortPatterns: [/SoftwareVersion/i],
   },
@@ -181,6 +183,7 @@ function buildMarkerGradient(seed: string): string {
  * NameplateCard component.
  */
 export default function NameplateCard({ schema, formData }: NameplateCardProps) {
+  const { t } = usePassportI18n();
   const resolvedElements = resolveSchemaElements(schema, formData);
   const preferredLangs = ['en', 'de'];
 
@@ -189,6 +192,7 @@ export default function NameplateCard({ schema, formData }: NameplateCardProps) 
 
   const fields = NAMEPLATE_FIELDS.map((field) => ({
     ...field,
+    label: t(field.labelKey),
     value: findFirstValue(
       resolvedElements,
       {
@@ -212,8 +216,8 @@ export default function NameplateCard({ schema, formData }: NameplateCardProps) 
     return (
       <div className="nameplate-card">
         <div className="nameplate-empty">
-          <p>No nameplate data entered yet.</p>
-          <p>Switch to Editor mode to fill in manufacturer and product information.</p>
+          <p>{t('nameplate.emptyMessage')}</p>
+          <p>{t('nameplate.emptyHint')}</p>
         </div>
         <div className="nameplate-rivets-bottom" />
       </div>
@@ -229,9 +233,9 @@ export default function NameplateCard({ schema, formData }: NameplateCardProps) 
       </div>
 
       {markerPattern && (
-        <div className="nameplate-marker" aria-label="Identifier marker">
+        <div className="nameplate-marker" aria-label={t('nameplate.identifierMarker')}>
           <div className="nameplate-marker-bar" style={{ backgroundImage: markerPattern }} />
-          <span className="nameplate-marker-label">Identifier marker</span>
+          <span className="nameplate-marker-label">{t('nameplate.identifierMarker')}</span>
         </div>
       )}
 

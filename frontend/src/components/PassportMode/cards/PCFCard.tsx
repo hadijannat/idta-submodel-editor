@@ -21,6 +21,8 @@ import {
   resolveSchemaElements,
 } from '../utils/schemaIndex';
 import { buildPieSlices } from '../utils/pieChart';
+import { usePassportI18n } from '../i18n';
+import type { TranslationKey } from '../i18n';
 
 interface PCFCardProps {
   schema: SubmodelUISchema;
@@ -88,34 +90,45 @@ const VALUE_MATCH: ElementMatcher = {
 };
 
 /**
+ * Phase code to translation key mapping.
+ */
+const PHASE_KEYS: Record<string, TranslationKey> = {
+  A1: 'pcf.phases.A1',
+  A2: 'pcf.phases.A2',
+  A3: 'pcf.phases.A3',
+  'A1-A3': 'pcf.phases.A1-A3',
+  A4: 'pcf.phases.A4',
+  A5: 'pcf.phases.A5',
+  B1: 'pcf.phases.B1',
+  B2: 'pcf.phases.B2',
+  B3: 'pcf.phases.B3',
+  B4: 'pcf.phases.B4',
+  B5: 'pcf.phases.B5',
+  B6: 'pcf.phases.B6',
+  B7: 'pcf.phases.B7',
+  C1: 'pcf.phases.C1',
+  C2: 'pcf.phases.C2',
+  C3: 'pcf.phases.C3',
+  C4: 'pcf.phases.C4',
+  D: 'pcf.phases.D',
+};
+
+/**
  * Map life cycle phase codes to readable names.
  */
-function getPhaseLabel(code: string | number | boolean | undefined): string {
-  if (!code) return 'Unknown';
+function getPhaseLabel(
+  code: string | number | boolean | undefined,
+  t: (key: TranslationKey) => string
+): string {
+  if (!code) return t('pcf.unknownPhase');
   const codeStr = String(code);
 
-  const mapping: Record<string, string> = {
-    A1: 'Raw Material Supply',
-    A2: 'Transport',
-    A3: 'Manufacturing',
-    'A1-A3': 'Cradle to Gate',
-    A4: 'Distribution',
-    A5: 'Installation',
-    B1: 'Use',
-    B2: 'Maintenance',
-    B3: 'Repair',
-    B4: 'Replacement',
-    B5: 'Refurbishment',
-    B6: 'Operational Energy',
-    B7: 'Operational Water',
-    C1: 'Deconstruction',
-    C2: 'Transport (EoL)',
-    C3: 'Waste Processing',
-    C4: 'Disposal',
-    D: 'Benefits & Loads',
-  };
+  const translationKey = PHASE_KEYS[codeStr];
+  if (translationKey) {
+    return t(translationKey);
+  }
 
-  return mapping[codeStr] || codeStr;
+  return codeStr;
 }
 
 function formatNumber(value: number): string {
@@ -163,7 +176,8 @@ function findFirstString(
 }
 
 function extractPhaseBreakdown(
-  contexts: ReturnType<typeof collectResolvedContexts>
+  contexts: ReturnType<typeof collectResolvedContexts>,
+  t: (key: TranslationKey) => string
 ): { phases: LifeCyclePhase[]; unit?: string } {
   const phaseMap = new Map<string, number>();
   const orderedLabels: string[] = [];
@@ -196,7 +210,7 @@ function extractPhaseBreakdown(
     }
 
     if (!phaseValue || numericValue === undefined) return;
-    const label = getPhaseLabel(phaseValue);
+    const label = getPhaseLabel(phaseValue, t);
 
     if (!phaseMap.has(label)) {
       orderedLabels.push(label);
@@ -220,13 +234,14 @@ function extractPhaseBreakdown(
  * PCFCard component.
  */
 export default function PCFCard({ schema, formData }: PCFCardProps) {
+  const { t } = usePassportI18n();
   const resolvedElements = resolveSchemaElements(schema, formData);
   const contexts = collectResolvedContexts(schema, formData);
 
   const totalResult = findFirstNumber(resolvedElements, TOTAL_MATCH);
   const reference = findFirstString(resolvedElements, REFERENCE_MATCH);
   const method = findFirstString(resolvedElements, METHOD_MATCH);
-  const phaseBreakdown = extractPhaseBreakdown(contexts);
+  const phaseBreakdown = extractPhaseBreakdown(contexts, t);
   const phases = phaseBreakdown.phases;
 
   const derivedTotal = phases.reduce((sum, phase) => sum + phase.value, 0);
@@ -253,12 +268,12 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
     return (
       <div className="passport-card pcf-card">
         <div className="pcf-header">
-          <h2>Product Carbon Footprint</h2>
+          <h2>{t('pcf.title')}</h2>
           <p>{schema.idShort}</p>
         </div>
         <div className="pcf-empty">
-          <p>No carbon footprint data entered yet.</p>
-          <p>Switch to Editor mode to fill in PCF values.</p>
+          <p>{t('pcf.emptyMessage')}</p>
+          <p>{t('pcf.emptyHint')}</p>
         </div>
       </div>
     );
@@ -268,20 +283,20 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
     <div className="passport-card pcf-card">
       {/* Header */}
       <div className="pcf-header">
-        <h2>Product Carbon Footprint</h2>
+        <h2>{t('pcf.title')}</h2>
         <p>{schema.idShort}</p>
       </div>
 
       {/* Main CO2eq metric */}
       <div className="pcf-main-metric">
-        <span className="pcf-metric-label">Total CO₂e</span>
+        <span className="pcf-metric-label">{t('pcf.totalCo2e')}</span>
         <span className="pcf-co2-value">
           {formatNumber(total!)}
           {unit && <span className="pcf-co2-unit">{unit}</span>}
         </span>
-        {reference && <p className="pcf-reference">per {reference}</p>}
+        {reference && <p className="pcf-reference">{t('pcf.perUnit', { unit: reference })}</p>}
         {hasTotal && totalSource === 'derived' && (
-          <p className="pcf-derivation-note">Total derived from phase breakdown.</p>
+          <p className="pcf-derivation-note">{t('pcf.derivedNote')}</p>
         )}
       </div>
 
@@ -293,8 +308,8 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
             role="img"
             aria-label={
               pieSummary
-                ? `Carbon footprint breakdown: ${pieSummary}`
-                : 'Carbon footprint breakdown by lifecycle phase'
+                ? t('pcf.chartAriaLabelWithBreakdown', { breakdown: pieSummary })
+                : t('pcf.chartAriaLabel')
             }
           >
             <svg viewBox="0 0 160 160" aria-hidden="true">
@@ -324,7 +339,7 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
 
       {!hasPhases && (
         <div className="pcf-breakdown-missing">
-          Breakdown not available in this dataset.
+          {t('pcf.breakdownMissing')}
         </div>
       )}
 
@@ -333,13 +348,13 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
         <div className="pcf-details-grid">
           {method && (
             <div className="pcf-detail-item">
-              <span className="pcf-detail-label">Calculation Method</span>
+              <span className="pcf-detail-label">{t('pcf.calculationMethod')}</span>
               <span className="pcf-detail-value">{method}</span>
             </div>
           )}
           {reference && (
             <div className="pcf-detail-item">
-              <span className="pcf-detail-label">Reference Unit</span>
+              <span className="pcf-detail-label">{t('pcf.referenceUnit')}</span>
               <span className="pcf-detail-value">{reference}</span>
             </div>
           )}
@@ -349,13 +364,13 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
         {hasPhases && (
           <table className="pcf-data-table">
             <caption className="visually-hidden">
-              Carbon footprint breakdown by lifecycle phase
+              {t('pcf.chartAriaLabel')}
             </caption>
             <thead>
               <tr>
-                <th scope="col">Lifecycle Phase</th>
+                <th scope="col">{t('pcf.lifecyclePhase')}</th>
                 <th scope="col" className="value-cell">
-                  CO₂e{unit ? ` (${unit})` : ''}
+                  {t('common.co2e')}{unit ? ` (${unit})` : ''}
                 </th>
               </tr>
             </thead>

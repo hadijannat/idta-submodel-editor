@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { SubmodelUISchema, UIElementSchema } from '../../../types/ui-schema';
@@ -60,7 +60,11 @@ describe('PassportView integration', () => {
 
     expect(editor).toBeInTheDocument();
     expect(editor).not.toBeVisible();
-    expect(screen.getByText('123')).toBeInTheDocument();
+
+    // Wait for skeleton to disappear and content to show (150ms delay + useTransition)
+    await waitFor(() => {
+      expect(screen.getByText('123')).toBeInTheDocument();
+    }, { timeout: 500 });
 
     rerender(
       <PassportView schema={schema} formData={makeFormData('456')}>
@@ -68,6 +72,8 @@ describe('PassportView integration', () => {
       </PassportView>
     );
 
-    expect(screen.getByText('456')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('456')).toBeInTheDocument();
+    }, { timeout: 500 });
   });
 });

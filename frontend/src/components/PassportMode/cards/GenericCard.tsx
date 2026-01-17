@@ -17,6 +17,8 @@ import {
   isProvided,
   formatValue,
 } from '../utils/valueExtractors';
+import { usePassportI18n } from '../i18n';
+import type { TranslationKey } from '../i18n';
 
 const MAX_DEPTH = 4;
 
@@ -94,13 +96,19 @@ function extractElementValue(
 }
 
 /**
+ * Translation function type for i18n.
+ */
+type TranslateFunc = (key: TranslationKey, params?: Record<string, string | number>) => string;
+
+/**
  * Recursively render elements from the schema.
  */
 function renderElements(
   elements: UIElementSchema[],
   formData: SubmodelFormData | undefined,
   basePath: string,
-  depth: number
+  depth: number,
+  t: TranslateFunc
 ): React.ReactNode {
   if (depth > MAX_DEPTH || !elements.length) {
     return null;
@@ -119,7 +127,8 @@ function renderElements(
         element.elements,
         formData,
         `${path}.elements`,
-        depth + 1
+        depth + 1,
+        t
       );
 
       if (childContent) {
@@ -151,11 +160,11 @@ function renderElements(
         nestedSections.push(
           <div key={element.idShort} className="generic-nested">
             <div className="generic-nested-title">
-              {element.semanticLabel || element.idShort} ({displayItems.length} items)
+              {element.semanticLabel || element.idShort} ({t('generic.itemsCount', { count: displayItems.length })})
             </div>
             {displayItems.map((item) => (
               <div key={item.index} className="generic-field">
-                <span className="generic-field-label">Item {item.index + 1}</span>
+                <span className="generic-field-label">{t('generic.itemLabel', { index: item.index + 1 })}</span>
                 <span className="generic-field-value">
                   {renderValueNode(item.value!)}
                 </span>
@@ -235,7 +244,8 @@ function renderListItem(item: ElementFormData): string | null {
  * GenericCard component.
  */
 export default function GenericCard({ schema, formData }: GenericCardProps) {
-  const content = renderElements(schema.elements, formData, 'elements', 0);
+  const { t } = usePassportI18n();
+  const content = renderElements(schema.elements, formData, 'elements', 0, t);
 
   const hasContent = content !== null;
 
@@ -251,14 +261,14 @@ export default function GenericCard({ schema, formData }: GenericCardProps) {
           content
         ) : (
           <div className="generic-empty">
-            <p>No data entered yet.</p>
-            <p>Switch to Editor mode to fill in the form fields.</p>
+            <p>{t('generic.emptyMessage')}</p>
+            <p>{t('generic.emptyHint')}</p>
           </div>
         )}
       </div>
 
       <div className="passport-card-footer">
-        {schema.templateName && <span>Template: {schema.templateName}</span>}
+        {schema.templateName && <span>{t('generic.templateLabel')} {schema.templateName}</span>}
       </div>
     </div>
   );

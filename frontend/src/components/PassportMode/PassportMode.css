@@ -84,6 +84,104 @@
 }
 
 /* ============================================================================
+   Passport Mode Header (Toggle + Export)
+   ============================================================================ */
+
+.passport-mode-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.passport-mode-header .passport-mode-toggle {
+  margin-bottom: 0;
+  flex: 1;
+  max-width: 320px;
+}
+
+/* ============================================================================
+   Export Button
+   ============================================================================ */
+
+.passport-export-button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--passport-bg);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.passport-export-button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(var(--color-primary-rgb, 59, 130, 246), 0.05);
+}
+
+.passport-export-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.passport-export-button:disabled,
+.passport-export-button--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.passport-export-button--loading {
+  cursor: wait;
+}
+
+.passport-export-button--success {
+  border-color: var(--pcf-primary);
+  color: var(--pcf-primary);
+}
+
+.passport-export-button--error {
+  border-color: var(--color-error, #dc2626);
+  color: var(--color-error, #dc2626);
+}
+
+.passport-export-button-text {
+  display: inline;
+}
+
+/* Spinner animation */
+.passport-export-spinner {
+  animation: passport-export-spin 1s linear infinite;
+}
+
+@keyframes passport-export-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .passport-export-spinner {
+    animation: none;
+  }
+}
+
+/* Export container - provides export boundaries */
+.passport-card-export-container {
+  display: contents;
+}
+
+/* ============================================================================
    Passport Card Base
    ============================================================================ */
 
@@ -573,6 +671,265 @@
 }
 
 /* ============================================================================
+   Error Boundary
+   ============================================================================ */
+
+.passport-error-boundary {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--spacing-xl);
+  background: var(--passport-bg);
+  border: 1px solid var(--passport-border);
+  border-radius: var(--passport-radius);
+  box-shadow: var(--passport-shadow);
+}
+
+.passport-error-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--spacing-md);
+}
+
+.passport-error-icon {
+  color: #dc2626;
+  opacity: 0.8;
+}
+
+.passport-error-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.passport-error-message {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-light);
+  max-width: 400px;
+}
+
+.passport-error-details {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+  font-family: var(--font-mono);
+}
+
+.passport-error-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.passport-error-retry {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.passport-error-retry:hover {
+  background: var(--color-primary-dark, #1d4ed8);
+}
+
+.passport-error-retry:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.passport-error-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================================
+   Loading Skeleton
+   ============================================================================ */
+
+@keyframes passport-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.passport-skeleton-container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.passport-skeleton {
+  background: var(--passport-bg);
+  border: 1px solid var(--passport-border);
+  border-radius: var(--passport-radius);
+  box-shadow: var(--passport-shadow);
+  overflow: hidden;
+}
+
+.passport-skeleton-box {
+  background: linear-gradient(
+    90deg,
+    #e5e7eb 0%,
+    #f3f4f6 40%,
+    #e5e7eb 80%
+  );
+  background-size: 200% 100%;
+  animation: passport-shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+.passport-skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--spacing-md);
+}
+
+.passport-skeleton-row:last-child {
+  margin-bottom: 0;
+}
+
+.skeleton-margin-top {
+  margin-top: var(--spacing-sm);
+}
+
+.skeleton-circle {
+  border-radius: 50%;
+}
+
+.skeleton-section-title {
+  margin-bottom: var(--spacing-sm);
+}
+
+/* Nameplate skeleton */
+.nameplate-skeleton {
+  padding: var(--spacing-xl);
+}
+
+.nameplate-skeleton .passport-skeleton-header {
+  text-align: center;
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.nameplate-skeleton .passport-skeleton-marker {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.nameplate-skeleton .passport-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+}
+
+/* PCF skeleton */
+.pcf-skeleton .passport-skeleton-header {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pcf-skeleton-header {
+  background: linear-gradient(135deg, var(--pcf-primary) 0%, var(--pcf-accent) 100%);
+}
+
+.pcf-skeleton-header .passport-skeleton-box {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.4) 40%,
+    rgba(255, 255, 255, 0.2) 80%
+  );
+  background-size: 200% 100%;
+}
+
+.pcf-skeleton .passport-skeleton-metric {
+  padding: var(--spacing-xl);
+  background: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pcf-skeleton .passport-skeleton-chart {
+  padding: var(--spacing-lg);
+  display: flex;
+  gap: var(--spacing-xl);
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.pcf-skeleton .passport-skeleton-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 180px;
+}
+
+.pcf-skeleton .passport-skeleton-details {
+  padding: var(--spacing-lg);
+  background: white;
+  border-top: 1px solid #d1fae5;
+}
+
+/* Generic skeleton */
+.generic-skeleton .passport-skeleton-header {
+  padding: var(--spacing-lg);
+}
+
+.generic-skeleton-header {
+  background: var(--generic-header-bg);
+}
+
+.generic-skeleton-header .passport-skeleton-box {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.4) 40%,
+    rgba(255, 255, 255, 0.2) 80%
+  );
+  background-size: 200% 100%;
+}
+
+.generic-skeleton .passport-skeleton-section {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.generic-skeleton .passport-skeleton-section:last-child {
+  border-bottom: none;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .passport-skeleton-box {
+    animation: none;
+    background: #e5e7eb;
+  }
+}
+
+/* ============================================================================
    Animations
    ============================================================================ */
 
@@ -681,6 +1038,25 @@
     width: 60px;
     height: 60px;
   }
+
+  /* Header stacks vertically on mobile */
+  .passport-mode-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .passport-mode-header .passport-mode-toggle {
+    max-width: none;
+  }
+
+  .passport-export-button {
+    justify-content: center;
+  }
+
+  /* Hide export text on small screens, show icon only */
+  .passport-export-button-text {
+    display: none;
+  }
 }
 
 /* ============================================================================
@@ -688,7 +1064,9 @@
    ============================================================================ */
 
 @media print {
-  .passport-mode-toggle {
+  .passport-mode-toggle,
+  .passport-mode-header,
+  .passport-export-button {
     display: none;
   }
 
