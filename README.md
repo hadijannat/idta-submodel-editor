@@ -172,8 +172,11 @@ The preview below shows how Nameplate and Carbon Footprint templates render side
 ### Features
 
 - **Mode Toggle**: Switch between Editor and Passport views with one click
-- **Template Detection**: Auto-detects Nameplate (IDTA 02006) and PCF (IDTA 02023) templates
-- **Semantic Extraction**: Pulls values via semanticId/idShort matching (resilient to template renames)
+- **Template Detection**: Auto-detects Nameplate (IDTA 02006) and PCF (IDTA 02023) via semanticId/submodelId + templateName + idShort
+- **Schema-Indexed Extraction**: Resolves schema + form contexts to pull values safely without hardcoded paths
+- **Deterministic Markers**: Identifier marker is generated from real IDs (no random or placeholder visuals)
+- **PCF Visualization**: SVG pie chart + legend + accessible table, with clear fallback when breakdown is missing
+- **Safe Rendering**: Strict numeric parsing, language fallback, safe URL handling, depth-limited GenericCard
 - **Live Updates**: Form changes reflect instantly in passport view
 - **Units by Template**: PCF units render only when provided by the schema
 - **Print Support**: Clean print stylesheet for card output
@@ -188,6 +191,11 @@ The system uses a registry pattern with priority-based detection:
 3. **idShort patterns** - fallback (e.g., `Nameplate`, `CarbonFootprint`)
 
 Detection is case-insensitive and supports ECLASS IDs.
+
+### Passport Mode Tests
+
+- **Unit tests** cover registry detection, schema indexing, value extraction, and pie chart math.
+- **Integration tests** verify toggle behavior and live form updates.
 
 ## Architecture
 
