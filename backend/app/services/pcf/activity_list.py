@@ -10,6 +10,7 @@ from typing import Any
 from basyx.aas import model
 
 PCF_ACTIVITY_LIST_SPEC_ENV_VAR = "PCF_ACTIVITY_LIST_SPEC_PATH"
+PCF_ACTIVITY_LIST_INJECTION_ENABLED_ENV = "PCF_ACTIVITY_LIST_INJECTION_ENABLED"
 DEFAULT_SPEC_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "pcf_activity_list_spec.json"
 )
@@ -32,6 +33,11 @@ _ACTIVITY_FIELD_ALIASES: dict[str, list[str]] = {
 _SPEC_CACHE: dict[str, Any] | None = None
 
 
+def _activity_list_injection_enabled() -> bool:
+    value = os.getenv(PCF_ACTIVITY_LIST_INJECTION_ENABLED_ENV, "true").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def load_activity_list_spec() -> dict[str, Any]:
     global _SPEC_CACHE
     if _SPEC_CACHE is not None:
@@ -48,6 +54,10 @@ def load_activity_list_spec() -> dict[str, Any]:
 
 
 def ensure_activity_list_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    if not _activity_list_injection_enabled():
+        schema["pcfActivityListInjected"] = False
+        return schema
+
     spec = load_activity_list_spec()
     if schema_has_activity_list(schema, spec):
         schema["pcfActivityListInjected"] = False
@@ -205,6 +215,9 @@ def ensure_activity_list_in_submodel(
     submodel: model.Submodel,
     form_data: dict[str, Any],
 ) -> None:
+    if not _activity_list_injection_enabled():
+        return
+
     spec = load_activity_list_spec()
     list_spec = spec.get("list", {})
     list_id = list_spec.get("idShort", "PCFActivities")

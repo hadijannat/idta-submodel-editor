@@ -11,6 +11,7 @@ import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelUISchema } from '../../types/ui-schema';
 import type { SubmodelFormData } from '../../types/aas-elements';
 import { usePCFPanel } from './usePCFPanel';
+import PCFDeclaration from './PCFDeclaration';
 import PCFCalculator from './PCFCalculator';
 import PCFValidator from './PCFValidator';
 import './PCFPanel.css';
@@ -30,6 +31,17 @@ export default function PCFPanel({ schema, form }: PCFPanelProps) {
     searchingFactors,
     factorResults,
     factorsMeta,
+    activeInstanceIndex,
+    instanceCount,
+    instanceKind,
+    setActiveInstanceIndex,
+    referenceUnit,
+    setReferenceUnit,
+    referenceQuantity,
+    setReferenceQuantity,
+    publicationDate,
+    setPublicationDate,
+    lifeCyclePhaseCount,
     addActivity,
     updateActivity,
     removeActivity,
@@ -51,6 +63,22 @@ export default function PCFPanel({ schema, form }: PCFPanelProps) {
           </p>
         </div>
       )}
+      <div className="pcf-panel__section">
+        <PCFDeclaration
+          instanceKind={instanceKind}
+          instanceCount={instanceCount}
+          activeInstanceIndex={activeInstanceIndex}
+          onInstanceChange={setActiveInstanceIndex}
+          referenceUnit={referenceUnit}
+          onReferenceUnitChange={setReferenceUnit}
+          referenceQuantity={referenceQuantity}
+          onReferenceQuantityChange={setReferenceQuantity}
+          publicationDate={publicationDate}
+          onPublicationDateChange={setPublicationDate}
+          lifeCyclePhaseCount={lifeCyclePhaseCount}
+        />
+      </div>
+
       <div className="pcf-panel__section">
         <PCFCalculator
           activities={workspace.activities}

@@ -402,7 +402,8 @@ function App() {
             ))}
           </div>
 
-          {isPCFTemplate(schema) && (
+          {isPCFTemplate(schema) &&
+            import.meta.env.VITE_PCF_TOOLS_ENABLED !== 'false' && (
             <div className="pcf-panel-container">
               <h3>PCF Tools</h3>
               <p className="pcf-panel-description">

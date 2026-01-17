@@ -46,6 +46,16 @@ const CONFIG_ACTIVITY_LIST_IDSHORTS = parseEnvList(
 const normalizeIdShort = (value: string): string =>
   value.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
+const PRODUCT_FOOTPRINT_LIST_IDSHORT = 'productcarbonfootprints';
+const PRODUCT_FOOTPRINT_ITEM_IDSHORT = 'productcarbonfootprint';
+const PRODUCT_FOOTPRINT_SEMANTIC_TOKEN = 'ProductCarbonFootprint';
+
+export interface PCFInstanceContainer {
+  kind: 'list' | 'collection';
+  path: string;
+  itemSchema: UIElementSchema;
+}
+
 /**
  * Check if a template schema is a Carbon Footprint template.
  *
@@ -127,6 +137,157 @@ export function findFieldBySemanticId(
   };
 
   return findInElements(schema.elements, '');
+}
+
+const findFieldPathByMatcher = (
+  elements: UIElementSchema[],
+  matcher: (element: UIElementSchema) => boolean,
+  path: string = ''
+): string | null => {
+  for (const element of elements) {
+    const currentPath = path ? `${path}.${element.idShort}` : element.idShort;
+
+    if (matcher(element)) {
+      return currentPath;
+    }
+
+    if (element.elements && element.elements.length > 0) {
+      const found = findFieldPathByMatcher(element.elements, matcher, currentPath);
+      if (found) return found;
+    }
+
+    if (element.statements && element.statements.length > 0) {
+      const found = findFieldPathByMatcher(element.statements, matcher, currentPath);
+      if (found) return found;
+    }
+
+    if (element.itemTemplate) {
+      if (matcher(element.itemTemplate)) {
+        return `${currentPath}[0]`;
+      }
+      if (element.itemTemplate.elements) {
+        const found = findFieldPathByMatcher(
+          element.itemTemplate.elements,
+          matcher,
+          `${currentPath}[0]`
+        );
+        if (found) return found;
+      }
+    }
+  }
+
+  return null;
+};
+
+export function findFieldPathInElementsBySemanticId(
+  elements: UIElementSchema[],
+  targetSemanticId: string
+): string | null {
+  if (!elements.length) return null;
+  return findFieldPathByMatcher(elements, (element) => {
+    const semanticId = element.semanticId ?? '';
+    return semanticId.includes(targetSemanticId);
+  });
+}
+
+export function findFieldPathInElementsByIdShort(
+  elements: UIElementSchema[],
+  idShorts: string[]
+): string | null {
+  if (!elements.length || idShorts.length === 0) return null;
+  const normalizedTargets = new Set(idShorts.map(normalizeIdShort));
+  return findFieldPathByMatcher(elements, (element) =>
+    normalizedTargets.has(normalizeIdShort(element.idShort))
+  );
+}
+
+export function findProductCarbonFootprintContainer(
+  schema: SubmodelUISchema | null
+): PCFInstanceContainer | null {
+  if (!schema) return null;
+
+  const matchesProductList = (element: UIElementSchema): boolean => {
+    if (element.modelType !== 'SubmodelElementList') return false;
+    const normalizedId = normalizeIdShort(element.idShort);
+    const semanticId = element.semanticId ?? '';
+    const listElementSemantic = element.semanticIdListElement ?? '';
+    const itemSchema = getListItemSchema(element);
+    const itemSemantic = itemSchema?.semanticId ?? '';
+
+    return (
+      normalizedId === PRODUCT_FOOTPRINT_LIST_IDSHORT ||
+      semanticId.includes('ProductCarbonFootprints') ||
+      listElementSemantic.includes(PRODUCT_FOOTPRINT_SEMANTIC_TOKEN) ||
+      itemSemantic.includes(PRODUCT_FOOTPRINT_SEMANTIC_TOKEN)
+    );
+  };
+
+  const matchesProductCollection = (element: UIElementSchema): boolean => {
+    if (element.modelType !== 'SubmodelElementCollection') return false;
+    const normalizedId = normalizeIdShort(element.idShort);
+    const semanticId = element.semanticId ?? '';
+    return (
+      normalizedId === PRODUCT_FOOTPRINT_ITEM_IDSHORT ||
+      semanticId.includes(PRODUCT_FOOTPRINT_SEMANTIC_TOKEN)
+    );
+  };
+
+  const findList = (
+    elements: UIElementSchema[],
+    path: string
+  ): PCFInstanceContainer | null => {
+    for (const element of elements) {
+      const currentPath = path ? `${path}.${element.idShort}` : element.idShort;
+      if (matchesProductList(element)) {
+        const itemSchema = getListItemSchema(element);
+        if (itemSchema) {
+          return { kind: 'list', path: currentPath, itemSchema };
+        }
+      }
+      if (element.elements) {
+        const found = findList(element.elements, currentPath);
+        if (found) return found;
+      }
+      if (element.statements) {
+        const found = findList(element.statements, currentPath);
+        if (found) return found;
+      }
+      if (element.itemTemplate?.elements) {
+        const found = findList(element.itemTemplate.elements, currentPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const findCollection = (
+    elements: UIElementSchema[],
+    path: string
+  ): PCFInstanceContainer | null => {
+    for (const element of elements) {
+      const currentPath = path ? `${path}.${element.idShort}` : element.idShort;
+      if (matchesProductCollection(element)) {
+        return { kind: 'collection', path: currentPath, itemSchema: element };
+      }
+      if (element.elements) {
+        const found = findCollection(element.elements, currentPath);
+        if (found) return found;
+      }
+      if (element.statements) {
+        const found = findCollection(element.statements, currentPath);
+        if (found) return found;
+      }
+      if (element.itemTemplate?.elements) {
+        const found = findCollection(element.itemTemplate.elements, currentPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const listMatch = findList(schema.elements, '');
+  if (listMatch) return listMatch;
+  return findCollection(schema.elements, '');
 }
 
 /**
@@ -342,7 +503,7 @@ export function buildActivityListItems(
     .filter((item): item is ElementFormData => item !== null);
 }
 
-const getListItemSchema = (
+export const getListItemSchema = (
   listSchema: UIElementSchema
 ): UIElementSchema | null => {
   if (listSchema.itemTemplate) return listSchema.itemTemplate;

@@ -23,7 +23,7 @@ The following screenshots are referenced in the main README and should be captur
 |------|-------------|
 | `pcf-step-1-activities.png` | Activity table with 2-3 emission activities added (electricity, transport, materials) |
 | `pcf-step-2-search-factors.png` | Emission factor search modal open with search results visible |
-| `pcf-step-3-calculate.png` | Calculated results showing dataset metadata, total CO2e, and per-activity values |
+| `pcf-step-3-calculate.png` | PCF Declaration fields + calculated results showing total CO2e and per-activity values |
 
 ## Capturing Screenshots
 
@@ -62,6 +62,7 @@ Use a screen recording tool (e.g., Kap on macOS, LICEcap, or ShareX on Windows) 
 - Focus on the PCF panel area
 - Ensure the dataset metadata banner is visible (version + factor count)
 - The PCF activity list injection banner should appear if the template lacks `PCFActivities`
+- The PCF Declaration fields (reference unit, quantity, publication date) should be filled
 
 ## Feature Overview
 
@@ -97,3 +98,8 @@ Categories covered:
 - Transport (road, air, sea freight)
 - Materials (steel, aluminum, plastics)
 - Water (supply and treatment)
+
+## Comms Assets
+
+- `linkedin-post.md`: Draft launch post text
+- `infographic-brief.md`: Design brief for a technical + non-technical infographic

@@ -91,6 +91,16 @@ Live demo (PCF Calculator in action):
 
 ![PCF Calculator Live Demo](docs/pcf/pcf-calculator-live-demo.gif)
 
+### PCF Declaration
+
+Set required PCF metadata for the active ProductCarbonFootprint instance:
+
+- **Reference impact unit** (e.g., `piece`, `kg`, `kWh`) writes to `ReferenceImpactUnitForCalculation`
+- **Quantity of measure** writes to `QuantityOfMeasureForCalculation`
+- **Publication date** writes to `PublicationDate`
+- **Active instance targeting** supports templates with multiple `ProductCarbonFootprint` entries
+- **Lifecycle phase awareness** shows how many `LifeCyclePhases` are selected and flags when none are set
+
 ### CO₂e Calculator
 
 Build emission activity tables and compute total CO₂e with a few clicks:
@@ -100,23 +110,23 @@ Build emission activity tables and compute total CO₂e with a few clicks:
 - **Dataset transparency** shows the emission factor dataset version and factor count in the UI
 - **Unit-aware calculations** with kg↔t conversion, freight `tkm` support, and warnings for incompatible units
 - **Per-activity + total CO₂e** plus support for negative quantities (offsets) with warnings
-- **Apply to form** writes the calculated total directly to the `PcfCO2eq` field
+- **Apply to form** writes the calculated total directly to the active `PcfCO2eq` field
 - **Activity traceability** stores the full calculation payload (activities + factor metadata) in `metadata.pcf`
-- **PCFActivities list** auto-injected on export when missing, populated with activity details and `ActivityCO2eKg`
+- **PCFActivities list** auto-injected on export when missing (toggle via `PCF_ACTIVITY_LIST_INJECTION_ENABLED`), populated with activity details and `ActivityCO2eKg`
 - **Export trace** adds PCF calculation qualifiers and attaches `pcf-calculation.json` for audit-ready provenance
 
 | Screenshot | Description |
 |------------|-------------|
 | ![Add Activities](docs/pcf/pcf-step-1-activities.png) | Add emission activities with quantities and factors |
 | ![Search Factors](docs/pcf/pcf-step-2-search-factors.png) | Search and select from 20+ emission factors |
-| ![Calculate](docs/pcf/pcf-step-3-calculate.png) | Calculate totals with dataset metadata and per-activity CO₂e |
+| ![Calculate](docs/pcf/pcf-step-3-calculate.png) | PCF Declaration + calculation totals with per-activity CO₂e |
 
 ### IDTA 02023 Validator
 
 Validate your Carbon Footprint data against the official IDTA 02023 specification:
 
 - **Blocking errors** for required fields: `PcfCO2eq`, `ReferenceImpactUnitForCalculation`, `QuantityOfMeasureForCalculation`, `PublicationDate`, `LifeCyclePhases`
-- **Warnings** for recommended fields and value list conformance
+- **Warnings** for recommended fields, value list conformance, and invalid date order
 - **Cross-field validation**: `ExpirationDate` must be after `PublicationDate`
 - **Completeness score** shows percentage of PCF fields filled
 - **Export-time enforcement**: Carbon Footprint exports are blocked if validation fails

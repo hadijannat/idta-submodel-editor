@@ -2,7 +2,7 @@
  * Hook for managing PCF Calculator & Validator state.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelUISchema } from '../../types/ui-schema';
 import type { SubmodelFormData } from '../../types/aas-elements';
@@ -13,6 +13,7 @@ import type {
   PCFHealthResponse,
   PCFValidateResponse,
 } from '../../types/pcf';
+import { PCF_SEMANTIC_IDS } from '../../types/pcf';
 import {
   calculatePCF,
   checkPCFHealth,
@@ -24,6 +25,9 @@ import {
   findPcfActivityList,
   buildActivityListItems,
   generateActivityId,
+  findFieldPathInElementsByIdShort,
+  findFieldPathInElementsBySemanticId,
+  findProductCarbonFootprintContainer,
   pathToFormItemsPath,
   pathToFormPath,
 } from './pcfUtils';
@@ -32,7 +36,9 @@ interface PCFWorkspace {
   activities: PCFActivity[];
   totalCo2eKg: number;
   warnings: string[];
-  declaredUnit: string;
+  referenceUnit: string;
+  referenceQuantity: string;
+  publicationDate: string;
 }
 
 interface UsePCFPanelOptions {
@@ -71,8 +77,28 @@ interface UsePCFPanelReturn {
   validate: () => Promise<void>;
   /** Apply calculated total to form */
   applyToForm: () => void;
-  /** Set declared unit */
-  setDeclaredUnit: (unit: string) => void;
+  /** Active ProductCarbonFootprint instance index */
+  activeInstanceIndex: number;
+  /** Total ProductCarbonFootprint instance count */
+  instanceCount: number;
+  /** Instance kind (list vs collection) */
+  instanceKind: 'list' | 'collection' | null;
+  /** Select a ProductCarbonFootprint instance */
+  setActiveInstanceIndex: (index: number) => void;
+  /** Reference impact unit for calculation */
+  referenceUnit: string;
+  /** Update reference impact unit */
+  setReferenceUnit: (unit: string) => void;
+  /** Quantity of measure for calculation */
+  referenceQuantity: string;
+  /** Update quantity of measure */
+  setReferenceQuantity: (quantity: string) => void;
+  /** Publication date */
+  publicationDate: string;
+  /** Update publication date */
+  setPublicationDate: (date: string) => void;
+  /** Life cycle phase count for the active instance */
+  lifeCyclePhaseCount: number;
   /** Search emission factors */
   searchFactors: (query: string) => Promise<void>;
   /** Clear factor search results */
@@ -85,7 +111,9 @@ const DEFAULT_WORKSPACE: PCFWorkspace = {
   activities: [],
   totalCo2eKg: 0,
   warnings: [],
-  declaredUnit: 'kg CO2e / piece',
+  referenceUnit: '',
+  referenceQuantity: '',
+  publicationDate: '',
 };
 
 /**
@@ -95,6 +123,9 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
   const { schema, form } = options;
 
   const [workspace, setWorkspace] = useState<PCFWorkspace>(DEFAULT_WORKSPACE);
+  const [activeInstanceIndex, setActiveInstanceIndex] = useState(0);
+  const [instanceCount, setInstanceCount] = useState(1);
+  const [lifeCyclePhaseCount, setLifeCyclePhaseCount] = useState(0);
   const [validationResult, setValidationResult] =
     useState<PCFValidateResponse | null>(null);
   const [calculating, setCalculating] = useState(false);
@@ -105,6 +136,76 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     PCFHealthResponse['factors'] | null
   >(null);
   const [error, setError] = useState<string | null>(null);
+
+  const instanceContainer = useMemo(
+    () => findProductCarbonFootprintContainer(schema),
+    [schema]
+  );
+
+  const instanceKind = instanceContainer?.kind ?? null;
+
+  const fieldDefinitions: Record<
+    string,
+    { semanticId: string; idShorts: string[] }
+  > = {
+    PcfCO2eq: {
+      semanticId: PCF_SEMANTIC_IDS.PcfCO2eq,
+      idShorts: ['PcfCO2eq', 'PCFCo2eq'],
+    },
+    ReferenceImpactUnitForCalculation: {
+      semanticId: PCF_SEMANTIC_IDS.ReferenceImpactUnitForCalculation,
+      idShorts: ['ReferenceImpactUnitForCalculation'],
+    },
+    QuantityOfMeasureForCalculation: {
+      semanticId: PCF_SEMANTIC_IDS.QuantityOfMeasureForCalculation,
+      idShorts: ['QuantityOfMeasureForCalculation'],
+    },
+    PublicationDate: {
+      semanticId: PCF_SEMANTIC_IDS.PublicationDate,
+      idShorts: ['PublicationDate'],
+    },
+    LifeCyclePhases: {
+      semanticId: PCF_SEMANTIC_IDS.LifeCyclePhases,
+      idShorts: ['LifeCyclePhases'],
+    },
+  };
+
+  const resolveFieldPath = useCallback(
+    (fieldKey: keyof typeof fieldDefinitions): string | null => {
+      if (!instanceContainer) return null;
+      const definition = fieldDefinitions[fieldKey];
+      const containerElements = [
+        ...(instanceContainer.itemSchema.elements ?? []),
+        ...(instanceContainer.itemSchema.statements ?? []),
+      ];
+      const bySemantic = findFieldPathInElementsBySemanticId(
+        containerElements,
+        definition.semanticId
+      );
+      const relativePath =
+        bySemantic ||
+        findFieldPathInElementsByIdShort(containerElements, definition.idShorts);
+      if (!relativePath) return null;
+
+      if (instanceContainer.kind === 'list') {
+        return `${instanceContainer.path}[${activeInstanceIndex}].${relativePath}`;
+      }
+
+      return `${instanceContainer.path}.${relativePath}`;
+    },
+    [activeInstanceIndex, instanceContainer]
+  );
+
+  const pcfFieldPaths = useMemo(
+    () => ({
+      pcfCo2eq: resolveFieldPath('PcfCO2eq'),
+      referenceUnit: resolveFieldPath('ReferenceImpactUnitForCalculation'),
+      referenceQuantity: resolveFieldPath('QuantityOfMeasureForCalculation'),
+      publicationDate: resolveFieldPath('PublicationDate'),
+      lifeCyclePhases: resolveFieldPath('LifeCyclePhases'),
+    }),
+    [resolveFieldPath]
+  );
 
   useEffect(() => {
     let active = true;
@@ -122,6 +223,54 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
       active = false;
     };
   }, [schema]);
+
+  useEffect(() => {
+    if (!instanceContainer) {
+      setInstanceCount(1);
+      setActiveInstanceIndex(0);
+      return;
+    }
+
+    if (instanceContainer.kind === 'list') {
+      const itemsPath = pathToFormItemsPath(instanceContainer.path);
+      const items = (form.getValues as any)(itemsPath);
+      const count = Array.isArray(items) ? items.length : 0;
+      setInstanceCount(count);
+      setActiveInstanceIndex((prev) => {
+        if (count === 0) return 0;
+        return Math.min(prev, count - 1);
+      });
+      return;
+    }
+
+    setInstanceCount(1);
+    setActiveInstanceIndex(0);
+  }, [form, instanceContainer]);
+
+  useEffect(() => {
+    const readValue = (path: string | null): string => {
+      if (!path) return '';
+      const value = (form.getValues as any)(pathToFormPath(path));
+      if (value == null) return '';
+      return String(value);
+    };
+
+    setWorkspace((prev) => ({
+      ...prev,
+      referenceUnit: readValue(pcfFieldPaths.referenceUnit),
+      referenceQuantity: readValue(pcfFieldPaths.referenceQuantity),
+      publicationDate: readValue(pcfFieldPaths.publicationDate),
+    }));
+
+    if (pcfFieldPaths.lifeCyclePhases) {
+      const items = (form.getValues as any)(
+        pathToFormItemsPath(pcfFieldPaths.lifeCyclePhases)
+      );
+      setLifeCyclePhaseCount(Array.isArray(items) ? items.length : 0);
+    } else {
+      setLifeCyclePhaseCount(0);
+    }
+  }, [form, pcfFieldPaths]);
 
   // Add a new activity
   const addActivity = useCallback((activity?: Partial<PCFActivity>) => {
@@ -246,7 +395,7 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
       return;
     }
 
-    const pcfPath = findPcfCO2eqPath(schema);
+    const pcfPath = pcfFieldPaths.pcfCo2eq || findPcfCO2eqPath(schema);
     if (!pcfPath) {
       setError('Could not find PcfCO2eq field in schema');
       return;
@@ -297,15 +446,66 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     });
 
     setError(null);
-  }, [workspace.totalCo2eKg, workspace.activities, workspace.warnings, schema, form]);
+  }, [
+    workspace.totalCo2eKg,
+    workspace.activities,
+    workspace.warnings,
+    schema,
+    form,
+    pcfFieldPaths.pcfCo2eq,
+  ]);
 
-  // Set declared unit
-  const setDeclaredUnit = useCallback((unit: string) => {
-    setWorkspace((prev) => ({
-      ...prev,
-      declaredUnit: unit,
-    }));
-  }, []);
+  const setReferenceUnit = useCallback(
+    (unit: string) => {
+      setWorkspace((prev) => ({
+        ...prev,
+        referenceUnit: unit,
+      }));
+      if (pcfFieldPaths.referenceUnit) {
+        (form.setValue as any)(
+          pathToFormPath(pcfFieldPaths.referenceUnit),
+          unit,
+          { shouldDirty: true }
+        );
+      }
+    },
+    [form, pcfFieldPaths.referenceUnit]
+  );
+
+  const setReferenceQuantity = useCallback(
+    (quantity: string) => {
+      setWorkspace((prev) => ({
+        ...prev,
+        referenceQuantity: quantity,
+      }));
+      if (pcfFieldPaths.referenceQuantity) {
+        (form.setValue as any)(
+          pathToFormPath(pcfFieldPaths.referenceQuantity),
+          quantity,
+          { shouldDirty: true }
+        );
+      }
+    },
+    [form, pcfFieldPaths.referenceQuantity]
+  );
+
+  const setPublicationDate = useCallback(
+    (date: string) => {
+      setWorkspace((prev) => ({
+        ...prev,
+        publicationDate: date,
+      }));
+      if (pcfFieldPaths.publicationDate) {
+        (form.setValue as any)(
+          pathToFormPath(pcfFieldPaths.publicationDate),
+          date,
+          { shouldDirty: true }
+        );
+      }
+    },
+    [form, pcfFieldPaths.publicationDate]
+  );
+
 
   // Search emission factors
   const searchFactors = useCallback(async (query: string) => {
@@ -374,7 +574,17 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
     calculate,
     validate,
     applyToForm,
-    setDeclaredUnit,
+    activeInstanceIndex,
+    instanceCount,
+    instanceKind,
+    setActiveInstanceIndex,
+    referenceUnit: workspace.referenceUnit,
+    setReferenceUnit,
+    referenceQuantity: workspace.referenceQuantity,
+    setReferenceQuantity,
+    publicationDate: workspace.publicationDate,
+    setPublicationDate,
+    lifeCyclePhaseCount,
     searchFactors,
     clearFactorResults,
     applyFactorToActivity,

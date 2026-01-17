@@ -208,6 +208,34 @@ async def generate_ai_dataset_template(fetcher: TemplateFetcherService) -> None:
     write_json_from_aasx(aasx_bytes, json_path)
 
 
+async def generate_carbon_footprint_filled(
+    fetcher: TemplateFetcherService,
+    parser: ParserService,
+    hydrator: HydratorService,
+) -> None:
+    template_path = "published/Carbon Footprint"
+    aasx_bytes = await fetcher.fetch_template_aasx(template_path)
+    schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+
+    elements = {}
+    for element in schema.get("elements", []):
+        data = build_element(element)
+        if data is not None:
+            elements[element["idShort"]] = data
+
+    form_data = {"elements": elements}
+
+    hydrated_aasx = hydrator.hydrate_submodel(aasx_bytes, form_data)
+    aasx_path = OUTPUT_AASX / "carbon-footprint-filled.aasx"
+    aasx_path.write_bytes(hydrated_aasx)
+
+    json_path = OUTPUT_JSON / "carbon-footprint-filled.json"
+    json_path.write_text(
+        hydrator.hydrate_to_json(aasx_bytes, form_data),
+        encoding="utf-8",
+    )
+
+
 async def generate_minimal_example() -> None:
     aasx_path = OUTPUT_AASX / "minimal-example.aasx"
     if aasx_path.exists():
@@ -271,6 +299,7 @@ async def main() -> None:
 
     await generate_minimal_example()
     await generate_digital_nameplate_filled(fetcher, parser, hydrator)
+    await generate_carbon_footprint_filled(fetcher, parser, hydrator)
     await generate_ai_dataset_template(fetcher)
 
     run_conformance_checks()

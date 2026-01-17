@@ -9,6 +9,7 @@ Validates PCF form data against IDTA 02023 rules:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from app.schemas.pcf import (
@@ -63,6 +64,79 @@ RECOMMENDED_FIELDS = {
     "ExpirationDate": "https://admin-shell.io/idta/CarbonFootprint/ExpirationDate/1/0",
 }
 
+# Value list semantics (property-level)
+LIFE_CYCLE_PHASE_ITEM_SEMANTIC = "0173-1#02-ABG858#003"
+
+# Value lists (from IDTA 02023 CF spec)
+VALUE_LISTS = {
+    "PcfCalculationMethod": {
+        "semantic_id": RECOMMENDED_FIELDS["PcfCalculationMethod"],
+        "values": {
+            "en 15804",
+            "ghg protocol",
+            "iec ts 63058",
+            "iec 63366",
+            "iso 14040, iso 14044",
+            "iso 14067",
+            "pep ecopassport",
+            "pact v2.0.0",
+            "pact v1.0.1",
+            "pact v3.0.0",
+            "tfs v2",
+            "tfs v3",
+            "catena-x v2",
+            "catena-x v1",
+            "catena-x v3",
+            "bs pas 2050",
+            "iec 63372",
+        },
+        "field_name": "PcfCalculationMethod",
+    },
+    "ReferenceImpactUnitForCalculation": {
+        "semantic_id": REQUIRED_FIELDS["ReferenceImpactUnitForCalculation"],
+        "values": {
+            "g",
+            "kg",
+            "t",
+            "ml",
+            "l",
+            "cbm",
+            "qm",
+            "piece",
+            "kwh",
+        },
+        "field_name": "ReferenceImpactUnitForCalculation",
+    },
+    "LifeCyclePhase": {
+        "semantic_id": LIFE_CYCLE_PHASE_ITEM_SEMANTIC,
+        "values": {
+            "a1",
+            "a1-a3",
+            "a2",
+            "a3",
+            "a4",
+            "a4-a5",
+            "a5",
+            "b1",
+            "b1-b7",
+            "b2",
+            "b3",
+            "b4",
+            "b5",
+            "b6",
+            "b7",
+            "c1",
+            "c1-c4",
+            "c2",
+            "c2-c4",
+            "c3",
+            "c4",
+            "d",
+        },
+        "field_name": "LifeCyclePhase",
+    },
+}
+
 
 def validate_pcf(request: PCFValidateRequest) -> PCFValidateResponse:
     """
@@ -106,6 +180,49 @@ def validate_pcf(request: PCFValidateRequest) -> PCFValidateResponse:
     total_fields = len(REQUIRED_FIELDS) + len(RECOMMENDED_FIELDS)
     filled_count = total_fields - len(errors) - len(warnings)
     completeness_score = filled_count / total_fields if total_fields > 0 else 1.0
+
+    # Cross-field validation: ExpirationDate must be after PublicationDate
+    for publication_date, expiration_date in _collect_date_pairs(
+        form_elements, schema_elements
+    ):
+        pub_dt = _parse_datetime(publication_date)
+        exp_dt = _parse_datetime(expiration_date)
+        if pub_dt and exp_dt and exp_dt <= pub_dt:
+            warnings.append(
+                PCFValidationRule(
+                    rule_id="pcf_expiration_before_publication",
+                    field="ExpirationDate",
+                    severity="warning",
+                    message="ExpirationDate should be after PublicationDate",
+                    code="pcf_date_order",
+                )
+            )
+            break
+
+    # Value list conformance warnings (allowed but not recommended)
+    for field_key, definition in VALUE_LISTS.items():
+        values = _collect_field_values(
+            form_elements,
+            schema_elements,
+            definition["field_name"],
+            definition["semantic_id"],
+        )
+        for value in values:
+            normalized = _normalize_value(value)
+            if normalized and normalized not in definition["values"]:
+                warnings.append(
+                    PCFValidationRule(
+                        rule_id=f"pcf_value_list_{field_key.lower()}",
+                        field=definition["field_name"],
+                        severity="warning",
+                        message=(
+                            f"Value '{value}' is not in the recommended "
+                            f"value list for {definition['field_name']}"
+                        ),
+                        code="pcf_value_list",
+                    )
+                )
+                break
 
     return PCFValidateResponse(
         valid=len(errors) == 0,
@@ -209,6 +326,182 @@ def _matches_field(
         return True
 
     return False
+
+
+def _collect_date_pairs(
+    form_elements: dict[str, Any],
+    schema_elements: list[dict[str, Any]],
+) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+
+    for schema_element in schema_elements:
+        element_id = schema_element.get("idShort")
+        form_element = (
+            form_elements.get(element_id) if element_id and form_elements else None
+        )
+        pairs.extend(_collect_date_pairs_in_element(schema_element, form_element))
+
+    return pairs
+
+
+def _collect_field_values(
+    form_elements: dict[str, Any],
+    schema_elements: list[dict[str, Any]],
+    field_name: str,
+    semantic_id: str,
+) -> list[str]:
+    values: list[str] = []
+
+    for schema_element in schema_elements:
+        element_id = schema_element.get("idShort")
+        form_element = (
+            form_elements.get(element_id) if element_id and form_elements else None
+        )
+        values.extend(
+            _collect_field_values_in_element(
+                schema_element, form_element, field_name, semantic_id
+            )
+        )
+
+    return values
+
+
+def _collect_field_values_in_element(
+    schema_element: dict[str, Any],
+    form_element: dict[str, Any] | None,
+    field_name: str,
+    semantic_id: str,
+) -> list[str]:
+    values: list[str] = []
+
+    if _matches_field(schema_element, form_element, field_name, semantic_id):
+        if form_element and "value" in form_element:
+            raw_value = form_element.get("value")
+            if raw_value is not None:
+                values.append(str(raw_value))
+
+    for child in schema_element.get("elements", []) or []:
+        child_id = child.get("idShort")
+        child_form = (
+            (form_element or {}).get("elements", {}).get(child_id)
+            if child_id
+            else None
+        )
+        values.extend(
+            _collect_field_values_in_element(
+                child, child_form, field_name, semantic_id
+            )
+        )
+
+    for stmt in schema_element.get("statements", []) or []:
+        stmt_id = stmt.get("idShort")
+        stmt_form = (
+            (form_element or {}).get("statements", {}).get(stmt_id)
+            if stmt_id
+            else None
+        )
+        values.extend(
+            _collect_field_values_in_element(
+                stmt, stmt_form, field_name, semantic_id
+            )
+        )
+
+    item_template = schema_element.get("itemTemplate")
+    item_schemas = schema_element.get("items") or []
+    form_items = (form_element or {}).get("items") or []
+    if item_template or item_schemas:
+        for index, item_form in enumerate(form_items):
+            item_schema = None
+            if item_schemas and index < len(item_schemas):
+                item_schema = item_schemas[index]
+            else:
+                item_schema = item_template
+            if item_schema:
+                values.extend(
+                    _collect_field_values_in_element(
+                        item_schema, item_form, field_name, semantic_id
+                    )
+                )
+
+    return values
+
+
+def _collect_date_pairs_in_element(
+    schema_element: dict[str, Any],
+    form_element: dict[str, Any] | None,
+) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+
+    if schema_element.get("modelType") == "SubmodelElementCollection":
+        publication_id = _find_child_id_by_semantic(
+            schema_element, REQUIRED_FIELDS["PublicationDate"]
+        )
+        expiration_id = _find_child_id_by_semantic(
+            schema_element, RECOMMENDED_FIELDS["ExpirationDate"]
+        )
+        if publication_id and expiration_id and form_element:
+            elements = form_element.get("elements", {})
+            publication_value = (elements.get(publication_id) or {}).get("value")
+            expiration_value = (elements.get(expiration_id) or {}).get("value")
+            if publication_value and expiration_value:
+                pairs.append((str(publication_value), str(expiration_value)))
+
+    for child in schema_element.get("elements", []) or []:
+        child_id = child.get("idShort")
+        child_form = (
+            (form_element or {}).get("elements", {}).get(child_id)
+            if child_id
+            else None
+        )
+        pairs.extend(_collect_date_pairs_in_element(child, child_form))
+
+    for stmt in schema_element.get("statements", []) or []:
+        stmt_id = stmt.get("idShort")
+        stmt_form = (
+            (form_element or {}).get("statements", {}).get(stmt_id)
+            if stmt_id
+            else None
+        )
+        pairs.extend(_collect_date_pairs_in_element(stmt, stmt_form))
+
+    item_template = schema_element.get("itemTemplate")
+    item_schemas = schema_element.get("items") or []
+    form_items = (form_element or {}).get("items") or []
+    if item_template or item_schemas:
+        for index, item_form in enumerate(form_items):
+            item_schema = None
+            if item_schemas and index < len(item_schemas):
+                item_schema = item_schemas[index]
+            else:
+                item_schema = item_template
+            if item_schema:
+                pairs.extend(_collect_date_pairs_in_element(item_schema, item_form))
+
+    return pairs
+
+
+def _find_child_id_by_semantic(
+    schema_element: dict[str, Any], semantic_id: str
+) -> str | None:
+    for child in schema_element.get("elements", []) or []:
+        child_semantic = child.get("semanticId") or ""
+        if semantic_id in child_semantic:
+            return child.get("idShort")
+    return None
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _normalize_value(value: str) -> str:
+    return value.strip().lower()
 
 
 def _element_has_value(element: dict[str, Any] | None) -> bool:

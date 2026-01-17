@@ -40,3 +40,84 @@
   font-size: 0.875rem;
   color: var(--error-color, #dc3545);
 }
+
+.pcf-declaration {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.pcf-declaration__header h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.pcf-declaration__header p {
+  margin: 0 0 1rem;
+  color: var(--text-muted, #5f6b7a);
+  font-size: 0.9rem;
+}
+
+.pcf-declaration__row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.pcf-declaration__row label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-color, #1b1f23);
+}
+
+.pcf-declaration__row select {
+  max-width: 240px;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #d0d7de);
+}
+
+.pcf-declaration__note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, #6b7280);
+}
+
+.pcf-declaration__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.pcf-declaration__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pcf-declaration__field label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-color, #1b1f23);
+}
+
+.pcf-declaration__field input {
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #d0d7de);
+}
+
+.pcf-declaration__status {
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.pcf-declaration__status--warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #a16207;
+  border-color: rgba(245, 158, 11, 0.3);
+}
