@@ -13,6 +13,7 @@ import ExportPanel from './components/ExportPanel';
 import SmartMapperPage from './components/SmartMapper/SmartMapperPage';
 import PCFPanel from './components/PCFPanel';
 import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
+import { PassportView } from './components/PassportMode';
 import { getTemplateVersions } from './services/api';
 import { computeCompletion } from './utils/completion';
 import './App.css';
@@ -391,27 +392,29 @@ function App() {
             )}
           </div>
 
-          <div className="submodel-elements">
-            {schema.elements.map((element) => (
-              <AASRenderer
-                key={element.idShort}
-                schema={element}
-                path={`elements.${element.idShort}`}
-                depth={0}
-              />
-            ))}
-          </div>
-
-          {isPCFTemplate(schema) &&
-            import.meta.env.VITE_PCF_TOOLS_ENABLED !== 'false' && (
-            <div className="pcf-panel-container">
-              <h3>PCF Tools</h3>
-              <p className="pcf-panel-description">
-                Carbon Footprint Calculator & Validator for IDTA 02023 compliance.
-              </p>
-              <PCFPanel schema={schema} form={form} />
+          <PassportView schema={schema} formData={watchedValues}>
+            <div className="submodel-elements">
+              {schema.elements.map((element) => (
+                <AASRenderer
+                  key={element.idShort}
+                  schema={element}
+                  path={`elements.${element.idShort}`}
+                  depth={0}
+                />
+              ))}
             </div>
-          )}
+
+            {isPCFTemplate(schema) &&
+              import.meta.env.VITE_PCF_TOOLS_ENABLED !== 'false' && (
+              <div className="pcf-panel-container">
+                <h3>PCF Tools</h3>
+                <p className="pcf-panel-description">
+                  Carbon Footprint Calculator & Validator for IDTA 02023 compliance.
+                </p>
+                <PCFPanel schema={schema} form={form} />
+              </div>
+            )}
+          </PassportView>
 
           <div className="wizard-actions">
             <button

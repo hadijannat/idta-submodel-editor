@@ -14,6 +14,7 @@ A metamodel-driven application for editing any IDTA submodel template without co
 - **Semantic Dictionary Lookup**: Search ECLASS / IEC CDD, resolve semantics, and apply to fields with typing hints
 - **Smart Mapper (CSV/XLSX)**: Profile spreadsheets, map columns to elements, and reuse recipes for bulk imports
 - **PCF Calculator & Validator**: Calculate Product Carbon Footprint (CO₂e) from emission activities and validate against IDTA 02023 rules
+- **Passport Mode**: WYSIWYG visualization of submodel data as Digital Product Passport cards (Nameplate, Carbon Footprint)
 
 ## Semantic Dictionary Lookup + Resolver
 
@@ -144,6 +145,36 @@ The built-in database includes common emission factors from recognized authoriti
 | Water | Supply and treatment | DEFRA |
 
 Factors include value, unit, source reference, region, and year for full traceability. The UI surfaces dataset version/count via `/api/pcf/health`.
+
+## Passport Mode (Digital Product Passport Visualization)
+
+Switch between Editor and Passport views to visualize submodel data as Digital Product Passport cards. The system auto-detects template types and renders appropriate card styles.
+
+### Supported Card Types
+
+| Template | Card Type | Visual Style |
+|----------|-----------|--------------|
+| IDTA 02006 Nameplate | NameplateCard | Metal sticker with manufacturer info |
+| IDTA 02023 Carbon Footprint | PCFCard | CO₂e metric display + breakdown pie chart |
+| Other templates | GenericCard | Clean key-value layout |
+
+### Features
+
+- **Mode Toggle**: Switch between Editor and Passport views with one click
+- **Template Detection**: Auto-detects Nameplate (IDTA 02006) and PCF (IDTA 02023) templates
+- **Live Updates**: Form changes reflect instantly in passport view
+- **Print Support**: Clean print stylesheet for card output
+- **Accessibility**: ARIA labels, keyboard navigation, reduced motion support
+
+### Template Detection
+
+The system uses a registry pattern with priority-based detection:
+
+1. **semanticId patterns** - highest priority (e.g., `02006`, `02023`)
+2. **templateName patterns** - medium priority
+3. **idShort patterns** - fallback (e.g., `Nameplate`, `CarbonFootprint`)
+
+Detection is case-insensitive and supports ECLASS IDs.
 
 ## Architecture
 
@@ -373,7 +404,8 @@ idta-submodel-editor/
 │   │   │   ├── TemplateSelector/
 │   │   │   ├── ExportPanel/
 │   │   │   ├── SmartMapper/    # CSV/XLSX bulk import
-│   │   │   └── PCFPanel/       # PCF Calculator & Validator
+│   │   │   ├── PCFPanel/       # PCF Calculator & Validator
+│   │   │   └── PassportMode/   # Passport View visualization
 │   │   ├── hooks/          # Custom React hooks
 │   │   ├── services/       # API client (api, pcfApi, mapperApi)
 │   │   └── types/          # TypeScript interfaces
