@@ -150,19 +150,32 @@ Factors include value, unit, source reference, region, and year for full traceab
 
 Switch between Editor and Passport views to visualize submodel data as Digital Product Passport cards. The system auto-detects template types and renders appropriate card styles.
 
+### Passport Mode Preview (Example)
+
+The preview below shows how Nameplate and Carbon Footprint templates render side-by-side for quick review. Example data is shown.
+
+![Passport Mode Preview](docs/passport/passport-preview.png)
+
 ### Supported Card Types
 
 | Template | Card Type | Visual Style |
 |----------|-----------|--------------|
 | IDTA 02006 Nameplate | NameplateCard | Metal sticker with manufacturer info |
-| IDTA 02023 Carbon Footprint | PCFCard | CO₂e metric display + breakdown pie chart |
+| IDTA 02023 Carbon Footprint | PCFCard | CO₂e metric display + breakdown pie chart (when available) |
 | Other templates | GenericCard | Clean key-value layout |
+
+| Screenshot | Description |
+|------------|-------------|
+| ![Nameplate Card](docs/passport/passport-nameplate-card.png) | NameplateCard displays manufacturer, serial number, product type, and version info in a metal sticker style |
+| ![PCF Card](docs/passport/passport-pcf-card.png) | PCFCard shows total CO₂e metric with calculation method and reference unit |
 
 ### Features
 
 - **Mode Toggle**: Switch between Editor and Passport views with one click
 - **Template Detection**: Auto-detects Nameplate (IDTA 02006) and PCF (IDTA 02023) templates
+- **Semantic Extraction**: Pulls values via semanticId/idShort matching (resilient to template renames)
 - **Live Updates**: Form changes reflect instantly in passport view
+- **Units by Template**: PCF units render only when provided by the schema
 - **Print Support**: Clean print stylesheet for card output
 - **Accessibility**: ARIA labels, keyboard navigation, reduced motion support
 
@@ -170,7 +183,7 @@ Switch between Editor and Passport views to visualize submodel data as Digital P
 
 The system uses a registry pattern with priority-based detection:
 
-1. **semanticId patterns** - highest priority (e.g., `02006`, `02023`)
+1. **semanticId / submodelId patterns** - highest priority (e.g., `02006`, `02023`)
 2. **templateName patterns** - medium priority
 3. **idShort patterns** - fallback (e.g., `Nameplate`, `CarbonFootprint`)
 
