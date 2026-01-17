@@ -59,7 +59,7 @@ export default function PCFPanel({ schema, form }: PCFPanelProps) {
           calculating={calculating}
           searchingFactors={searchingFactors}
           factorResults={factorResults}
-          factorsMeta={factorsMeta}
+          factorsMeta={factorsMeta ?? null}
           onAddActivity={addActivity}
           onUpdateActivity={updateActivity}
           onRemoveActivity={removeActivity}
