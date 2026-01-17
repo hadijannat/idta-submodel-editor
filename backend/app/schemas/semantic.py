@@ -70,3 +70,25 @@ class SemanticApplyPreviewResponse(BaseModel):
     valueType: str | None = None
     warnings: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+
+
+class SemanticBatchResolveRequest(BaseModel):
+    """Request payload for batch resolve."""
+
+    identifiers: list[str] = Field(..., max_length=100)
+    provider: str | None = None
+    lang: str = "en"
+
+
+class SemanticBatchResolveItem(BaseModel):
+    """Single item in batch resolve response."""
+
+    identifier: str
+    entry: SemanticEntry | None = None
+    error: str | None = None
+
+
+class SemanticBatchResolveResponse(BaseModel):
+    """Batch resolve response payload."""
+
+    results: list[SemanticBatchResolveItem]

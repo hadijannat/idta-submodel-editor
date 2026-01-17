@@ -58,6 +58,7 @@ def get_mapper_service() -> MapperService:
         parser=get_parser(),
         hydrator=get_hydrator(),
         pdf_service=get_pdf_service(),
+        semantic_service=get_semantic_service(),
     )
 
 def get_pdf_service() -> PDFExportService | None:

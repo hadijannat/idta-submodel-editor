@@ -13,9 +13,11 @@ from fastapi.responses import Response
 from app.config import get_settings
 from app.dependencies import get_fetcher, get_hydrator, get_parser, get_pdf_service
 from app.schemas.form_data import ExportRequest, SubmodelFormData
+from app.schemas.pcf import PCFValidateRequest
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService, PDFExportService
 from app.services.parser import ParserService
+from app.services.pcf import is_pcf_template, validate_pcf
 from app.services.validation import validate_form_data
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,25 @@ async def export_submodel(
                     "warnings": [w.model_dump() for w in warnings],
                 },
             )
+
+        # PCF-specific validation for Carbon Footprint templates
+        if is_pcf_template(schema):
+            pcf_result = validate_pcf(
+                PCFValidateRequest(
+                    form_data=form_data.model_dump(),
+                    template_schema=schema,
+                )
+            )
+            if not pcf_result.valid:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "PCF validation failed",
+                        "errors": [e.model_dump() for e in pcf_result.errors],
+                        "warnings": [w.model_dump() for w in pcf_result.warnings],
+                        "completeness_score": pcf_result.completeness_score,
+                    },
+                )
 
         if format == "aasx":
             content = hydrator.hydrate_submodel(template_bytes, form_data.model_dump())
@@ -223,6 +244,25 @@ async def batch_export(
                             "warnings": [w.model_dump() for w in warnings],
                         },
                     )
+
+                # PCF-specific validation for Carbon Footprint templates
+                if is_pcf_template(schema):
+                    pcf_result = validate_pcf(
+                        PCFValidateRequest(
+                            form_data=req.form_data.model_dump(),
+                            template_schema=schema,
+                        )
+                    )
+                    if not pcf_result.valid:
+                        raise HTTPException(
+                            status_code=422,
+                            detail={
+                                "message": "PCF validation failed",
+                                "errors": [e.model_dump() for e in pcf_result.errors],
+                                "warnings": [w.model_dump() for w in pcf_result.warnings],
+                                "completeness_score": pcf_result.completeness_score,
+                            },
+                        )
 
                 if req.format == "aasx":
                     content = hydrator.hydrate_submodel(

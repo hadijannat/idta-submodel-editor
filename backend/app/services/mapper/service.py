@@ -5,9 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from app.services.semantic import SemanticService
 
 from fastapi import HTTPException, UploadFile
 
@@ -18,10 +22,14 @@ from app.schemas.mapper import (
     DatasetFileInfo,
     DatasetProfile,
     DatasetSheetInfo,
+    MapperAutoSuggestRequest,
+    MapperAutoSuggestResponse,
     MapperDiagnostic,
     MapperRecipe,
     MapperRunRequest,
     MapperRunResponse,
+    MapperSuggestedMapping,
+    MapperTargetFieldInfo,
 )
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService, PDFExportService
@@ -45,11 +53,13 @@ class MapperService:
         parser: ParserService,
         hydrator: HydratorService,
         pdf_service: PDFExportService | None = None,
+        semantic_service: "SemanticService | None" = None,
     ) -> None:
         self.fetcher = fetcher
         self.parser = parser
         self.hydrator = hydrator
         self.pdf_service = pdf_service
+        self.semantic_service = semantic_service
         self.settings = get_settings()
         self.base_dir = self.settings.mapper_cache_dir
         self.upload_dir = self.base_dir / "uploads"
@@ -277,6 +287,236 @@ class MapperService:
             )
 
         raise HTTPException(status_code=400, detail="Unsupported mode")
+
+    async def auto_suggest(
+        self, request: MapperAutoSuggestRequest
+    ) -> MapperAutoSuggestResponse:
+        """Auto-suggest column-to-field mappings using semantic enrichment."""
+        # Load profile and template schema
+        profile_meta = self._load_profile(request.profile_id)
+        columns = profile_meta.get("columns", [])
+
+        template_bytes = await self._fetch_template_bytes(
+            request.template_name, request.status, request.version
+        )
+        schema = self.parser.parse_aasx_to_ui_schema(template_bytes)
+
+        # Extract target fields from schema
+        target_fields = self._extract_target_fields(schema.get("elements", []))
+
+        # Gather semantic IDs to resolve
+        semantic_ids: list[str] = []
+        for field in target_fields:
+            if field.semantic_id:
+                semantic_ids.append(field.semantic_id)
+
+        # Resolve semantic IDs to enrich with synonyms
+        semantic_resolved = 0
+        semantic_errors = 0
+
+        if request.use_semantics and self.semantic_service and semantic_ids:
+            sem_map: dict[str, dict] = {}
+            for sem_id in set(semantic_ids):
+                try:
+                    entry = await self.semantic_service.resolve(sem_id, None, "en")
+                    if entry:
+                        sem_map[sem_id] = {
+                            "preferred_name": entry.preferredName,
+                            "synonyms": entry.synonyms or [],
+                            "labels": entry.labels or {},
+                        }
+                        semantic_resolved += 1
+                except Exception as exc:
+                    logger.debug("Semantic resolve failed for %s: %s", sem_id, exc)
+                    semantic_errors += 1
+
+            # Enrich target fields with resolved semantic info
+            for field in target_fields:
+                if field.semantic_id and field.semantic_id in sem_map:
+                    info = sem_map[field.semantic_id]
+                    if info["preferred_name"]:
+                        field.semantic_label = info["preferred_name"]
+                    field.semantic_synonyms = info.get("synonyms", [])
+                    # Add labels in different languages as synonyms
+                    for label in info.get("labels", {}).values():
+                        if label and label not in field.semantic_synonyms:
+                            field.semantic_synonyms.append(label)
+
+        # Score columns against targets
+        suggestions: list[MapperSuggestedMapping] = []
+        used_targets: set[str] = set()
+
+        for col in columns:
+            col_name = col.get("name_original", "")
+            col_idx = col.get("index", 0)
+            col_normalized = col.get("name_normalized", "")
+
+            best_match: MapperSuggestedMapping | None = None
+            best_score = 0.0
+
+            for field in target_fields:
+                if field.id_short_path in used_targets:
+                    continue
+
+                score, reason = self._compute_match_score(
+                    col_name, col_normalized, field
+                )
+
+                if score > best_score and score >= request.min_confidence:
+                    best_score = score
+                    best_match = MapperSuggestedMapping(
+                        source_column=col_name,
+                        source_index=col_idx,
+                        target_path=field.id_short_path,
+                        target_type=field.element_type,
+                        target_value_type=field.value_type,
+                        confidence=round(score, 3),
+                        match_reason=reason,
+                    )
+
+            if best_match:
+                suggestions.append(best_match)
+                used_targets.add(best_match.target_path)
+
+        return MapperAutoSuggestResponse(
+            suggestions=suggestions,
+            target_fields=target_fields,
+            semantic_resolved=semantic_resolved,
+            semantic_errors=semantic_errors,
+        )
+
+    def _extract_target_fields(
+        self, elements: list[dict], path: list[str] | None = None
+    ) -> list[MapperTargetFieldInfo]:
+        """Recursively extract target fields from schema elements."""
+        if path is None:
+            path = []
+
+        result: list[MapperTargetFieldInfo] = []
+        leaf_types = {"Property", "MultiLanguageProperty", "Range", "File", "ReferenceElement"}
+
+        for element in elements:
+            model_type = element.get("modelType", "")
+            id_short = element.get("idShort", "")
+
+            if model_type == "SubmodelElementList":
+                list_path = [*path, f"{id_short}[]"]
+                template = element.get("itemTemplate") or (
+                    element.get("items", [{}])[0] if element.get("items") else None
+                )
+                if template:
+                    if template.get("modelType") in leaf_types:
+                        leaf_path = list_path + [template.get("idShort", "value")]
+                        result.append(self._make_target_field(template, leaf_path))
+                    else:
+                        base_path = list_path + [template.get("idShort", "")]
+                        if template.get("elements"):
+                            result.extend(self._extract_target_fields(template["elements"], base_path))
+                        if template.get("statements"):
+                            result.extend(self._extract_target_fields(template["statements"], base_path))
+                continue
+
+            next_path = [*path, id_short]
+
+            if model_type in leaf_types:
+                result.append(self._make_target_field(element, next_path))
+
+            if element.get("elements"):
+                result.extend(self._extract_target_fields(element["elements"], next_path))
+            if element.get("statements"):
+                result.extend(self._extract_target_fields(element["statements"], next_path))
+
+        return result
+
+    def _make_target_field(
+        self, element: dict, path: list[str]
+    ) -> MapperTargetFieldInfo:
+        """Create a MapperTargetFieldInfo from an element."""
+        cardinality = element.get("cardinality", "")
+        required = cardinality.startswith("One")
+
+        semantic_id = None
+        sem_ref = element.get("semanticId")
+        if sem_ref and isinstance(sem_ref, dict):
+            keys = sem_ref.get("keys", [])
+            if keys and isinstance(keys, list):
+                semantic_id = keys[-1].get("value")
+
+        return MapperTargetFieldInfo(
+            id_short_path=".".join(path),
+            element_type=element.get("modelType", "Property"),
+            value_type=element.get("valueType"),
+            label=element.get("idShort", path[-1] if path else ""),
+            required=required,
+            semantic_id=semantic_id,
+            semantic_label=element.get("semanticLabel"),
+            semantic_synonyms=[],
+            languages=element.get("supportedLanguages"),
+        )
+
+    def _compute_match_score(
+        self,
+        col_name: str,
+        col_normalized: str,
+        field: MapperTargetFieldInfo,
+    ) -> tuple[float, str]:
+        """Compute match score between column and target field."""
+        # Tokenize column name
+        col_tokens = set(self._tokenize(col_name))
+        if not col_tokens:
+            return 0.0, ""
+
+        # Build vocabulary for target
+        vocab_parts = [field.id_short_path, field.label]
+        if field.semantic_label:
+            vocab_parts.append(field.semantic_label)
+        vocab_parts.extend(field.semantic_synonyms)
+
+        vocab_tokens: set[str] = set()
+        for part in vocab_parts:
+            vocab_tokens.update(self._tokenize(part))
+
+        if not vocab_tokens:
+            return 0.0, ""
+
+        # Jaccard similarity
+        intersection = col_tokens & vocab_tokens
+        union = col_tokens | vocab_tokens
+        jaccard = len(intersection) / len(union) if union else 0.0
+
+        # Check for exact matches (boost)
+        col_lower = col_name.lower().strip()
+        exact_matches = [
+            field.label.lower().strip(),
+            field.semantic_label.lower().strip() if field.semantic_label else "",
+        ]
+        exact_matches.extend(s.lower().strip() for s in field.semantic_synonyms)
+
+        match_reason = "token_similarity"
+
+        if col_lower in exact_matches:
+            jaccard = max(jaccard, 0.95)
+            match_reason = "exact_match"
+
+        # Boost for semantic match
+        if field.semantic_synonyms and intersection:
+            sem_tokens = set()
+            for syn in field.semantic_synonyms:
+                sem_tokens.update(self._tokenize(syn))
+            if col_tokens & sem_tokens:
+                jaccard = min(jaccard + 0.15, 1.0)
+                match_reason = "semantic_match"
+
+        return jaccard, match_reason
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        """Tokenize text for comparison."""
+        if not text:
+            return []
+        # Normalize: lowercase, split on non-alphanumeric
+        normalized = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+        return [t for t in normalized.split() if t]
 
     async def export(self, request: MapperRunRequest):
         response = await self.run(request)

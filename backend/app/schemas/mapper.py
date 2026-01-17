@@ -129,3 +129,49 @@ class MapperRunResponse(BaseModel):
 
 class MapperRecipeList(BaseModel):
     recipes: list[MapperRecipe] = Field(default_factory=list)
+
+
+class MapperTargetFieldInfo(BaseModel):
+    """Target field info with semantic enrichment for auto-mapping."""
+
+    id_short_path: str
+    element_type: str
+    value_type: str | None = None
+    label: str
+    required: bool = False
+    semantic_id: str | None = None
+    semantic_label: str | None = None
+    semantic_synonyms: list[str] = Field(default_factory=list)
+    languages: list[str] | None = None
+
+
+class MapperSuggestedMapping(BaseModel):
+    """A suggested column-to-field mapping with confidence score."""
+
+    source_column: str
+    source_index: int
+    target_path: str
+    target_type: str
+    target_value_type: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    match_reason: str
+
+
+class MapperAutoSuggestRequest(BaseModel):
+    """Request for auto-suggesting mappings."""
+
+    template_name: str
+    status: Literal["published", "deprecated"] = "published"
+    version: str | None = None
+    profile_id: str
+    use_semantics: bool = True
+    min_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
+
+
+class MapperAutoSuggestResponse(BaseModel):
+    """Response with suggested mappings."""
+
+    suggestions: list[MapperSuggestedMapping]
+    target_fields: list[MapperTargetFieldInfo]
+    semantic_resolved: int = 0
+    semantic_errors: int = 0

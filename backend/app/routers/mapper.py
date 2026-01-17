@@ -11,6 +11,8 @@ from fastapi.responses import Response
 from app.dependencies import get_current_user, get_mapper_service
 from app.schemas.mapper import (
     DatasetProfile,
+    MapperAutoSuggestRequest,
+    MapperAutoSuggestResponse,
     MapperRecipe,
     MapperRecipeList,
     MapperRunRequest,
@@ -37,6 +39,27 @@ async def profile_dataset(
         raise
     except Exception as exc:
         logger.exception("Failed to profile dataset")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/auto-suggest", response_model=MapperAutoSuggestResponse)
+async def auto_suggest_mappings(
+    request: MapperAutoSuggestRequest,
+    mapper: Annotated[MapperService, Depends(get_mapper_service)] = None,
+) -> MapperAutoSuggestResponse:
+    """Auto-suggest column-to-field mappings using semantic enrichment.
+
+    Returns suggested mappings with confidence scores, taking into account:
+    - Column name similarity to field idShort and label
+    - Semantic ID resolution (preferred names, synonyms from ECLASS/IEC CDD)
+    - Type compatibility
+    """
+    try:
+        return await mapper.auto_suggest(request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Auto-suggest failed")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

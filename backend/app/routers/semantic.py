@@ -8,6 +8,9 @@ from app.dependencies import get_semantic_service
 from app.schemas.semantic import (
     SemanticApplyPreviewRequest,
     SemanticApplyPreviewResponse,
+    SemanticBatchResolveItem,
+    SemanticBatchResolveRequest,
+    SemanticBatchResolveResponse,
     SemanticProviderInfo,
     SemanticKind,
     SemanticResolveResponse,
@@ -113,3 +116,39 @@ async def apply_preview(
     if result is None:
         raise HTTPException(status_code=404, detail="Semantic entry not found")
     return result
+
+
+@router.post("/batch-resolve", response_model=SemanticBatchResolveResponse)
+async def batch_resolve(
+    service: Annotated[SemanticService, Depends(get_semantic_service)],
+    payload: SemanticBatchResolveRequest,
+) -> SemanticBatchResolveResponse:
+    """Batch resolve multiple semantic IDs or IRIs.
+
+    Resolves up to 100 identifiers in a single request. Useful for
+    enriching auto-mapping with semantic synonyms and preferred names.
+    """
+    results: list[SemanticBatchResolveItem] = []
+
+    for identifier in payload.identifiers:
+        try:
+            entry = await service.resolve(identifier, payload.provider, payload.lang)
+            results.append(
+                SemanticBatchResolveItem(identifier=identifier, entry=entry)
+            )
+        except SemanticRateLimitError as exc:
+            results.append(
+                SemanticBatchResolveItem(
+                    identifier=identifier,
+                    error=f"Rate limited: retry after {exc.retry_after}s",
+                )
+            )
+        except Exception as exc:
+            results.append(
+                SemanticBatchResolveItem(
+                    identifier=identifier,
+                    error=str(exc),
+                )
+            )
+
+    return SemanticBatchResolveResponse(results=results)

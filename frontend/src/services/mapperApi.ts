@@ -1,6 +1,8 @@
 import { API_BASE_URL, ApiError } from './api';
 import type {
   DatasetProfile,
+  MapperAutoSuggestRequest,
+  MapperAutoSuggestResponse,
   MapperRecipe,
   MapperRunRequest,
   MapperRunResponse,
@@ -114,4 +116,28 @@ export async function deleteMapperRecipe(name: string): Promise<void> {
     }
     throw new ApiError('Delete recipe failed', response.status, details);
   }
+}
+
+export async function autoSuggestMappings(
+  payload: MapperAutoSuggestRequest
+): Promise<MapperAutoSuggestResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/mapper/auto-suggest`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError('Auto-suggest failed', response.status, details);
+  }
+
+  return response.json();
 }

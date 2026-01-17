@@ -1,0 +1,395 @@
+/**
+ * PCF Calculator styles.
+ *
+ * Uses BEM naming convention to match existing codebase patterns.
+ */
+
+.pcf-calculator {
+  background: var(--surface-color, #ffffff);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.pcf-calculator__header {
+  margin-bottom: 1.5rem;
+}
+
+.pcf-calculator__header h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.pcf-calculator__description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
+
+/* Empty state */
+.pcf-calculator__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  background: var(--surface-secondary, #f5f5f5);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.pcf-calculator__empty p {
+  margin: 0 0 1rem;
+  color: var(--text-secondary, #666);
+}
+
+/* Table */
+.pcf-calculator__table-wrapper {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.pcf-calculator__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.pcf-calculator__table th {
+  text-align: left;
+  padding: 0.75rem 0.5rem;
+  border-bottom: 2px solid var(--border-color, #e0e0e0);
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+
+.pcf-calculator__table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  vertical-align: middle;
+}
+
+.pcf-calculator__table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Inputs */
+.pcf-calculator__input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: var(--input-bg, #fff);
+  color: var(--text-primary, #1a1a1a);
+}
+
+.pcf-calculator__input:focus {
+  outline: none;
+  border-color: var(--primary-color, #0066cc);
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+}
+
+.pcf-calculator__input--number {
+  width: 80px;
+  text-align: right;
+}
+
+.pcf-calculator__select {
+  padding: 0.5rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: var(--input-bg, #fff);
+  color: var(--text-primary, #1a1a1a);
+  cursor: pointer;
+}
+
+.pcf-calculator__select:focus {
+  outline: none;
+  border-color: var(--primary-color, #0066cc);
+}
+
+.pcf-calculator__select--narrow {
+  width: 70px;
+}
+
+/* Result cell */
+.pcf-calculator__result {
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #1a1a1a);
+}
+
+/* Actions */
+.pcf-calculator__actions {
+  margin-bottom: 1rem;
+}
+
+/* Buttons */
+.pcf-calculator__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.pcf-calculator__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pcf-calculator__btn--primary {
+  background: var(--primary-color, #0066cc);
+  color: #fff;
+}
+
+.pcf-calculator__btn--primary:hover:not(:disabled) {
+  background: var(--primary-hover, #0052a3);
+}
+
+.pcf-calculator__btn--secondary {
+  background: var(--surface-secondary, #f0f0f0);
+  color: var(--text-primary, #1a1a1a);
+}
+
+.pcf-calculator__btn--secondary:hover:not(:disabled) {
+  background: var(--surface-tertiary, #e0e0e0);
+}
+
+.pcf-calculator__btn--success {
+  background: var(--success-color, #28a745);
+  color: #fff;
+}
+
+.pcf-calculator__btn--success:hover:not(:disabled) {
+  background: var(--success-hover, #218838);
+}
+
+.pcf-calculator__btn--icon {
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.pcf-calculator__btn--icon:hover:not(:disabled) {
+  color: var(--error-color, #dc3545);
+  background: rgba(220, 53, 69, 0.1);
+}
+
+/* Warnings */
+.pcf-calculator__warnings {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 4px;
+}
+
+.pcf-calculator__warning {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--warning-text, #856404);
+}
+
+.pcf-calculator__warning + .pcf-calculator__warning {
+  margin-top: 0.5rem;
+}
+
+/* Footer */
+.pcf-calculator__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+.pcf-calculator__total {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.pcf-calculator__total-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
+
+.pcf-calculator__total-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary-color, #0066cc);
+}
+
+.pcf-calculator__footer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Factor cell with search button */
+.pcf-calculator__factor-cell {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.pcf-calculator__btn--search {
+  padding: 0.25rem 0.5rem;
+  background: var(--surface-secondary, #f0f0f0);
+  border: 1px solid var(--border-color, #e0e0e0);
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.pcf-calculator__btn--search:hover:not(:disabled) {
+  background: var(--surface-tertiary, #e0e0e0);
+}
+
+/* Factor Search Modal */
+.pcf-calculator__modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.pcf-calculator__modal {
+  background: var(--surface-color, #ffffff);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pcf-calculator__modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.pcf-calculator__modal-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.pcf-calculator__modal-search {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.pcf-calculator__input--search {
+  flex: 1;
+}
+
+.pcf-calculator__searching {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+
+.pcf-calculator__modal-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.5rem;
+  min-height: 200px;
+}
+
+.pcf-calculator__no-results {
+  text-align: center;
+  color: var(--text-secondary, #666);
+  padding: 2rem;
+}
+
+/* Factor table in modal */
+.pcf-calculator__factor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.pcf-calculator__factor-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--border-color, #e0e0e0);
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+
+.pcf-calculator__factor-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  vertical-align: middle;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcf-calculator__factor-table tr:hover {
+  background: var(--surface-secondary, #f5f5f5);
+}
+
+.pcf-calculator__btn--select {
+  padding: 0.25rem 0.75rem;
+  background: var(--primary-color, #0066cc);
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+.pcf-calculator__btn--select:hover:not(:disabled) {
+  background: var(--primary-hover, #0052a3);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .pcf-calculator__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pcf-calculator__total {
+    justify-content: center;
+  }
+
+  .pcf-calculator__footer-actions {
+    justify-content: center;
+  }
+
+  .pcf-calculator__modal {
+    width: 95%;
+    max-height: 90vh;
+  }
+}

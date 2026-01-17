@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
-from app.routers import editor, export, templates, semantic, mapper
+from app.routers import editor, export, templates, semantic, mapper, pcf
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -94,6 +94,7 @@ def create_application() -> FastAPI:
     app.include_router(export.router)
     app.include_router(semantic.router)
     app.include_router(mapper.router)
+    app.include_router(pcf.router)
 
     # Health check endpoints
     @app.get("/health", tags=["health"])

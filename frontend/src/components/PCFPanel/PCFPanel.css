@@ -1,0 +1,29 @@
+/**
+ * PCFPanel styles.
+ */
+
+.pcf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.pcf-panel__section {
+  background: var(--surface-color, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pcf-panel__error {
+  padding: 0.75rem 1rem;
+  background: rgba(220, 53, 69, 0.1);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  border-radius: 6px;
+}
+
+.pcf-panel__error p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--error-color, #dc3545);
+}

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DragEvent } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
-import localforage from 'localforage';
-import type { SubmodelUISchema, UIElementSchema } from '../../types/ui-schema';
+import type { SubmodelUISchema } from '../../types/ui-schema';
 import type { SubmodelFormData } from '../../types/aas-elements';
 import type {
   DatasetProfile,
@@ -11,14 +10,24 @@ import type {
   MapperModeType,
   MapperRecipe,
   MapperRunRequest,
+  MapperTransform,
 } from '../../types/mapper';
 import {
+  autoSuggestMappings,
   listMapperRecipes,
   profileMapperFile,
   runMapper,
   saveMapperRecipe,
 } from '../../services/mapperApi';
-import { isRequired } from '../../types/aas-elements';
+import type { TargetField } from './types';
+import {
+  flattenTargets,
+  mergeElements,
+  scoreMatch,
+  extractPreviewEntries,
+} from './mapperUtils';
+import { recipeStore } from './recipeStore';
+import PreviewPanel from './PreviewPanel';
 
 interface SmartMapperPageProps {
   schema: SubmodelUISchema | null;
@@ -27,132 +36,6 @@ interface SmartMapperPageProps {
   templateVersion: string | null;
   form: UseFormReturn<SubmodelFormData>;
   onContinue: () => void;
-}
-
-interface TargetField {
-  idShortPath: string;
-  label: string;
-  elementType: string;
-  valueType?: string | null;
-  required: boolean;
-  semanticLabel?: string | null;
-  languages?: string[];
-}
-
-const recipeStore = localforage.createInstance({
-  name: 'idta-submodel-editor',
-  storeName: 'smart-mapper-recipes',
-});
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-function tokenize(text: string): string[] {
-  if (!text) return [];
-  return normalize(text).split(/\s+/).filter(Boolean);
-}
-
-function scoreMatch(source: string, target: TargetField): number {
-  const sourceTokens = new Set(tokenize(source));
-  if (!sourceTokens.size) return 0;
-  const targetTokens = new Set(
-    tokenize(`${target.idShortPath} ${target.label} ${target.semanticLabel ?? ''}`)
-  );
-  let intersection = 0;
-  sourceTokens.forEach((token) => {
-    if (targetTokens.has(token)) intersection += 1;
-  });
-  const union = new Set([...sourceTokens, ...targetTokens]).size;
-  return union ? intersection / union : 0;
-}
-
-function flattenTargets(elements: UIElementSchema[], path: string[] = []): TargetField[] {
-  const targets: TargetField[] = [];
-
-  const isLeaf = (element: UIElementSchema) =>
-    element.modelType === 'Property' ||
-    element.modelType === 'MultiLanguageProperty' ||
-    element.modelType === 'Range' ||
-    element.modelType === 'File' ||
-    element.modelType === 'ReferenceElement';
-
-  const pushLeaf = (
-    element: UIElementSchema,
-    pathSegments: string[],
-    requiredOverride?: boolean
-  ) => {
-    const label = element.idShort || pathSegments[pathSegments.length - 1];
-    targets.push({
-      idShortPath: pathSegments.join('.'),
-      label,
-      elementType: element.modelType,
-      valueType: element.valueType ?? null,
-      required: requiredOverride ?? isRequired(element.cardinality),
-      semanticLabel: element.semanticLabel ?? null,
-      languages: element.supportedLanguages ?? undefined,
-    });
-  };
-
-  for (const element of elements) {
-    if (element.modelType === 'SubmodelElementList') {
-      const listPath = [...path, `${element.idShort}[]`];
-      const listRequired = isRequired(element.cardinality);
-      const template = element.itemTemplate ?? element.items?.[0] ?? null;
-
-      if (template) {
-        if (isLeaf(template)) {
-          const leafPath = [
-            ...listPath,
-            template.idShort ? template.idShort : 'value',
-          ];
-          pushLeaf(template, leafPath, listRequired);
-        } else {
-          const basePath = template.idShort ? [...listPath, template.idShort] : listPath;
-          if (template.elements && template.elements.length) {
-            targets.push(...flattenTargets(template.elements, basePath));
-          }
-          if (template.statements && template.statements.length) {
-            targets.push(...flattenTargets(template.statements, basePath));
-          }
-        }
-      }
-      continue;
-    }
-
-    const nextPath = [...path, element.idShort];
-    if (isLeaf(element)) {
-      pushLeaf(element, nextPath);
-    }
-
-    if (element.elements && element.elements.length) {
-      targets.push(...flattenTargets(element.elements, nextPath));
-    }
-    if (element.statements && element.statements.length) {
-      targets.push(...flattenTargets(element.statements, nextPath));
-    }
-  }
-
-  return targets;
-}
-
-function mergeElements(
-  base: Record<string, unknown>,
-  patch: Record<string, unknown>
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...base };
-  Object.entries(patch).forEach(([key, value]) => {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      const nextBase = (base[key] as Record<string, unknown>) ?? {};
-      result[key] = mergeElements(nextBase, value as Record<string, unknown>);
-    } else {
-      result[key] = value;
-    }
-  });
-  return result;
 }
 
 export default function SmartMapperPage({
@@ -179,6 +62,7 @@ export default function SmartMapperPage({
   const [recipes, setRecipes] = useState<MapperRecipe[]>([]);
   const [serverRecipes, setServerRecipes] = useState<MapperRecipe[]>([]);
   const [serverRecipeError, setServerRecipeError] = useState<string | null>(null);
+  const [recipeVersionWarning, setRecipeVersionWarning] = useState<string | null>(null);
   const [recipeName, setRecipeName] = useState('');
   const [selectedRecipe, setSelectedRecipe] = useState<string>('');
   const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
@@ -207,6 +91,12 @@ export default function SmartMapperPage({
 
   const canRun = mappings.length > 0 && (mode !== 'grouped' || groupBy.length > 0);
 
+  // Extract preview entries from mapped form data for dry-run display
+  const previewEntries = useMemo(
+    () => extractPreviewEntries(mappedFormData),
+    [mappedFormData]
+  );
+
   useEffect(() => {
     recipeStore.getItem<MapperRecipe[]>('recipes').then((saved) => {
       setRecipes(saved ?? []);
@@ -233,6 +123,8 @@ export default function SmartMapperPage({
     setMappedFormData(null);
     setAutoMapped(false);
     setGroupBy([]);
+    setRecipeVersionWarning(null);
+    setSemanticStats(null);
 
     try {
       const result = await profileMapperFile(file, { sampleRows: 200 });
@@ -335,35 +227,108 @@ export default function SmartMapperPage({
     );
   }, []);
 
-  const handleAutoMap = useCallback(() => {
-    if (!profile) return;
-    const newMappings: MappingItem[] = [];
-    profile.columns.forEach((column) => {
-      let best: { score: number; target: TargetField | null } = {
-        score: 0,
-        target: null,
-      };
-      targetFields.forEach((target) => {
-        const score = scoreMatch(column.name_original, target);
-        if (score > best.score) {
-          best = { score, target };
+  const [expandedTransform, setExpandedTransform] = useState<string | null>(null);
+
+  const toggleTransformExpanded = useCallback((columnName: string) => {
+    setExpandedTransform((prev) => (prev === columnName ? null : columnName));
+  }, []);
+
+  const handleTransformUpdate = useCallback(
+    (columnName: string, transformPatch: Partial<MapperTransform>) => {
+      setMappings((prev) =>
+        prev.map((mapping) =>
+          mapping.source.column_name === columnName
+            ? {
+                ...mapping,
+                transform: { ...(mapping.transform ?? {}), ...transformPatch },
+              }
+            : mapping
+        )
+      );
+    },
+    []
+  );
+
+  const [autoMapLoading, setAutoMapLoading] = useState(false);
+  const [semanticStats, setSemanticStats] = useState<{
+    resolved: number;
+    errors: number;
+  } | null>(null);
+
+  const handleAutoMap = useCallback(async () => {
+    if (!profile || !templateName) return;
+    setAutoMapLoading(true);
+    setSemanticStats(null);
+
+    try {
+      // Use server-side semantic-aware auto-suggest
+      const response = await autoSuggestMappings({
+        template_name: templateName,
+        status: templateStatus,
+        version: templateVersion ?? undefined,
+        profile_id: profile.profile_id,
+        use_semantics: true,
+        min_confidence: 0.3,
+      });
+
+      // Convert suggestions to mappings
+      const newMappings: MappingItem[] = response.suggestions.map((suggestion) => {
+        const targetInfo = response.target_fields.find(
+          (f) => f.id_short_path === suggestion.target_path
+        );
+        return {
+          source: {
+            column_name: suggestion.source_column,
+            column_index: suggestion.source_index,
+          },
+          target: {
+            id_short_path: suggestion.target_path,
+            element_type: suggestion.target_type,
+            value_type: suggestion.target_value_type ?? null,
+          },
+          required: targetInfo?.required ?? false,
+        };
+      });
+
+      setMappings(newMappings);
+      setAutoMapped(true);
+      setSemanticStats({
+        resolved: response.semantic_resolved,
+        errors: response.semantic_errors,
+      });
+    } catch (err) {
+      // Fallback to client-side matching if server fails
+      console.warn('Server auto-suggest failed, using client-side fallback:', err);
+      const newMappings: MappingItem[] = [];
+      profile.columns.forEach((column) => {
+        let best: { score: number; target: TargetField | null } = {
+          score: 0,
+          target: null,
+        };
+        targetFields.forEach((target) => {
+          const score = scoreMatch(column.name_original, target);
+          if (score > best.score) {
+            best = { score, target };
+          }
+        });
+        if (best.target && best.score >= 0.45) {
+          newMappings.push({
+            source: { column_name: column.name_original, column_index: column.index },
+            target: {
+              id_short_path: best.target.idShortPath,
+              element_type: best.target.elementType,
+              value_type: best.target.valueType ?? null,
+            },
+            required: best.target.required,
+          });
         }
       });
-      if (best.target && best.score >= 0.45) {
-        newMappings.push({
-          source: { column_name: column.name_original, column_index: column.index },
-          target: {
-            id_short_path: best.target.idShortPath,
-            element_type: best.target.elementType,
-            value_type: best.target.valueType ?? null,
-          },
-          required: best.target.required,
-        });
-      }
-    });
-    setMappings(newMappings);
-    setAutoMapped(true);
-  }, [profile, targetFields]);
+      setMappings(newMappings);
+      setAutoMapped(true);
+    } finally {
+      setAutoMapLoading(false);
+    }
+  }, [profile, templateName, templateStatus, templateVersion, targetFields]);
 
   const buildRecipe = useCallback((): MapperRecipe | null => {
     if (!profile || !templateName) return null;
@@ -443,6 +408,24 @@ export default function SmartMapperPage({
     const source = parsed.source === 'server' ? serverRecipes : recipes;
     const recipe = source.find((r) => r.name === parsed.name);
     if (!recipe || !profile) return;
+
+    // Check for template version mismatch
+    setRecipeVersionWarning(null);
+    if (recipe.template.version && templateVersion) {
+      if (recipe.template.version !== templateVersion) {
+        setRecipeVersionWarning(
+          `Recipe was created for template version "${recipe.template.version}" ` +
+          `but current version is "${templateVersion}". ` +
+          `Field paths may have changed.`
+        );
+      }
+    } else if (recipe.template.version && !templateVersion) {
+      setRecipeVersionWarning(
+        `Recipe was created for template version "${recipe.template.version}" ` +
+        `but current template version is unknown.`
+      );
+    }
+
     setMode(recipe.mode.type);
     setGroupBy(recipe.mode.group_by ?? []);
     const columnIndexByName = new Map(
@@ -462,7 +445,7 @@ export default function SmartMapperPage({
       })
       .filter(Boolean) as MappingItem[];
     setMappings(applied);
-  }, [recipes, serverRecipes, selectedRecipe, profile, parseRecipeId]);
+  }, [recipes, serverRecipes, selectedRecipe, profile, parseRecipeId, templateVersion]);
 
   const handleRun = useCallback(async () => {
     if (!profile || !templateName) return;
@@ -637,6 +620,9 @@ export default function SmartMapperPage({
             {serverRecipeError && (
               <p className="smart-mapper-hint">{serverRecipeError}</p>
             )}
+            {recipeVersionWarning && (
+              <div className="smart-mapper-warning">{recipeVersionWarning}</div>
+            )}
           </div>
         </div>
       </div>
@@ -646,8 +632,13 @@ export default function SmartMapperPage({
           <div className="smart-mapper-panel">
             <div className="smart-mapper-panel-header">
               <h3>Source Columns</h3>
-              <button type="button" className="btn btn-outline" onClick={handleAutoMap}>
-                Auto-map
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={handleAutoMap}
+                disabled={autoMapLoading}
+              >
+                {autoMapLoading ? 'Auto-mapping…' : 'Auto-map'}
               </button>
             </div>
             <div className="smart-mapper-column-list">
@@ -671,9 +662,24 @@ export default function SmartMapperPage({
                       onDragStart={handleDragStart(column.name_original, column.index)}
                       onDragEnd={handleDragEnd}
                     >
-                      <strong>{column.name_original}</strong>
+                      <div className="smart-mapper-column-title">
+                        <strong>{column.name_original}</strong>
+                        <span className="smart-mapper-column-type">{column.inferred_type}</span>
+                      </div>
+                      <div className="smart-mapper-column-stats">
+                        <span
+                          className={`smart-mapper-stat ${column.null_rate > 0.2 ? 'warning' : ''}`}
+                          title="Null/empty rate"
+                        >
+                          {(column.null_rate * 100).toFixed(0)}% empty
+                        </span>
+                        <span className="smart-mapper-stat" title="Distinct values">
+                          {column.distinct_count} unique
+                        </span>
+                      </div>
                       <span className="smart-mapper-column-meta">
-                        {column.inferred_type} · {column.examples.join(', ')}
+                        {column.examples.slice(0, 3).join(', ')}
+                        {column.examples.length > 3 && '…'}
                       </span>
                       <span className="smart-mapper-column-hint">Drag to map</span>
                     </div>
@@ -754,24 +760,151 @@ export default function SmartMapperPage({
                 </p>
               ) : (
                 <div className="smart-mapper-canvas-list">
-                  {mappings.map((mapping) => (
-                    <div
-                      key={mapping.source.column_name}
-                      className="smart-mapper-canvas-row"
-                    >
-                      <span>
-                        <strong>{mapping.source.column_name}</strong> →{' '}
-                        {mapping.target.id_short_path}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => removeMapping(mapping.source.column_name)}
+                  {mappings.map((mapping) => {
+                    const isExpanded =
+                      expandedTransform === mapping.source.column_name;
+                    const transform = mapping.transform ?? {};
+                    const hasTransform =
+                      transform.decimal ||
+                      transform.thousands ||
+                      transform.date_format ||
+                      transform.default_value ||
+                      transform.trim === false;
+
+                    return (
+                      <div
+                        key={mapping.source.column_name}
+                        className={`smart-mapper-canvas-row ${isExpanded ? 'expanded' : ''}`}
                       >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                        <div className="smart-mapper-canvas-row-header">
+                          <span>
+                            <strong>{mapping.source.column_name}</strong> →{' '}
+                            {mapping.target.id_short_path}
+                            {hasTransform && (
+                              <span className="smart-mapper-transform-badge">⚙</span>
+                            )}
+                          </span>
+                          <div className="smart-mapper-canvas-row-actions">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-ghost"
+                              onClick={() =>
+                                toggleTransformExpanded(mapping.source.column_name)
+                              }
+                              title="Transform options"
+                            >
+                              {isExpanded ? '▼' : '▶'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              onClick={() => removeMapping(mapping.source.column_name)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="smart-mapper-transform-options">
+                            <div className="smart-mapper-transform-row">
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={transform.trim !== false}
+                                  onChange={(e) =>
+                                    handleTransformUpdate(mapping.source.column_name, {
+                                      trim: e.target.checked,
+                                    })
+                                  }
+                                />
+                                Trim whitespace
+                              </label>
+                            </div>
+                            <div className="smart-mapper-transform-row">
+                              <label>
+                                Default value
+                                <input
+                                  type="text"
+                                  placeholder="If empty..."
+                                  value={transform.default_value ?? ''}
+                                  onChange={(e) =>
+                                    handleTransformUpdate(mapping.source.column_name, {
+                                      default_value: e.target.value || null,
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                            {(mapping.target.value_type?.includes('int') ||
+                              mapping.target.value_type?.includes('float') ||
+                              mapping.target.value_type?.includes('double') ||
+                              mapping.target.value_type?.includes('decimal')) && (
+                              <>
+                                <div className="smart-mapper-transform-row">
+                                  <label>
+                                    Decimal separator
+                                    <select
+                                      value={transform.decimal ?? '.'}
+                                      onChange={(e) =>
+                                        handleTransformUpdate(
+                                          mapping.source.column_name,
+                                          { decimal: e.target.value }
+                                        )
+                                      }
+                                    >
+                                      <option value=".">. (period)</option>
+                                      <option value=",">, (comma)</option>
+                                    </select>
+                                  </label>
+                                </div>
+                                <div className="smart-mapper-transform-row">
+                                  <label>
+                                    Thousands separator
+                                    <select
+                                      value={transform.thousands ?? ''}
+                                      onChange={(e) =>
+                                        handleTransformUpdate(
+                                          mapping.source.column_name,
+                                          { thousands: e.target.value || null }
+                                        )
+                                      }
+                                    >
+                                      <option value="">None</option>
+                                      <option value=",">, (comma)</option>
+                                      <option value=".">. (period)</option>
+                                      <option value=" ">Space</option>
+                                    </select>
+                                  </label>
+                                </div>
+                              </>
+                            )}
+                            {mapping.target.value_type?.includes('date') && (
+                              <div className="smart-mapper-transform-row">
+                                <label>
+                                  Date format
+                                  <select
+                                    value={transform.date_format ?? ''}
+                                    onChange={(e) =>
+                                      handleTransformUpdate(mapping.source.column_name, {
+                                        date_format: e.target.value || null,
+                                      })
+                                    }
+                                  >
+                                    <option value="">Auto (ISO 8601)</option>
+                                    <option value="%Y-%m-%d">YYYY-MM-DD</option>
+                                    <option value="%d.%m.%Y">DD.MM.YYYY</option>
+                                    <option value="%m/%d/%Y">MM/DD/YYYY</option>
+                                    <option value="%d/%m/%Y">DD/MM/YYYY</option>
+                                    <option value="%Y%m%d">YYYYMMDD</option>
+                                  </select>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -816,7 +949,13 @@ export default function SmartMapperPage({
                 <strong>{unmappedRequired.length}</strong>
               </div>
               {autoMapped && (
-                <p className="smart-mapper-hint">Auto-map applied; review before running.</p>
+                <p className="smart-mapper-hint">
+                  Auto-map applied
+                  {semanticStats && semanticStats.resolved > 0 && (
+                    <> · {semanticStats.resolved} semantic IDs resolved</>
+                  )}
+                  ; review before running.
+                </p>
               )}
               {unmappedRequired.length > 0 && (
                 <div className="smart-mapper-warning">
@@ -899,13 +1038,7 @@ export default function SmartMapperPage({
             )}
 
             {mappedFormData && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleApplyToForm}
-              >
-                Apply to form
-              </button>
+              <PreviewPanel entries={previewEntries} onApply={handleApplyToForm} />
             )}
           </div>
         </div>

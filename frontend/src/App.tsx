@@ -11,6 +11,8 @@ import TemplateSelector from './components/TemplateSelector';
 import AASRenderer from './components/AASRenderer';
 import ExportPanel from './components/ExportPanel';
 import SmartMapperPage from './components/SmartMapper/SmartMapperPage';
+import PCFPanel from './components/PCFPanel';
+import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
 import { getTemplateVersions } from './services/api';
 import { computeCompletion } from './utils/completion';
 import './App.css';
@@ -399,6 +401,16 @@ function App() {
               />
             ))}
           </div>
+
+          {isPCFTemplate(schema) && (
+            <div className="pcf-panel-container">
+              <h3>PCF Tools</h3>
+              <p className="pcf-panel-description">
+                Carbon Footprint Calculator & Validator for IDTA 02023 compliance.
+              </p>
+              <PCFPanel schema={schema} form={form} />
+            </div>
+          )}
 
           <div className="wizard-actions">
             <button

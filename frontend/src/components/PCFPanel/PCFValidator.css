@@ -1,0 +1,217 @@
+/**
+ * PCF Validator styles.
+ */
+
+.pcf-validator {
+  background: var(--surface-color, #ffffff);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.pcf-validator__header {
+  margin-bottom: 1rem;
+}
+
+.pcf-validator__header h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.pcf-validator__description {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
+
+/* Actions */
+.pcf-validator__actions {
+  margin-bottom: 1rem;
+}
+
+.pcf-validator__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.pcf-validator__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pcf-validator__btn--primary {
+  background: var(--primary-color, #0066cc);
+  color: #fff;
+}
+
+.pcf-validator__btn--primary:hover:not(:disabled) {
+  background: var(--primary-hover, #0052a3);
+}
+
+/* Results container */
+.pcf-validator__results {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+/* Status badge */
+.pcf-validator__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.pcf-validator__status--valid {
+  background: rgba(40, 167, 69, 0.1);
+  color: var(--success-color, #28a745);
+}
+
+.pcf-validator__status--invalid {
+  background: rgba(220, 53, 69, 0.1);
+  color: var(--error-color, #dc3545);
+}
+
+/* Completeness indicator */
+.pcf-validator__completeness {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.pcf-validator__completeness-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
+
+.pcf-validator__progress {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-secondary, #f0f0f0);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pcf-validator__progress-fill {
+  height: 100%;
+  background: var(--primary-color, #0066cc);
+  transition: width 0.3s ease;
+}
+
+.pcf-validator__completeness-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Sections */
+.pcf-validator__section {
+  margin-bottom: 1rem;
+}
+
+.pcf-validator__section h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.pcf-validator__section--errors h4 {
+  color: var(--error-color, #dc3545);
+}
+
+.pcf-validator__section--warnings h4 {
+  color: var(--warning-color, #f0ad4e);
+}
+
+/* List */
+.pcf-validator__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pcf-validator__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--surface-secondary, #f8f8f8);
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.pcf-validator__item:last-child {
+  margin-bottom: 0;
+}
+
+.pcf-validator__icon {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.pcf-validator__icon--error {
+  background: rgba(220, 53, 69, 0.1);
+  color: var(--error-color, #dc3545);
+}
+
+.pcf-validator__icon--warning {
+  background: rgba(240, 173, 78, 0.1);
+  color: var(--warning-color, #f0ad4e);
+}
+
+.pcf-validator__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.pcf-validator__field {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  font-family: monospace;
+}
+
+.pcf-validator__message {
+  font-size: 0.875rem;
+  color: var(--text-primary, #1a1a1a);
+}
+
+/* Success */
+.pcf-validator__success {
+  padding: 1rem;
+  background: rgba(40, 167, 69, 0.1);
+  border-radius: 4px;
+}
+
+.pcf-validator__success p {
+  margin: 0;
+  color: var(--success-color, #28a745);
+  font-size: 0.875rem;
+}

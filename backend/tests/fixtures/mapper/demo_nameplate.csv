@@ -1,0 +1,6 @@
+Manufacturer,Serial Number,Product Type,Hardware Rev,Weight (kg),Date of Manufacture,Country of Origin
+ACME Corp,SN-2024-001,Industrial Pump,v2.1,  12.500  ,2024-03-15,Germany
+Siemens AG,SN-2024-002,Valve Controller,v1.8,8.200,2024-04-20,United States
+ABB Ltd,SN-2024-003,Motor Drive,v3.0,,2024-05-10,Switzerland
+Bosch,SN-2024-004,Sensor Module,v1.2,2.100,2024-06-01,Germany
+Schneider Electric,,Power Supply,v2.5,5.750,2024-07-12,France

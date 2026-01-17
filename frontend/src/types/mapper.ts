@@ -117,3 +117,41 @@ export interface MapperRunResponse {
   form_data_batch?: Array<Record<string, unknown>> | null;
   row_count?: number | null;
 }
+
+export interface MapperTargetFieldInfo {
+  id_short_path: string;
+  element_type: string;
+  value_type?: string | null;
+  label: string;
+  required: boolean;
+  semantic_id?: string | null;
+  semantic_label?: string | null;
+  semantic_synonyms: string[];
+  languages?: string[] | null;
+}
+
+export interface MapperSuggestedMapping {
+  source_column: string;
+  source_index: number;
+  target_path: string;
+  target_type: string;
+  target_value_type?: string | null;
+  confidence: number;
+  match_reason: string;
+}
+
+export interface MapperAutoSuggestRequest {
+  template_name: string;
+  status: 'published' | 'deprecated';
+  version?: string | null;
+  profile_id: string;
+  use_semantics?: boolean;
+  min_confidence?: number;
+}
+
+export interface MapperAutoSuggestResponse {
+  suggestions: MapperSuggestedMapping[];
+  target_fields: MapperTargetFieldInfo[];
+  semantic_resolved: number;
+  semantic_errors: number;
+}

@@ -13,6 +13,7 @@ A metamodel-driven application for editing any IDTA submodel template without co
 - **Template Status + Versions**: Browse published/deprecated templates and select versions where available
 - **Semantic Dictionary Lookup**: Search ECLASS / IEC CDD, resolve semantics, and apply to fields with typing hints
 - **Smart Mapper (CSV/XLSX)**: Profile spreadsheets, map columns to elements, and reuse recipes for bulk imports
+- **PCF Calculator & Validator**: Calculate Product Carbon Footprint (CO₂e) from emission activities and validate against IDTA 02023 rules
 
 ## Semantic Dictionary Lookup + Resolver
 
@@ -81,6 +82,53 @@ Live demo (Smart Mapper in action):
 - **Template version tracking** warns when the template has been updated since the recipe was saved
 - **Dry-run preview** shows mapped values before applying to the form
 - Validation panel flags unmapped required fields and parsing warnings
+
+## PCF Calculator & Validator (Carbon Footprint)
+
+Calculate Product Carbon Footprint (PCF) values and validate against IDTA 02023 specification requirements. This tool appears automatically when editing Carbon Footprint templates.
+
+Live demo (PCF Calculator in action):
+
+![PCF Calculator Live Demo](docs/pcf/pcf-calculator-live-demo.gif)
+
+### CO₂e Calculator
+
+Build emission activity tables and compute total CO₂e with a few clicks:
+
+- **Add emission activities** with name, GHG Protocol category (Scope 1/2/3), quantity, and unit
+- **Search emission factors** from a built-in database (EPA, DEFRA, ecoinvent, IEA sources)
+- **Automatic calculation** with unit conversion support (kg, t, kWh, MJ, km, L, m³)
+- **Apply to form** writes the calculated total directly to the `PcfCO2eq` field
+
+| Screenshot | Description |
+|------------|-------------|
+| ![Add Activities](docs/pcf/pcf-step-1-activities.png) | Add emission activities with quantities and factors |
+| ![Search Factors](docs/pcf/pcf-step-2-search-factors.png) | Search and select from 20+ emission factors |
+| ![Calculate](docs/pcf/pcf-step-3-calculate.png) | Calculate total and apply to form |
+
+### IDTA 02023 Validator
+
+Validate your Carbon Footprint data against the official IDTA 02023 specification:
+
+- **Blocking errors** for required fields: `PcfCO2eq`, `ReferenceImpactUnitForCalculation`, `QuantityOfMeasureForCalculation`, `PublicationDate`, `LifeCyclePhases`
+- **Warnings** for recommended fields and value list conformance
+- **Cross-field validation**: `ExpirationDate` must be after `PublicationDate`
+- **Completeness score** shows percentage of PCF fields filled
+- **Export-time enforcement**: Carbon Footprint exports are blocked if validation fails
+
+### Emission Factors Database
+
+The built-in database includes common emission factors from recognized authorities:
+
+| Category | Examples | Sources |
+|----------|----------|---------|
+| Electricity | US/EU/UK/Germany grid averages | EPA eGRID, EEA, UBA, DEFRA |
+| Fuels | Natural gas, diesel, gasoline | EPA, DEFRA |
+| Transport | Road freight, air freight, sea freight | DEFRA |
+| Materials | Steel, aluminum, plastics (primary & recycled) | ecoinvent |
+| Water | Supply and treatment | DEFRA |
+
+Factors include value, unit, source reference, region, and year for full traceability.
 
 ## Architecture
 
@@ -237,6 +285,14 @@ npm run type-check
 - `GET /api/mapper/recipes/{name}` - Fetch a recipe
 - `DELETE /api/mapper/recipes/{name}` - Delete a recipe
 
+### PCF (Carbon Footprint)
+
+- `POST /api/pcf/calculate` - Calculate CO₂e emissions from activity data
+- `POST /api/pcf/validate` - Validate PCF form data against IDTA 02023 rules
+- `GET /api/pcf/factors/search` - Search emission factors by name, source, or region
+- `GET /api/pcf/factors/{factor_id}` - Get a specific emission factor by ID
+- `GET /api/pcf/health` - Check PCF service health status
+
 ## Supported Element Types
 
 | Element Type | Editing Support |
@@ -285,24 +341,32 @@ docker run -d -p 80:80 submodel-editor-frontend:1.0.0
 idta-submodel-editor/
 ├── backend/
 │   ├── app/
-│   │   ├── services/       # Fetcher, Parser, Hydrator, Validation
-│   │   ├── routers/        # API endpoints
+│   │   ├── services/       # Fetcher, Parser, Hydrator, Validation, PCF, Semantic, Mapper
+│   │   │   └── pcf/        # PCF Calculator, Validator, Emission Factors
+│   │   ├── routers/        # API endpoints (templates, editor, export, semantic, mapper, pcf)
 │   │   ├── schemas/        # Pydantic models
 │   │   ├── utils/          # XSD mapping, semantic resolver
 │   │   └── clients/        # GitHub API client
 │   ├── tests/
 │   │   ├── fixtures/       # AASX/JSON conformance fixtures + generator
+│   │   └── pcf/            # PCF-specific tests
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
 │   │   ├── components/     # React components
 │   │   │   ├── AASRenderer/    # Recursive form renderer
 │   │   │   ├── TemplateSelector/
-│   │   │   └── ExportPanel/
+│   │   │   ├── ExportPanel/
+│   │   │   ├── SmartMapper/    # CSV/XLSX bulk import
+│   │   │   └── PCFPanel/       # PCF Calculator & Validator
 │   │   ├── hooks/          # Custom React hooks
-│   │   ├── services/       # API client
+│   │   ├── services/       # API client (api, pcfApi, mapperApi)
 │   │   └── types/          # TypeScript interfaces
 │   └── Dockerfile
+├── docs/
+│   ├── semantic/           # Semantic lookup documentation
+│   ├── mapper/             # Smart Mapper documentation
+│   └── pcf/                # PCF Calculator documentation
 ├── kubernetes/
 │   ├── base/               # Base manifests
 │   └── overlays/           # Environment overlays
