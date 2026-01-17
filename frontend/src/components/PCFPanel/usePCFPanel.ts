@@ -178,14 +178,15 @@ export function usePCFPanel(options: UsePCFPanelOptions): UsePCFPanelReturn {
   const instanceKind = instanceContainer?.kind ?? null;
 
   const getFormValue = useCallback(
-    (path: string): unknown => form.getValues(path as FormGetValuesPath),
+    (path: string): unknown =>
+      form.getValues(path as unknown as FormGetValuesPath),
     [form]
   );
 
   const setFormValue = useCallback(
     (path: string, value: unknown, options?: FormSetValueOptions) => {
       form.setValue(
-        path as FormSetValuePath,
+        path as unknown as FormSetValuePath,
         value as FormSetValueValue,
         options
       );
