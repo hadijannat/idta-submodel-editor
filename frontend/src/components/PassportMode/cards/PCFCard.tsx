@@ -236,7 +236,15 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
   const hasPhases = phases.length > 0;
   const totalSource = totalResult.value !== undefined ? 'explicit' : 'derived';
 
-  const pieSlices = hasPhases ? buildPieSlices(phases) : [];
+  const pieSlices = hasPhases
+    ? buildPieSlices(
+        phases.map((phase) => ({
+          label: phase.name,
+          value: phase.value,
+          color: phase.color,
+        }))
+      )
+    : [];
   const pieSummary = pieSlices
     .map((slice) => `${slice.label} ${slice.percentage.toFixed(1)}%`)
     .join(', ');
