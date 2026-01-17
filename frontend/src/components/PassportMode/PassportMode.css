@@ -190,6 +190,29 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.15);
 }
 
+.nameplate-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-md) 0 var(--spacing-lg);
+}
+
+.nameplate-marker-bar {
+  width: 80%;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--nameplate-border);
+  background-size: 100% 100%;
+}
+
+.nameplate-marker-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--nameplate-label);
+}
+
 .nameplate-manufacturer {
   font-size: 1.5rem;
   font-weight: 700;
@@ -284,6 +307,15 @@
   background: white;
 }
 
+.pcf-metric-label {
+  display: block;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-light);
+  margin-bottom: var(--spacing-xs);
+}
+
 .pcf-co2-value {
   font-size: 3rem;
   font-weight: 700;
@@ -304,6 +336,19 @@
   margin-top: var(--spacing-xs);
 }
 
+.pcf-derivation-note {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-top: var(--spacing-xs);
+}
+
+.pcf-breakdown-missing {
+  padding: 0 var(--spacing-xl) var(--spacing-lg);
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--color-text-light);
+}
+
 .pcf-chart-section {
   padding: var(--spacing-lg);
   display: flex;
@@ -313,25 +358,21 @@
   flex-wrap: wrap;
 }
 
-/* CSS-only pie chart using conic-gradient */
+/* SVG pie chart */
 .pcf-pie-chart {
   width: 180px;
   height: 180px;
   border-radius: 50%;
-  position: relative;
+  background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: grid;
+  place-items: center;
 }
 
-.pcf-pie-chart::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 80px;
-  height: 80px;
-  background: white;
-  border-radius: 50%;
+.pcf-pie-chart svg {
+  width: 180px;
+  height: 180px;
+  display: block;
 }
 
 .pcf-legend {

@@ -18,18 +18,25 @@ export type ViewMode = 'editor' | 'passport';
 interface PassportModeToggleProps {
   mode: ViewMode;
   onModeChange: (mode: ViewMode) => void;
+  editorId?: string;
+  passportId?: string;
 }
 
 /**
  * Toggle button group for switching between Editor and Passport modes.
  */
-export function PassportModeToggle({ mode, onModeChange }: PassportModeToggleProps) {
+export function PassportModeToggle({
+  mode,
+  onModeChange,
+  editorId,
+  passportId,
+}: PassportModeToggleProps) {
   return (
-    <div className="passport-mode-toggle" role="tablist" aria-label="View mode">
+    <div className="passport-mode-toggle" role="group" aria-label="View mode">
       <button
         type="button"
-        role="tab"
-        aria-selected={mode === 'editor'}
+        aria-pressed={mode === 'editor'}
+        aria-controls={editorId}
         className={mode === 'editor' ? 'active' : ''}
         onClick={() => onModeChange('editor')}
       >
@@ -43,8 +50,8 @@ export function PassportModeToggle({ mode, onModeChange }: PassportModeTogglePro
       </button>
       <button
         type="button"
-        role="tab"
-        aria-selected={mode === 'passport'}
+        aria-pressed={mode === 'passport'}
+        aria-controls={passportId}
         className={mode === 'passport' ? 'active' : ''}
         onClick={() => onModeChange('passport')}
       >
@@ -94,17 +101,39 @@ export function PassportView({ schema, formData, children }: PassportViewProps) 
     }
   }, [mode]);
 
+  const editorId = 'passport-editor-panel';
+  const passportId = 'passport-card-panel';
+  const isEditor = mode === 'editor';
+  const isPassport = mode === 'passport';
+
   return (
     <>
-      <PassportModeToggle mode={mode} onModeChange={setMode} />
+      <PassportModeToggle
+        mode={mode}
+        onModeChange={setMode}
+        editorId={editorId}
+        passportId={passportId}
+      />
 
       {/* Editor content - hidden via CSS when in passport mode */}
-      <div className={`passport-content-area ${mode === 'editor' ? 'visible' : 'hidden'}`}>
+      <div
+        id={editorId}
+        className={`passport-content-area ${isEditor ? 'visible' : 'hidden'}`}
+        hidden={!isEditor}
+        aria-hidden={!isEditor}
+      >
         {children}
       </div>
 
       {/* Passport card - only rendered when in passport mode */}
-      {mode === 'passport' && <PassportCard schema={schema} formData={formData} />}
+      <div
+        id={passportId}
+        className={`passport-content-area ${isPassport ? 'visible' : 'hidden'}`}
+        hidden={!isPassport}
+        aria-hidden={!isPassport}
+      >
+        {isPassport && <PassportCard schema={schema} formData={formData} />}
+      </div>
     </>
   );
 }

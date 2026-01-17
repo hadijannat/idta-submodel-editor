@@ -10,8 +10,10 @@ import type { SubmodelFormData, ElementFormData } from '../../../types/aas-eleme
 import {
   extractPrimitive,
   extractLangString,
-  extractCollection,
   extractList,
+  extractLangStringValue,
+  extractPrimitiveValue,
+  extractSafeUrl,
   isProvided,
   formatValue,
 } from '../utils/valueExtractors';
@@ -27,6 +29,18 @@ interface ElementValue {
   label: string;
   value: string;
   type: string;
+}
+
+function renderValueNode(value: string): React.ReactNode {
+  const href = extractSafeUrl(value);
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {value}
+      </a>
+    );
+  }
+  return value;
 }
 
 /**
@@ -53,7 +67,8 @@ function extractElementValue(
     }
 
     case 'File': {
-      const val = extractPrimitive(formData, `${path}.value`);
+      const val =
+        extractPrimitive(formData, `${path}.value`) ?? extractPrimitive(formData, path);
       if (!isProvided(val)) return undefined;
       return String(val);
     }
@@ -61,8 +76,16 @@ function extractElementValue(
     case 'Range': {
       const min = extractPrimitive(formData, `${path}.min`);
       const max = extractPrimitive(formData, `${path}.max`);
-      if (!isProvided(min) && !isProvided(max)) return undefined;
-      return `${formatValue(min) || '...'} - ${formatValue(max) || '...'}`;
+      const minProvided = isProvided(min);
+      const maxProvided = isProvided(max);
+      if (!minProvided && !maxProvided) return undefined;
+      if (minProvided && maxProvided) {
+        return `${formatValue(min)} – ${formatValue(max)}`;
+      }
+      if (minProvided) {
+        return `≥ ${formatValue(min)}`;
+      }
+      return `≤ ${formatValue(max)}`;
     }
 
     default:
@@ -91,9 +114,6 @@ function renderElements(
 
     // Handle collections and lists recursively
     if (element.modelType === 'SubmodelElementCollection' && element.elements) {
-      const collectionData = extractCollection(formData, path);
-      const hasData = collectionData && Object.keys(collectionData).length > 0;
-
       // Check if any child has data
       const childContent = renderElements(
         element.elements,
@@ -102,7 +122,7 @@ function renderElements(
         depth + 1
       );
 
-      if (childContent || hasData) {
+      if (childContent) {
         nestedSections.push(
           <div key={element.idShort} className="generic-nested">
             <div className="generic-nested-title">
@@ -118,16 +138,26 @@ function renderElements(
     if (element.modelType === 'SubmodelElementList' && element.itemTemplate) {
       const listItems = extractList(formData, `${path}.items`);
       if (listItems && listItems.length > 0) {
+        const displayItems = listItems
+          .map((item, index) => ({
+            index,
+            value: renderListItem(item),
+          }))
+          .filter((entry) => entry.value !== null);
+
+        if (displayItems.length === 0) {
+          continue;
+        }
         nestedSections.push(
           <div key={element.idShort} className="generic-nested">
             <div className="generic-nested-title">
-              {element.semanticLabel || element.idShort} ({listItems.length} items)
+              {element.semanticLabel || element.idShort} ({displayItems.length} items)
             </div>
-            {listItems.map((item, index) => (
-              <div key={index} className="generic-field">
-                <span className="generic-field-label">Item {index + 1}</span>
+            {displayItems.map((item) => (
+              <div key={item.index} className="generic-field">
+                <span className="generic-field-label">Item {item.index + 1}</span>
                 <span className="generic-field-value">
-                  {renderListItem(item, element.itemTemplate!)}
+                  {renderValueNode(item.value!)}
                 </span>
               </div>
             ))}
@@ -159,7 +189,7 @@ function renderElements(
           {renderedFields.map((field, index) => (
             <div key={index} className="generic-field">
               <span className="generic-field-label">{field.label}</span>
-              <span className="generic-field-value">{field.value}</span>
+              <span className="generic-field-value">{renderValueNode(field.value)}</span>
             </div>
           ))}
         </div>
@@ -172,32 +202,33 @@ function renderElements(
 /**
  * Render a single list item (simplified).
  */
-function renderListItem(item: ElementFormData, template: UIElementSchema): string {
+function renderListItem(item: ElementFormData): string | null {
   // Try to extract a meaningful value from the item
   if (typeof item === 'object' && item !== null) {
     // Check for direct value
     if ('value' in item && isProvided(item.value)) {
+      const langValue = extractLangStringValue(item.value, ['en', 'de']);
+      if (langValue) return langValue;
       return formatValue(item.value);
     }
 
     // Check for elements (collection-type items)
     if ('elements' in item && typeof item.elements === 'object') {
       const elementsRecord = item.elements as Record<string, ElementFormData>;
-      const values = Object.entries(elementsRecord)
-        .map(([key, val]) => {
-          if (typeof val === 'object' && val !== null && 'value' in val && isProvided(val.value)) {
-            return `${key}: ${formatValue(val.value)}`;
-          }
-          return null;
-        })
-        .filter(Boolean);
-      if (values.length > 0) {
-        return values.join(', ');
+      const values: string[] = [];
+      for (const [key, val] of Object.entries(elementsRecord)) {
+        if (!val || typeof val !== 'object') continue;
+        const primitive = extractPrimitiveValue(val);
+        const langValue = extractLangStringValue(val.value ?? val, ['en', 'de']);
+        const display = langValue ?? (isProvided(primitive) ? formatValue(primitive) : undefined);
+        if (display) values.push(`${key}: ${display}`);
+        if (values.length >= 3) break;
       }
+      if (values.length > 0) return values.join(', ');
     }
   }
 
-  return template.idShort || 'Item';
+  return null;
 }
 
 /**

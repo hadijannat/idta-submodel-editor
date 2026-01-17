@@ -30,9 +30,11 @@ const CARD_PATTERNS: CardPattern[] = [
       /02006/i, // IDTA number
       /nameplate/i,
       /idta\/nameplate/i,
+      /digitalnameplate/i,
+      /zvei\/nameplate/i,
       /0173-1#01-AGZ672#001/i, // ECLASS semantic ID for Nameplate
     ],
-    templateNamePatterns: [/nameplate/i, /02006/i],
+    templateNamePatterns: [/nameplate/i, /digital\s*nameplate/i, /02006/i],
     idShortPatterns: [/^nameplate$/i],
   },
   {
@@ -41,11 +43,18 @@ const CARD_PATTERNS: CardPattern[] = [
       /02023/i, // IDTA number
       /CarbonFootprint/i,
       /ProductCarbonFootprint/i,
+      /idta\/carbonfootprint/i,
+      /carbonfootprint\/productcarbonfootprint/i,
       /0173-1#01-AHE712#001/i, // ECLASS semantic ID for PCF
       /PCF/i,
     ],
     templateNamePatterns: [/carbon/i, /footprint/i, /pcf/i, /02023/i],
-    idShortPatterns: [/^CarbonFootprint$/i, /^ProductCarbonFootprint$/i, /^PCF$/i],
+    idShortPatterns: [
+      /^CarbonFootprint$/i,
+      /^ProductCarbonFootprint$/i,
+      /^PCF$/i,
+      /^Carbon\s*Footprint$/i,
+    ],
   },
 ];
 
@@ -63,11 +72,15 @@ export function detectPassportType(schema: SubmodelUISchema | null): PassportCar
     return 'generic';
   }
 
+  const semanticCandidates = [schema.semanticId, schema.submodelId].filter(
+    (value): value is string => !!value
+  );
+
   for (const pattern of CARD_PATTERNS) {
     // Check semanticId
-    if (schema.semanticId) {
+    for (const semanticId of semanticCandidates) {
       for (const regex of pattern.semanticIdPatterns) {
-        if (regex.test(schema.semanticId)) {
+        if (regex.test(semanticId)) {
           return pattern.type;
         }
       }

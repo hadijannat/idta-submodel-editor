@@ -6,14 +6,21 @@
  */
 
 import type { SubmodelUISchema } from '../../../types/ui-schema';
-import type { SubmodelFormData, ElementFormData } from '../../../types/aas-elements';
+import type { SubmodelFormData } from '../../../types/aas-elements';
 import {
-  extractNumber,
-  extractPrimitive,
-  extractCollection,
-  extractList,
+  extractLangStringValue,
+  extractPrimitiveValue,
+  formatValue,
   isProvided,
+  parseStrictNumber,
 } from '../utils/valueExtractors';
+import {
+  collectResolvedContexts,
+  ElementMatcher,
+  findMatchingElements,
+  resolveSchemaElements,
+} from '../utils/schemaIndex';
+import { buildPieSlices } from '../utils/pieChart';
 
 interface PCFCardProps {
   schema: SubmodelUISchema;
@@ -40,6 +47,45 @@ const PHASE_COLORS = [
   '#a7f3d0', // Very light green
   '#047857', // Dark green
 ];
+
+const TOTAL_MATCH: ElementMatcher = {
+  semanticIdPatterns: [
+    /0173-1#02-ABG855#001/i,
+    /pcfco2eq/i,
+    /gwptotal/i,
+    /co2eq/i,
+  ],
+  idShortPatterns: [/PCFCO2eq/i, /PCFGWPTotal/i, /^CO2eq$/i],
+  modelTypes: ['Property', 'Range'],
+};
+
+const REFERENCE_MATCH: ElementMatcher = {
+  semanticIdPatterns: [
+    /0173-1#02-ABG856#001/i,
+    /referencevalue/i,
+    /declaredunit/i,
+  ],
+  idShortPatterns: [/PCFReferenceValueForCalculation/i, /DeclaredUnit/i],
+  modelTypes: ['Property', 'MultiLanguageProperty'],
+};
+
+const METHOD_MATCH: ElementMatcher = {
+  semanticIdPatterns: [/0173-1#02-ABG854#001/i, /calculationmethod/i],
+  idShortPatterns: [/PCFCalculationMethod/i, /CalculationMethod/i],
+  modelTypes: ['Property', 'MultiLanguageProperty'],
+};
+
+const PHASE_MATCH: ElementMatcher = {
+  semanticIdPatterns: [/0173-1#02-ABG858#001/i, /lifecyclephase/i, /life cycle phase/i],
+  idShortPatterns: [/PCFLifeCyclePhase/i, /LifeCyclePhase/i, /Phase/i],
+  modelTypes: ['Property', 'MultiLanguageProperty'],
+};
+
+const VALUE_MATCH: ElementMatcher = {
+  semanticIdPatterns: [/0173-1#02-ABG855#001/i, /co2eq/i, /gwp/i],
+  idShortPatterns: [/PCFCO2eq/i, /CO2eq/i, /GWP/i],
+  modelTypes: ['Property', 'Range'],
+};
 
 /**
  * Map life cycle phase codes to readable names.
@@ -72,221 +118,130 @@ function getPhaseLabel(code: string | number | boolean | undefined): string {
   return mapping[codeStr] || codeStr;
 }
 
-/**
- * Try to find the main PCF collection which contains the carbon footprint data.
- */
-function findPCFData(formData: SubmodelFormData | undefined): {
-  co2eq: number | undefined;
-  reference: string | undefined;
-  method: string | undefined;
-  phases: LifeCyclePhase[];
-} {
-  const result = {
-    co2eq: undefined as number | undefined,
-    reference: undefined as string | undefined,
-    method: undefined as string | undefined,
-    phases: [] as LifeCyclePhase[],
-  };
-
-  if (!formData) return result;
-
-  // Try various paths where PCF data might be located
-  const pcfPaths = [
-    'elements.ProductCarbonFootprint',
-    'elements.CarbonFootprint',
-    'elements.PCF',
-    'elements',
-  ];
-
-  for (const basePath of pcfPaths) {
-    // Try to get the collection or list
-    const collection = extractCollection(formData, basePath);
-    const list = extractList(formData, `${basePath}.items`);
-
-    if (collection) {
-      // Look for PCF values in collection
-      const pcfResult = extractPCFFromCollection(collection);
-      if (pcfResult.co2eq !== undefined) {
-        return pcfResult;
-      }
-    }
-
-    if (list && list.length > 0) {
-      // If it's a list, use the first item or aggregate
-      const firstItem = list[0];
-      if (firstItem && typeof firstItem === 'object') {
-        const pcfResult = extractPCFFromItem(firstItem);
-        if (pcfResult.co2eq !== undefined) {
-          return pcfResult;
-        }
-      }
-    }
+function formatNumber(value: number): string {
+  if (value >= 1000) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
   }
-
-  // Direct extraction from root elements
-  result.co2eq = extractNumber(formData, 'elements.PCFCO2eq.value') ??
-    extractNumber(formData, 'elements.PCFCO2eq') ??
-    extractNumber(formData, 'elements.PCFGWPTotal.value') ??
-    extractNumber(formData, 'elements.CO2eq');
-
-  result.reference = String(
-    extractPrimitive(formData, 'elements.PCFReferenceValueForCalculation.value') ??
-    extractPrimitive(formData, 'elements.PCFReferenceValueForCalculation') ??
-    extractPrimitive(formData, 'elements.DeclaredUnit') ??
-    ''
-  ) || undefined;
-
-  result.method = String(
-    extractPrimitive(formData, 'elements.PCFCalculationMethod.value') ??
-    extractPrimitive(formData, 'elements.PCFCalculationMethod') ??
-    extractPrimitive(formData, 'elements.CalculationMethod') ??
-    ''
-  ) || undefined;
-
-  return result;
+  if (value >= 1) {
+    return value.toFixed(2);
+  }
+  return value.toFixed(4);
 }
 
-/**
- * Extract PCF data from a collection.
- */
-function extractPCFFromCollection(
-  collection: Record<string, ElementFormData>
-): ReturnType<typeof findPCFData> {
-  const result = {
-    co2eq: undefined as number | undefined,
-    reference: undefined as string | undefined,
-    method: undefined as string | undefined,
-    phases: [] as LifeCyclePhase[],
-  };
-
-  // Look through collection keys
-  for (const [key, value] of Object.entries(collection)) {
-    if (!value || typeof value !== 'object') continue;
-
-    const keyLower = key.toLowerCase();
-
-    // CO2eq value
-    if (keyLower.includes('co2eq') || keyLower.includes('gwptotal')) {
-      const numVal =
-        typeof value === 'object' && 'value' in value
-          ? Number(value.value)
-          : typeof value === 'number'
-            ? value
-            : undefined;
-      if (numVal !== undefined && !isNaN(numVal)) {
-        result.co2eq = numVal;
-      }
-    }
-
-    // Reference unit
-    if (keyLower.includes('reference') || keyLower.includes('declaredunit')) {
-      const strVal =
-        typeof value === 'object' && 'value' in value
-          ? String(value.value)
-          : String(value);
-      if (isProvided(strVal)) {
-        result.reference = strVal;
-      }
-    }
-
-    // Calculation method
-    if (keyLower.includes('calculationmethod')) {
-      const strVal =
-        typeof value === 'object' && 'value' in value
-          ? String(value.value)
-          : String(value);
-      if (isProvided(strVal)) {
-        result.method = strVal;
-      }
+function findFirstNumber(
+  resolved: ReturnType<typeof resolveSchemaElements>,
+  matcher: Parameters<typeof findMatchingElements>[1]
+): { value?: number; unit?: string } {
+  const matches = findMatchingElements(resolved, matcher);
+  for (const match of matches) {
+    const primitive = extractPrimitiveValue(match.data);
+    const num = parseStrictNumber(primitive);
+    if (num !== undefined) {
+      return {
+        value: num,
+        unit: match.schema.unit ?? undefined,
+      };
     }
   }
-
-  return result;
+  return {};
 }
 
-/**
- * Extract PCF data from a list item.
- */
-function extractPCFFromItem(item: ElementFormData): ReturnType<typeof findPCFData> {
-  const result = {
-    co2eq: undefined as number | undefined,
-    reference: undefined as string | undefined,
-    method: undefined as string | undefined,
-    phases: [] as LifeCyclePhase[],
-  };
-
-  if (!item || typeof item !== 'object') return result;
-
-  // Check elements property
-  if ('elements' in item && typeof item.elements === 'object') {
-    return extractPCFFromCollection(
-      item.elements as Record<string, ElementFormData>
-    );
-  }
-
-  // Check direct properties
-  for (const [key, value] of Object.entries(item)) {
-    if (key === 'elements' || key === 'items') continue;
-
-    const keyLower = key.toLowerCase();
-    if (keyLower.includes('co2eq') || keyLower.includes('gwptotal')) {
-      const numVal =
-        typeof value === 'object' && value !== null && 'value' in value
-          ? Number((value as { value: unknown }).value)
-          : typeof value === 'number'
-            ? value
-            : undefined;
-      if (numVal !== undefined && !isNaN(numVal)) {
-        result.co2eq = numVal;
-      }
+function findFirstString(
+  resolved: ReturnType<typeof resolveSchemaElements>,
+  matcher: Parameters<typeof findMatchingElements>[1]
+): string | undefined {
+  const matches = findMatchingElements(resolved, matcher);
+  for (const match of matches) {
+    const value =
+      extractLangStringValue(match.data?.value ?? match.data, ['en', 'de']) ??
+      extractPrimitiveValue(match.data);
+    if (isProvided(value)) {
+      return formatValue(value);
     }
   }
-
-  return result;
+  return undefined;
 }
 
-/**
- * Generate CSS for conic-gradient pie chart.
- */
-function generatePieGradient(phases: LifeCyclePhase[]): string {
-  if (phases.length === 0) return 'transparent';
+function extractPhaseBreakdown(
+  contexts: ReturnType<typeof collectResolvedContexts>
+): { phases: LifeCyclePhase[]; unit?: string } {
+  const phaseMap = new Map<string, number>();
+  const orderedLabels: string[] = [];
+  let unit: string | undefined;
 
-  const total = phases.reduce((sum, p) => sum + p.value, 0);
-  if (total === 0) return 'transparent';
+  contexts.forEach((context) => {
+    const phaseCandidates = findMatchingElements(context.elements, PHASE_MATCH);
+    const valueCandidates = findMatchingElements(context.elements, VALUE_MATCH);
 
-  let currentAngle = 0;
-  const gradientParts: string[] = [];
+    let phaseValue: string | undefined;
+    for (const candidate of phaseCandidates) {
+      const raw =
+        extractLangStringValue(candidate.data?.value ?? candidate.data, ['en', 'de']) ??
+        extractPrimitiveValue(candidate.data);
+      if (isProvided(raw)) {
+        phaseValue = String(raw);
+        break;
+      }
+    }
 
-  for (const phase of phases) {
-    const percentage = (phase.value / total) * 100;
-    const endAngle = currentAngle + percentage;
-    gradientParts.push(`${phase.color} ${currentAngle}% ${endAngle}%`);
-    currentAngle = endAngle;
-  }
+    let numericValue: number | undefined;
+    for (const candidate of valueCandidates) {
+      const raw = extractPrimitiveValue(candidate.data);
+      const num = parseStrictNumber(raw);
+      if (num !== undefined) {
+        numericValue = num;
+        unit = unit ?? candidate.schema.unit ?? undefined;
+        break;
+      }
+    }
 
-  return `conic-gradient(${gradientParts.join(', ')})`;
+    if (!phaseValue || numericValue === undefined) return;
+    const label = getPhaseLabel(phaseValue);
+
+    if (!phaseMap.has(label)) {
+      orderedLabels.push(label);
+    }
+    phaseMap.set(label, (phaseMap.get(label) ?? 0) + numericValue);
+  });
+
+  return {
+    phases: orderedLabels
+    .map((label, index) => ({
+      name: label,
+      value: phaseMap.get(label) ?? 0,
+      color: PHASE_COLORS[index % PHASE_COLORS.length],
+    }))
+    .filter((phase) => phase.value > 0),
+    unit,
+  };
 }
 
 /**
  * PCFCard component.
  */
 export default function PCFCard({ schema, formData }: PCFCardProps) {
-  const pcfData = findPCFData(formData);
-  const hasCO2eq = pcfData.co2eq !== undefined;
-  const hasPhases = pcfData.phases.length > 0;
+  const resolvedElements = resolveSchemaElements(schema, formData);
+  const contexts = collectResolvedContexts(schema, formData);
 
-  // Format CO2eq with appropriate precision
-  const formatCO2 = (value: number): string => {
-    if (value >= 1000) {
-      return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
-    }
-    if (value >= 1) {
-      return value.toFixed(2);
-    }
-    return value.toFixed(4);
-  };
+  const totalResult = findFirstNumber(resolvedElements, TOTAL_MATCH);
+  const reference = findFirstString(resolvedElements, REFERENCE_MATCH);
+  const method = findFirstString(resolvedElements, METHOD_MATCH);
+  const phaseBreakdown = extractPhaseBreakdown(contexts);
+  const phases = phaseBreakdown.phases;
 
-  if (!hasCO2eq) {
+  const derivedTotal = phases.reduce((sum, phase) => sum + phase.value, 0);
+  const total = totalResult.value ?? (phases.length > 0 ? derivedTotal : undefined);
+  const unit = totalResult.unit ?? phaseBreakdown.unit;
+  const hasTotal = total !== undefined;
+  const hasPhases = phases.length > 0;
+  const totalSource = totalResult.value !== undefined ? 'explicit' : 'derived';
+
+  const pieSlices = hasPhases ? buildPieSlices(phases) : [];
+  const pieSummary = pieSlices
+    .map((slice) => `${slice.label} ${slice.percentage.toFixed(1)}%`)
+    .join(', ');
+
+  if (!hasTotal) {
     return (
       <div className="passport-card pcf-card">
         <div className="pcf-header">
@@ -311,12 +266,14 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
 
       {/* Main CO2eq metric */}
       <div className="pcf-main-metric">
+        <span className="pcf-metric-label">Total CO₂e</span>
         <span className="pcf-co2-value">
-          {formatCO2(pcfData.co2eq!)}
-          <span className="pcf-co2-unit">kg CO₂eq</span>
+          {formatNumber(total!)}
+          {unit && <span className="pcf-co2-unit">{unit}</span>}
         </span>
-        {pcfData.reference && (
-          <p className="pcf-reference">per {pcfData.reference}</p>
+        {reference && <p className="pcf-reference">per {reference}</p>}
+        {hasTotal && totalSource === 'derived' && (
+          <p className="pcf-derivation-note">Total derived from phase breakdown.</p>
         )}
       </div>
 
@@ -325,20 +282,31 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
         <div className="pcf-chart-section">
           <div
             className="pcf-pie-chart"
-            style={{ background: generatePieGradient(pcfData.phases) }}
             role="img"
-            aria-label="Carbon footprint breakdown by lifecycle phase"
-          />
+            aria-label={
+              pieSummary
+                ? `Carbon footprint breakdown: ${pieSummary}`
+                : 'Carbon footprint breakdown by lifecycle phase'
+            }
+          >
+            <svg viewBox="0 0 160 160" aria-hidden="true">
+              {pieSlices.map((slice) => (
+                <path key={slice.label} d={slice.path} fill={slice.color} />
+              ))}
+              <circle cx="80" cy="80" r="42" fill="white" />
+            </svg>
+          </div>
           <div className="pcf-legend">
-            {pcfData.phases.map((phase, index) => (
-              <div key={index} className="pcf-legend-item">
+            {phases.map((phase) => (
+              <div key={phase.name} className="pcf-legend-item">
                 <span
                   className="pcf-legend-color"
                   style={{ backgroundColor: phase.color }}
                 />
                 <span className="pcf-legend-label">{phase.name}</span>
                 <span className="pcf-legend-value">
-                  {formatCO2(phase.value)} kg
+                  {formatNumber(phase.value)}
+                  {unit ? ` ${unit}` : ''}
                 </span>
               </div>
             ))}
@@ -346,19 +314,25 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
         </div>
       )}
 
+      {!hasPhases && (
+        <div className="pcf-breakdown-missing">
+          Breakdown not available in this dataset.
+        </div>
+      )}
+
       {/* Details section */}
       <div className="pcf-details">
         <div className="pcf-details-grid">
-          {pcfData.method && (
+          {method && (
             <div className="pcf-detail-item">
               <span className="pcf-detail-label">Calculation Method</span>
-              <span className="pcf-detail-value">{pcfData.method}</span>
+              <span className="pcf-detail-value">{method}</span>
             </div>
           )}
-          {pcfData.reference && (
+          {reference && (
             <div className="pcf-detail-item">
               <span className="pcf-detail-label">Reference Unit</span>
-              <span className="pcf-detail-value">{pcfData.reference}</span>
+              <span className="pcf-detail-value">{reference}</span>
             </div>
           )}
         </div>
@@ -373,15 +347,15 @@ export default function PCFCard({ schema, formData }: PCFCardProps) {
               <tr>
                 <th scope="col">Lifecycle Phase</th>
                 <th scope="col" className="value-cell">
-                  CO₂eq (kg)
+                  CO₂e{unit ? ` (${unit})` : ''}
                 </th>
               </tr>
             </thead>
             <tbody>
-              {pcfData.phases.map((phase, index) => (
-                <tr key={index}>
+              {phases.map((phase) => (
+                <tr key={phase.name}>
                   <td>{phase.name}</td>
-                  <td className="value-cell">{formatCO2(phase.value)}</td>
+                  <td className="value-cell">{formatNumber(phase.value)}</td>
                 </tr>
               ))}
             </tbody>

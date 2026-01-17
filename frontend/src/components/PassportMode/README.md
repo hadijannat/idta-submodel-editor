@@ -6,7 +6,9 @@ A WYSIWYG visualization layer that renders submodel data as Digital Product Pass
 
 - **Mode Toggle**: Switch between Editor and Passport views
 - **Template Detection**: Auto-detects Nameplate (IDTA 02006) and PCF (IDTA 02023)
+- **Semantic Extraction**: Values resolved via semanticId/idShort matching
 - **Live Updates**: Form changes reflect instantly in passport view
+- **Units by Template**: PCF units render only when provided by schema
 - **Print Support**: Clean print stylesheet for card output
 - **Accessibility**: ARIA labels, keyboard navigation, reduced motion support
 
@@ -22,7 +24,9 @@ PassportMode/
 │   └── GenericCard.tsx    # Type-aware fallback for any template
 ├── utils/
 │   ├── passportRegistry.ts    # Template detection (semanticId → card type)
-│   └── valueExtractors.ts     # Safe form data extraction
+│   ├── valueExtractors.ts     # Safe form data extraction
+│   ├── schemaIndex.ts         # Schema traversal + semantic-aware lookup
+│   └── pieChart.ts            # SVG pie chart utilities
 ├── __tests__/             # Component tests
 └── PassportMode.css       # All passport styling
 ```
@@ -32,7 +36,7 @@ PassportMode/
 | Template | Card | Visual Style |
 |----------|------|--------------|
 | IDTA 02006 Nameplate | NameplateCard | Metal sticker with rivets |
-| IDTA 02023 Carbon Footprint | PCFCard | CO₂e metric + pie chart |
+| IDTA 02023 Carbon Footprint | PCFCard | CO₂e metric + pie chart (when available) |
 | Other | GenericCard | Clean key-value layout |
 
 ## Usage
@@ -90,7 +94,7 @@ const label = getCardTypeLabel(cardType);
 
 The `detectPassportType` function uses a registry pattern with the following priority:
 
-1. **semanticId patterns** - highest priority
+1. **semanticId / submodelId patterns** - highest priority
 2. **templateName patterns**
 3. **idShort patterns** - lowest priority
 
@@ -240,11 +244,12 @@ npm run test:unit
 Test files:
 - `utils/__tests__/passportRegistry.test.ts` - Detection logic
 - `utils/__tests__/valueExtractors.test.ts` - Value extraction
+- `utils/__tests__/schemaIndex.test.ts` - Schema traversal + contexts
+- `utils/__tests__/pieChart.test.ts` - Pie chart math
 - `__tests__/PassportMode.test.ts` - Module exports
 - `__tests__/PassportCard.test.ts` - Card routing
+- `__tests__/PassportView.integration.test.tsx` - Toggle + live update
 
 ## Known Limitations
 
-- PCF pie chart requires conic-gradient browser support (all modern browsers)
-- Full component rendering tests require @testing-library/react (not included)
 - Mode preference stored in localStorage (clears on browser data clear)

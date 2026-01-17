@@ -231,6 +231,15 @@ describe('detectPassportType', () => {
       });
       expect(detectPassportType(schema)).toBe('nameplate');
     });
+
+    it('uses submodelId when semanticId is missing', () => {
+      const schema = createSchema({
+        semanticId: null,
+        submodelId: 'https://admin-shell.io/idta/SubmodelTemplate/CarbonFootprint/0/9',
+        templateName: null,
+      });
+      expect(detectPassportType(schema)).toBe('pcf');
+    });
   });
 });
 

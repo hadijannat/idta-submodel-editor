@@ -2,10 +2,27 @@
  * Value Extractors - Safe form data extraction utilities.
  *
  * These utilities extract values from nested form data structures
- * with type-safe handling of undefined paths and multilanguage values.
+ * with strict parsing, recursion guards, and multilingual handling.
  */
 
-import type { ElementFormData, SubmodelFormData, MultiLanguageValue } from '../../../types/aas-elements';
+import type {
+  ElementFormData,
+  SubmodelFormData,
+  MultiLanguageValue,
+} from '../../../types/aas-elements';
+
+export type PrimitiveValue = string | number | boolean;
+
+interface LangStringEntry {
+  language?: string;
+  lang?: string;
+  text?: string;
+  value?: string;
+}
+
+const DEFAULT_MAX_DEPTH = 6;
+const STRICT_NUMBER_PATTERN = /^-?\d+(\.\d+)?$/;
+const SAFE_PROTOCOLS = new Set(['http:', 'https:']);
 
 /**
  * Navigate to an element at a dot-separated path.
@@ -30,6 +47,28 @@ export function getElementAtPath(
 }
 
 /**
+ * Extract a primitive from a raw value or ElementFormData object.
+ */
+export function extractPrimitiveValue(value: unknown): PrimitiveValue | undefined {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+
+  if (value && typeof value === 'object' && 'value' in value) {
+    const inner = (value as { value?: unknown }).value;
+    if (
+      typeof inner === 'string' ||
+      typeof inner === 'number' ||
+      typeof inner === 'boolean'
+    ) {
+      return inner;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Extract a primitive value (string, number, boolean) from a path.
  * Handles both direct values and nested .value properties.
  */
@@ -40,20 +79,7 @@ export function extractPrimitive(
   const element = getElementAtPath(formData, path);
   if (element === undefined || element === null) return undefined;
 
-  // Direct primitive
-  if (typeof element === 'string' || typeof element === 'number' || typeof element === 'boolean') {
-    return element;
-  }
-
-  // Object with .value property
-  if (typeof element === 'object' && 'value' in element) {
-    const val = element.value;
-    if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
-      return val;
-    }
-  }
-
-  return undefined;
+  return extractPrimitiveValue(element);
 }
 
 /**
@@ -64,6 +90,16 @@ function isMultiLanguageValue(value: unknown): value is MultiLanguageValue {
   const keys = Object.keys(value);
   // Check if keys look like language codes (2-3 chars)
   return keys.some((k) => /^[a-z]{2,3}(-[A-Z]{2,3})?$/i.test(k));
+}
+
+function isLangStringArray(value: unknown): value is LangStringEntry[] {
+  if (!Array.isArray(value)) return false;
+  return value.some(
+    (entry) =>
+      entry &&
+      typeof entry === 'object' &&
+      ('language' in entry || 'lang' in entry || 'text' in entry || 'value' in entry)
+  );
 }
 
 /**
@@ -78,31 +114,23 @@ export function extractLangString(
   const element = getElementAtPath(formData, path);
   if (element === undefined || element === null) return undefined;
 
-  // Check if element itself is a lang map
-  if (isMultiLanguageValue(element)) {
-    return pickLanguage(element, preferredLang);
-  }
+  return extractLangStringValue(element, [preferredLang, 'en']);
+}
 
-  // Check .value property
-  if (typeof element === 'object' && 'value' in element) {
-    const val = element.value;
-
-    // Direct string value
-    if (typeof val === 'string') {
-      return val || undefined;
-    }
-
-    // Multilanguage value object
-    if (isMultiLanguageValue(val)) {
-      return pickLanguage(val, preferredLang);
+/**
+ * Pick best available language from a multilanguage value.
+ */
+function pickLanguage(value: MultiLanguageValue, preferredLangs: string[]): string | undefined {
+  for (const lang of preferredLangs) {
+    const candidate = value[lang as keyof MultiLanguageValue];
+    if (candidate && typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
     }
   }
 
-  // Fallback: check if the element has lang keys directly
-  if (typeof element === 'object') {
-    const obj = element as Record<string, unknown>;
-    if (obj.en || obj.de || Object.keys(obj).some((k) => k.length === 2)) {
-      return pickLanguage(obj as MultiLanguageValue, preferredLang);
+  for (const val of Object.values(value)) {
+    if (typeof val === 'string' && val.trim()) {
+      return val.trim();
     }
   }
 
@@ -110,26 +138,46 @@ export function extractLangString(
 }
 
 /**
- * Pick best available language from a multilanguage value.
+ * Extract a multilanguage string from raw values or ElementFormData.
  */
-function pickLanguage(value: MultiLanguageValue, preferredLang: string): string | undefined {
-  // Try preferred language
-  const preferred = value[preferredLang as keyof MultiLanguageValue];
-  if (preferred && typeof preferred === 'string' && preferred.trim()) {
-    return preferred.trim();
+export function extractLangStringValue(
+  value: unknown,
+  preferredLangs: string[] = ['en']
+): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+
+  if (isMultiLanguageValue(value)) {
+    return pickLanguage(value, preferredLangs);
   }
 
-  // Try English as fallback
-  const english = value.en;
-  if (english && typeof english === 'string' && english.trim()) {
-    return english.trim();
-  }
-
-  // Return first non-empty value
-  for (const val of Object.values(value)) {
-    if (typeof val === 'string' && val.trim()) {
-      return val.trim();
+  if (isLangStringArray(value)) {
+    for (const lang of preferredLangs) {
+      const match = value.find(
+        (entry) => entry.language === lang || entry.lang === lang
+      );
+      if (match && typeof match.text === 'string' && match.text.trim()) {
+        return match.text.trim();
+      }
+      if (match && typeof match.value === 'string' && match.value.trim()) {
+        return match.value.trim();
+      }
     }
+
+    for (const entry of value) {
+      if (typeof entry.text === 'string' && entry.text.trim()) return entry.text.trim();
+      if (typeof entry.value === 'string' && entry.value.trim()) return entry.value.trim();
+    }
+  }
+
+  if (value && typeof value === 'object' && 'value' in value) {
+    const inner = (value as { value?: unknown }).value;
+    if (isMultiLanguageValue(inner)) {
+      return pickLanguage(inner, preferredLangs);
+    }
+    if (isLangStringArray(inner)) {
+      return extractLangStringValue(inner, preferredLangs);
+    }
+    if (typeof inner === 'string' && inner.trim()) return inner.trim();
   }
 
   return undefined;
@@ -183,6 +231,38 @@ export function extractList(
 }
 
 /**
+ * Traverse an object graph safely with depth and cycle guards.
+ */
+export function traverseValue(
+  value: unknown,
+  visitor: (value: unknown, path: Array<string | number>) => void,
+  options: { maxDepth?: number } = {}
+) {
+  const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
+  const seen = new WeakSet<object>();
+
+  const walk = (node: unknown, path: Array<string | number>, depth: number) => {
+    if (depth > maxDepth) return;
+    visitor(node, path);
+
+    if (!node || typeof node !== 'object') return;
+    if (seen.has(node as object)) return;
+    seen.add(node as object);
+
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => walk(item, [...path, index], depth + 1));
+      return;
+    }
+
+    for (const [key, val] of Object.entries(node)) {
+      walk(val, [...path, key], depth + 1);
+    }
+  };
+
+  walk(value, [], 0);
+}
+
+/**
  * Check if a value is "provided" (not empty/placeholder).
  * Returns false for: undefined, null, empty string, whitespace only,
  * placeholder text like "Enter...", "[Not provided]"
@@ -201,8 +281,10 @@ export function isProvided(value: unknown): boolean {
       /^select\s/i,
       /^\[.*\]$/,
       /^placeholder$/i,
-      /^n\/a$/i,
-      /^-$/,
+      /^example$/i,
+      /^sample$/i,
+      /^tbd$/i,
+      /^tba$/i,
       /^\.\.\.$/,
     ];
 
@@ -220,6 +302,19 @@ export function isProvided(value: unknown): boolean {
 }
 
 /**
+ * Strict numeric parsing (no locale commas, no trailing text).
+ */
+export function parseStrictNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!STRICT_NUMBER_PATTERN.test(trimmed)) return undefined;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+/**
  * Format a value for display.
  * Handles numbers, booleans, dates, and strings.
  */
@@ -231,11 +326,10 @@ export function formatValue(value: unknown): string {
   }
 
   if (typeof value === 'number') {
-    // Format large numbers with separators
+    if (!Number.isFinite(value)) return '';
     if (Math.abs(value) >= 1000) {
       return value.toLocaleString();
     }
-    // Keep reasonable precision for decimals
     if (!Number.isInteger(value)) {
       return value.toFixed(4).replace(/\.?0+$/, '');
     }
@@ -258,16 +352,21 @@ export function extractNumber(
 ): number | undefined {
   const primitive = extractPrimitive(formData, path);
 
-  if (typeof primitive === 'number' && !isNaN(primitive)) {
-    return primitive;
-  }
+  return parseStrictNumber(primitive);
+}
 
-  if (typeof primitive === 'string') {
-    const num = parseFloat(primitive);
-    if (!isNaN(num)) {
-      return num;
-    }
+/**
+ * Return a safe URL if the string is http(s).
+ */
+export function extractSafeUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    const url = new URL(trimmed);
+    if (!SAFE_PROTOCOLS.has(url.protocol)) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
   }
-
-  return undefined;
 }
