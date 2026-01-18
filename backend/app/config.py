@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     cache_ttl_hours: int = 24
     mapper_cache_dir: Path = Path("./cache/mapper")
 
+    # Local templates (custom templates not from GitHub)
+    local_templates_enabled: bool = True
+    local_templates_dir: Path = Path("./templates/local")
+
     # Semantic dictionary lookup
     semantic_enabled: bool = True
     semantic_prefer_iri: bool = True
@@ -112,6 +116,7 @@ class Settings(BaseSettings):
         "eclass_index_path",
         "iec_cdd_index_path",
         "mapper_cache_dir",
+        "local_templates_dir",
         mode="before",
     )
     @classmethod

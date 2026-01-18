@@ -24,10 +24,11 @@ logger = logging.getLogger(__name__)
 
 class TemplateFetcherService:
     """
-    Service for fetching IDTA submodel templates from GitHub.
+    Service for fetching IDTA submodel templates from GitHub and local filesystem.
 
     Features:
     - Discovers templates from admin-shell-io/submodel-templates
+    - Supports local templates stored in configurable directory
     - Caches AASX files locally with configurable TTL
     - Supports authenticated requests for higher rate limits
     """
@@ -45,8 +46,16 @@ class TemplateFetcherService:
         self.cache_ttl_hours = cache_ttl_hours or settings.cache_ttl_hours
         self.github_api_version = settings.github_api_version
 
+        # Local templates configuration
+        self.local_templates_enabled = settings.local_templates_enabled
+        self.local_templates_dir = settings.local_templates_dir
+
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Ensure local templates directory exists if enabled
+        if self.local_templates_enabled:
+            self.local_templates_dir.mkdir(parents=True, exist_ok=True)
 
         # In-memory index cache
         self._index_cache: dict[str, tuple[Any, datetime]] = {}
@@ -73,16 +82,20 @@ class TemplateFetcherService:
         return self.cache_dir / f"{cache_key}.aasx"
 
     async def list_available_templates(
-        self, statuses: list[str] | None = None
+        self, statuses: list[str] | None = None, include_local: bool = True
     ) -> tuple[list[dict], bool]:
         """
-        List all available IDTA templates from GitHub.
+        List all available IDTA templates from GitHub and local filesystem.
+
+        Args:
+            statuses: List of GitHub statuses to include (published, deprecated)
+            include_local: Whether to include local templates
 
         Returns:
             Tuple of (template list, cached flag).
         """
         roots = statuses or ["published"]
-        cache_key = f"template_index:{','.join(sorted(roots))}"
+        cache_key = f"template_index:{','.join(sorted(roots))}:local={include_local}"
 
         # Check in-memory cache
         if cache_key in self._index_cache:
@@ -97,8 +110,13 @@ class TemplateFetcherService:
         for root in roots:
             templates.extend(await self._list_templates_for_root(root))
 
+        # Add local templates if enabled and requested
+        if include_local and self.local_templates_enabled:
+            templates.extend(self._list_local_templates())
+
         # Sort by IDTA number, falling back to a high value when missing.
-        status_order = {"published": 0, "deprecated": 1}
+        # Local templates (status="local") come after published but before deprecated
+        status_order = {"published": 0, "local": 1, "deprecated": 2}
         templates.sort(
             key=lambda x: (
                 status_order.get(x.get("status", "published"), 99),
@@ -109,6 +127,37 @@ class TemplateFetcherService:
 
         self._index_cache[cache_key] = (templates, datetime.now())
         return templates, False
+
+    def _list_local_templates(self) -> list[dict]:
+        """
+        List all local templates from the local templates directory.
+
+        Returns:
+            List of template metadata dictionaries.
+        """
+        templates = []
+
+        if not self.local_templates_dir.exists():
+            return templates
+
+        for aasx_file in self.local_templates_dir.glob("*.aasx"):
+            name = aasx_file.stem  # filename without extension
+            template_info = self._parse_template_name(name)
+            templates.append(
+                {
+                    "name": name,
+                    "path": f"local/{name}",
+                    "url": None,  # No URL for local templates
+                    "idta_number": template_info.get("idta_number"),
+                    "title": template_info.get("title"),
+                    "sha": None,
+                    "status": "local",
+                    "source": "local",
+                    "file_path": str(aasx_file),
+                }
+            )
+
+        return templates
 
     async def _list_templates_for_root(self, root: str) -> list[dict]:
         """
@@ -223,10 +272,15 @@ class TemplateFetcherService:
 
         Args:
             template_path: Path to template directory (e.g., "published/IDTA 02006...")
+                          For local templates, use "local/{template_name}"
 
         Returns:
             AASX file contents as bytes.
         """
+        # Handle local templates
+        if template_path.startswith("local/"):
+            return self._fetch_local_template_aasx(template_path)
+
         cache_file = self._get_cache_path(template_path)
 
         # Check disk cache
@@ -447,3 +501,134 @@ class TemplateFetcherService:
             logger.info(f"Invalidated cache for {template_path}")
             return True
         return False
+
+    # -------------------------------------------------------------------------
+    # Local Template Management
+    # -------------------------------------------------------------------------
+
+    def _fetch_local_template_aasx(self, template_path: str) -> bytes:
+        """
+        Fetch AASX file from local templates directory.
+
+        Args:
+            template_path: Path in format "local/{template_name}"
+
+        Returns:
+            AASX file contents as bytes.
+
+        Raises:
+            ValueError: If local templates are disabled or template not found.
+        """
+        if not self.local_templates_enabled:
+            raise ValueError("Local templates are disabled")
+
+        # Extract template name from path (e.g., "local/MyTemplate" -> "MyTemplate")
+        parts = template_path.split("/", 1)
+        if len(parts) < 2:
+            raise ValueError(f"Invalid local template path: {template_path}")
+
+        template_name = parts[1]
+        aasx_file = self.local_templates_dir / f"{template_name}.aasx"
+
+        if not aasx_file.exists():
+            raise ValueError(f"Local template not found: {template_name}")
+
+        logger.debug(f"Reading local template: {aasx_file}")
+        return aasx_file.read_bytes()
+
+    def save_local_template(self, name: str, aasx_bytes: bytes) -> dict:
+        """
+        Save an AASX file as a local template.
+
+        Args:
+            name: Template name (will be sanitized)
+            aasx_bytes: AASX file contents
+
+        Returns:
+            Template metadata dictionary.
+
+        Raises:
+            ValueError: If local templates are disabled or name is invalid.
+        """
+        if not self.local_templates_enabled:
+            raise ValueError("Local templates are disabled")
+
+        # Sanitize the name to prevent path traversal
+        safe_name = self._sanitize_template_name(name)
+        if not safe_name:
+            raise ValueError("Invalid template name")
+
+        aasx_file = self.local_templates_dir / f"{safe_name}.aasx"
+        aasx_file.write_bytes(aasx_bytes)
+
+        # Invalidate index cache to include the new template
+        self._invalidate_index_cache()
+
+        logger.info(f"Saved local template: {safe_name}")
+
+        template_info = self._parse_template_name(safe_name)
+        return {
+            "name": safe_name,
+            "path": f"local/{safe_name}",
+            "url": None,
+            "idta_number": template_info.get("idta_number"),
+            "title": template_info.get("title"),
+            "sha": None,
+            "status": "local",
+            "source": "local",
+            "file_path": str(aasx_file),
+        }
+
+    def delete_local_template(self, name: str) -> bool:
+        """
+        Delete a local template.
+
+        Args:
+            name: Template name
+
+        Returns:
+            True if template was deleted, False if not found.
+
+        Raises:
+            ValueError: If local templates are disabled.
+        """
+        if not self.local_templates_enabled:
+            raise ValueError("Local templates are disabled")
+
+        safe_name = self._sanitize_template_name(name)
+        aasx_file = self.local_templates_dir / f"{safe_name}.aasx"
+
+        if aasx_file.exists():
+            aasx_file.unlink()
+            self._invalidate_index_cache()
+            logger.info(f"Deleted local template: {safe_name}")
+            return True
+
+        return False
+
+    def _sanitize_template_name(self, name: str) -> str:
+        """
+        Sanitize a template name to prevent path traversal and invalid characters.
+
+        Args:
+            name: Raw template name
+
+        Returns:
+            Sanitized name safe for filesystem use.
+        """
+        # Remove path separators and dangerous characters
+        sanitized = name.replace("/", "_").replace("\\", "_").replace("..", "_")
+        # Remove leading/trailing whitespace and dots
+        sanitized = sanitized.strip().strip(".")
+        # Ensure we have a valid name
+        if not sanitized or sanitized in (".", ".."):
+            return ""
+        return sanitized
+
+    def _invalidate_index_cache(self) -> None:
+        """Invalidate the in-memory template index cache."""
+        # Clear all entries that include local templates
+        keys_to_remove = [k for k in self._index_cache if "local=" in k]
+        for key in keys_to_remove:
+            del self._index_cache[key]
+        logger.debug("Invalidated local template index cache")

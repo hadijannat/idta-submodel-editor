@@ -16,7 +16,13 @@ from basyx.aas.adapter import aasx
 from app.config import get_settings
 from app.dependencies import get_fetcher, get_hydrator, get_parser
 from app.schemas.concept_description import ConceptDescriptionResponse
-from app.schemas.form_data import SubmodelFormData, UploadResponse, ValidationResult
+from app.schemas.form_data import (
+    LocalTemplateInfo,
+    LocalTemplateUploadResponse,
+    SubmodelFormData,
+    UploadResponse,
+    ValidationResult,
+)
 from app.schemas.ui_schema import SubmodelUISchema
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService
@@ -319,4 +325,116 @@ async def validate_form_data(
         )
     except Exception as e:
         logger.exception(f"Failed to validate form data for {template_name}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------------------------------------------------------------
+# Local Template Management
+# -----------------------------------------------------------------------------
+
+
+@router.get("/templates/local", response_model=list[LocalTemplateInfo])
+async def list_local_templates(
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+) -> list[LocalTemplateInfo]:
+    """
+    List all local templates.
+
+    Returns templates stored in the local templates directory.
+    """
+    local_templates = fetcher._list_local_templates()
+    return [LocalTemplateInfo(**t) for t in local_templates]
+
+
+@router.post("/templates/local", response_model=LocalTemplateUploadResponse)
+async def upload_local_template(
+    file: Annotated[UploadFile, File(...)],
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    parser: Annotated[ParserService, Depends(get_parser)],
+    name: Annotated[str | None, Query(description="Custom template name")] = None,
+) -> LocalTemplateUploadResponse:
+    """
+    Upload an AASX file as a local template.
+
+    The template will be stored locally and available for use alongside
+    GitHub templates. If no name is provided, the filename will be used.
+    """
+    settings = get_settings()
+
+    # Validate file type
+    if not file.filename or not file.filename.endswith(".aasx"):
+        return LocalTemplateUploadResponse(
+            success=False,
+            error="Only AASX files are accepted",
+        )
+
+    try:
+        # Read file with size limit
+        contents = await file.read()
+        max_size = settings.max_upload_size_mb * 1024 * 1024
+
+        if len(contents) > max_size:
+            return LocalTemplateUploadResponse(
+                success=False,
+                error=f"File too large. Maximum size is {settings.max_upload_size_mb}MB",
+            )
+
+        # Validate that it's a parseable AASX
+        try:
+            parser.parse_aasx_to_ui_schema(contents)
+        except Exception as parse_error:
+            return LocalTemplateUploadResponse(
+                success=False,
+                error=f"Invalid AASX file: {parse_error}",
+            )
+
+        # Determine template name
+        template_name = name or file.filename.rsplit(".", 1)[0]
+
+        # Save as local template
+        template_info = fetcher.save_local_template(template_name, contents)
+
+        return LocalTemplateUploadResponse(
+            success=True,
+            template=LocalTemplateInfo(**template_info),
+        )
+
+    except ValueError as e:
+        return LocalTemplateUploadResponse(
+            success=False,
+            error=str(e),
+        )
+    except Exception as e:
+        logger.exception("Failed to upload local template")
+        return LocalTemplateUploadResponse(
+            success=False,
+            error="Failed to save template",
+        )
+
+
+@router.delete("/templates/local/{template_name}")
+async def delete_local_template(
+    template_name: str,
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+) -> dict:
+    """
+    Delete a local template.
+
+    Removes the template from the local templates directory.
+    """
+    try:
+        deleted = fetcher.delete_local_template(template_name)
+        if deleted:
+            return {"success": True, "message": f"Template '{template_name}' deleted"}
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Template '{template_name}' not found",
+            )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to delete local template: {template_name}")
         raise HTTPException(status_code=500, detail=str(e))

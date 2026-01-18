@@ -116,3 +116,23 @@ class ValidationResult(BaseModel):
     valid: bool
     errors: list[ValidationError] = Field(default_factory=list)
     warnings: list[ValidationError] = Field(default_factory=list)
+
+
+class LocalTemplateInfo(BaseModel):
+    """Metadata for a local template."""
+
+    name: str
+    path: str
+    idta_number: str | None = None
+    title: str | None = None
+    status: str = "local"
+    source: str = "local"
+    file_path: str | None = None
+
+
+class LocalTemplateUploadResponse(BaseModel):
+    """Response after uploading a local template."""
+
+    success: bool
+    template: LocalTemplateInfo | None = None
+    error: str | None = None
