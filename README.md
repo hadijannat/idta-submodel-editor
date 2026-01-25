@@ -15,6 +15,7 @@ A metamodel-driven application for editing any IDTA submodel template without co
 - **Smart Mapper (CSV/XLSX)**: Profile spreadsheets, map columns to elements, and reuse recipes for bulk imports
 - **PCF Calculator & Validator**: Calculate Product Carbon Footprint (CO₂e) from emission activities and validate against IDTA 02023 rules
 - **Passport Mode**: WYSIWYG visualization of submodel data as Digital Product Passport cards (Nameplate, Carbon Footprint)
+- **Magic Import (PDF-to-AAS)**: LLM-powered extraction from PDF datasheets with source highlighting, confidence scoring, OCR support, and multi-provider LLM backend
 
 ## Semantic Dictionary Lookup + Resolver
 
@@ -197,6 +198,111 @@ Detection is case-insensitive and supports ECLASS IDs.
 - **Unit tests** cover registry detection, schema indexing, value extraction, and pie chart math.
 - **Integration tests** verify toggle behavior and live form updates.
 
+## Magic Import (PDF-to-AAS Extraction)
+
+Upload a PDF datasheet or nameplate and let an LLM extract field values directly into your IDTA submodel form. Magic Import provides source highlighting, confidence scoring, and full transparency over extracted data.
+
+Live demo (Magic Import in action):
+
+![Magic Import Live Demo](docs/magic-import/magic-import-live-demo.gif)
+
+### Key Capabilities
+
+- **Privacy-First Extraction**: Only relevant snippets are sent to the LLM, not the full document
+- **Multi-Provider LLM Support**: OpenAI (GPT-4o), Anthropic (Claude), or local Ollama models
+- **OCR Support**: Tesseract-based OCR for scanned PDFs with configurable language and DPI
+- **Confidence Scoring**: 4-signal weighted formula (LLM confidence, evidence match, OCR quality, format rules)
+- **Source Highlighting**: Click any extracted field to highlight the exact source region in the PDF viewer
+- **Review Workflow**: Fields below 80% confidence are flagged for human review before applying
+
+### How It Works
+
+```
+Upload PDF → Index Text → OCR (if needed) → Schema Resolution → BM25 Retrieval → LLM Extraction → Evidence Localization → Confidence Scoring → Review & Apply
+```
+
+1. **PDF Indexer**: Extracts text with word-level bounding boxes using PyMuPDF
+2. **OCR Engine**: Falls back to Tesseract for scanned pages
+3. **Schema Resolver**: Enumerates target fields from the selected template with semantic hints
+4. **BM25 Retriever**: Finds relevant snippets using keyword matching (privacy-preserving)
+5. **LLM Extractor**: Extracts structured values from snippets with evidence quotes
+6. **Evidence Localizer**: Maps LLM quotes back to PDF coordinates using fuzzy matching
+7. **Confidence Scorer**: Combines signals into a single 0–1 confidence score
+
+### Confidence Scoring Formula
+
+```
+confidence = 0.35 × llm + 0.40 × localizer + 0.15 × ocr + 0.10 × rules
+```
+
+| Signal | Weight | Description |
+|--------|--------|-------------|
+| `llm` | 35% | LLM self-reported confidence |
+| `localizer` | 40% | Evidence quote match quality (fuzzy string matching) |
+| `ocr` | 15% | Text extraction quality (1.0 for native PDF, lower for OCR) |
+| `rules` | 10% | Format/type validation (dates, numbers, enums) |
+
+### UI Overview
+
+| Screenshot | Description |
+|------------|-------------|
+| ![Upload](docs/magic-import/magic-import-upload.png) | Upload PDF and select target template |
+| ![Review](docs/magic-import/magic-import-review.png) | Review extracted values with confidence badges |
+| ![Highlight](docs/magic-import/magic-import-highlight.png) | Click field to highlight source in PDF viewer |
+
+### Background Processing
+
+Magic Import uses Celery + Redis for scalable job processing:
+
+```bash
+# Start with Magic Import profile
+docker-compose --profile magic-import up
+```
+
+Jobs progress through states: `UPLOADED` → `INDEXING` → `OCR` → `EXTRACTING` → `LOCALIZING` → `SCORING` → `DONE`
+
+### Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAGIC_IMPORT_ENABLED` | Enable Magic Import feature | true |
+| `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai, anthropic, local) | openai |
+| `MAGIC_IMPORT_LLM_MODEL` | Model name | gpt-4o-mini |
+| `OPENAI_API_KEY` | OpenAI API key | - |
+| `ANTHROPIC_API_KEY` | Anthropic API key | - |
+| `OLLAMA_BASE_URL` | Ollama server URL | http://localhost:11434 |
+| `MAGIC_IMPORT_CONFIDENCE_THRESHOLD` | Flag fields below this score | 0.80 |
+| `MAGIC_IMPORT_OCR_ENABLED` | Enable OCR fallback | true |
+| `MAGIC_IMPORT_OCR_LANGUAGE` | Tesseract language codes | eng+deu |
+| `MAGIC_IMPORT_OCR_DPI` | OCR resolution | 300 |
+| `MAGIC_IMPORT_MAX_PDF_SIZE_MB` | Maximum PDF file size | 50 |
+| `MAGIC_IMPORT_JOB_TTL_HOURS` | Job retention period | 24 |
+| `CELERY_BROKER_URL` | Redis URL for Celery broker | redis://localhost:6379/0 |
+| `CELERY_RESULT_BACKEND` | Redis URL for Celery results | redis://localhost:6379/0 |
+
+### LLM Provider Setup
+
+**OpenAI (default):**
+```bash
+export MAGIC_IMPORT_LLM_PROVIDER=openai
+export MAGIC_IMPORT_LLM_MODEL=gpt-4o-mini  # or gpt-4o
+export OPENAI_API_KEY=sk-...
+```
+
+**Anthropic:**
+```bash
+export MAGIC_IMPORT_LLM_PROVIDER=anthropic
+export MAGIC_IMPORT_LLM_MODEL=claude-3-haiku-20240307  # or claude-3-5-sonnet-20241022
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Local (Ollama):**
+```bash
+export MAGIC_IMPORT_LLM_PROVIDER=local
+export MAGIC_IMPORT_LLM_MODEL=llama3
+export OLLAMA_BASE_URL=http://localhost:11434
+```
+
 ## Architecture
 
 The application follows a three-pipeline architecture:
@@ -360,6 +466,16 @@ npm run type-check
 - `GET /api/pcf/factors/{factor_id}` - Get a specific emission factor by ID
 - `GET /api/pcf/health` - PCF service health + emission factor dataset metadata
 
+### Magic Import (PDF-to-AAS)
+
+- `POST /api/magic-import/jobs` - Create extraction job from PDF upload
+- `GET /api/magic-import/jobs/{job_id}` - Get job status and progress
+- `GET /api/magic-import/jobs/{job_id}/result` - Get extraction results with confidence scores
+- `GET /api/magic-import/jobs/{job_id}/pdf` - Download PDF for viewer
+- `DELETE /api/magic-import/jobs/{job_id}` - Clean up job and associated files
+- `GET /api/magic-import/jobs` - List recent jobs
+- `POST /api/magic-import/health` - Service health check (LLM provider, OCR, Redis)
+
 ## Supported Element Types
 
 | Element Type | Editing Support |
@@ -408,15 +524,17 @@ docker run -d -p 80:80 submodel-editor-frontend:1.0.0
 idta-submodel-editor/
 ├── backend/
 │   ├── app/
-│   │   ├── services/       # Fetcher, Parser, Hydrator, Validation, PCF, Semantic, Mapper
-│   │   │   └── pcf/        # PCF Calculator, Validator, Emission Factors
-│   │   ├── routers/        # API endpoints (templates, editor, export, semantic, mapper, pcf)
+│   │   ├── services/       # Fetcher, Parser, Hydrator, Validation, PCF, Semantic, Mapper, Magic Import
+│   │   │   ├── pcf/        # PCF Calculator, Validator, Emission Factors
+│   │   │   └── magic_import/ # PDF Indexer, LLM Providers, Retriever, Localizer, Scorer
+│   │   ├── routers/        # API endpoints (templates, editor, export, semantic, mapper, pcf, magic_import)
 │   │   ├── schemas/        # Pydantic models
 │   │   ├── utils/          # XSD mapping, semantic resolver
 │   │   └── clients/        # GitHub API client
 │   ├── tests/
 │   │   ├── fixtures/       # AASX/JSON conformance fixtures + generator
-│   │   └── pcf/            # PCF-specific tests
+│   │   ├── pcf/            # PCF-specific tests
+│   │   └── magic_import/   # Magic Import tests (LLM providers, indexer, retriever, etc.)
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
@@ -426,15 +544,17 @@ idta-submodel-editor/
 │   │   │   ├── ExportPanel/
 │   │   │   ├── SmartMapper/    # CSV/XLSX bulk import
 │   │   │   ├── PCFPanel/       # PCF Calculator & Validator
-│   │   │   └── PassportMode/   # Passport View visualization
+│   │   │   ├── PassportMode/   # Passport View visualization
+│   │   │   └── MagicImport/    # PDF-to-AAS extraction with PDF viewer
 │   │   ├── hooks/          # Custom React hooks
-│   │   ├── services/       # API client (api, pcfApi, mapperApi)
+│   │   ├── services/       # API client (api, pcfApi, mapperApi, magicImportApi)
 │   │   └── types/          # TypeScript interfaces
 │   └── Dockerfile
 ├── docs/
 │   ├── semantic/           # Semantic lookup documentation
 │   ├── mapper/             # Smart Mapper documentation
-│   └── pcf/                # PCF Calculator documentation
+│   ├── pcf/                # PCF Calculator documentation
+│   └── magic-import/       # Magic Import documentation
 ├── kubernetes/
 │   ├── base/               # Base manifests
 │   └── overlays/           # Environment overlays
@@ -450,6 +570,9 @@ idta-submodel-editor/
 - Eclipse BaSyx Python SDK 2.0.0
 - Pydantic v2
 - WeasyPrint (PDF generation)
+- PyMuPDF (PDF text extraction)
+- Tesseract/pytesseract (OCR)
+- Celery + Redis (background job processing)
 
 ### Frontend
 - React 18
@@ -458,6 +581,7 @@ idta-submodel-editor/
 - Zod (validation)
 - Vite (build tool)
 - ESLint (linting)
+- pdf.js (PDF viewer)
 
 ### Infrastructure
 - Docker & Docker Compose
