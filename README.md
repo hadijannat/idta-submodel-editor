@@ -2,7 +2,24 @@
 
 A metamodel-driven application for editing any IDTA submodel template without code modifications. Built with Eclipse BaSyx Python SDK 2.0.0, FastAPI, and React 18+ with TypeScript.
 
-## Features
+<p align="center">
+  <a href="#features"><img src="https://img.shields.io/badge/Features-blue?style=for-the-badge" alt="Features"/></a>
+  <a href="#semantic-lookup"><img src="https://img.shields.io/badge/Semantic_Lookup-teal?style=for-the-badge" alt="Semantic Lookup"/></a>
+  <a href="#smart-mapper"><img src="https://img.shields.io/badge/Smart_Mapper-green?style=for-the-badge" alt="Smart Mapper"/></a>
+  <a href="#pcf-calculator"><img src="https://img.shields.io/badge/PCF_Calculator-orange?style=for-the-badge" alt="PCF Calculator"/></a>
+  <a href="#passport-mode"><img src="https://img.shields.io/badge/Passport_Mode-purple?style=for-the-badge" alt="Passport Mode"/></a>
+  <a href="#magic-import"><img src="https://img.shields.io/badge/Magic_Import-red?style=for-the-badge" alt="Magic Import"/></a>
+</p>
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-gray?style=flat-square" alt="Quick Start"/></a>
+  <a href="#configuration"><img src="https://img.shields.io/badge/Configuration-gray?style=flat-square" alt="Configuration"/></a>
+  <a href="#api-endpoints"><img src="https://img.shields.io/badge/API_Endpoints-gray?style=flat-square" alt="API"/></a>
+  <a href="#deployment"><img src="https://img.shields.io/badge/Deployment-gray?style=flat-square" alt="Deployment"/></a>
+</p>
+
+---
+
+## <a name="features"></a>Features
 
 - **Universal Editing**: Edit any IDTA submodel template (Digital Nameplate, Carbon Footprint, Technical Data, etc.) through the same interface
 - **Metadata Preservation**: Qualifiers, EmbeddedDataSpecifications, and semantic IDs are preserved during editing
@@ -17,7 +34,9 @@ A metamodel-driven application for editing any IDTA submodel template without co
 - **Passport Mode**: WYSIWYG visualization of submodel data as Digital Product Passport cards (Nameplate, Carbon Footprint)
 - **Magic Import (PDF-to-AAS)**: LLM-powered extraction from PDF datasheets with source highlighting, confidence scoring, OCR support, and multi-provider LLM backend
 
-## Semantic Dictionary Lookup + Resolver
+---
+
+## <a name="semantic-lookup"></a>Semantic Dictionary Lookup + Resolver
 
 Attach standardized semantic identifiers (ECLASS / IEC CDD) to SubmodelElements.
 This is especially important for “generic frame” templates (e.g., Technical Data)
@@ -64,7 +83,9 @@ Out of scope (initially):
 The offline index supports JSON/CSV and SQLite FTS. See:
 `docs/semantic/indexing.md`
 
-## Smart Mapper (CSV/XLSX Bulk Import)
+---
+
+## <a name="smart-mapper"></a>Smart Mapper (CSV/XLSX Bulk Import)
 
 Smart Mapper lets you upload a spreadsheet, map columns to template fields, and
 apply the results directly into the editor form. Save recipes for monthly
@@ -85,7 +106,9 @@ Live demo (Smart Mapper in action):
 - **Dry-run preview** shows mapped values before applying to the form
 - Validation panel flags unmapped required fields and parsing warnings
 
-## PCF Calculator & Validator (Carbon Footprint)
+---
+
+## <a name="pcf-calculator"></a>PCF Calculator & Validator (Carbon Footprint)
 
 Calculate Product Carbon Footprint (PCF) values and validate against IDTA 02023 specification requirements. This tool appears automatically when editing Carbon Footprint templates.
 
@@ -147,7 +170,9 @@ The built-in database includes common emission factors from recognized authoriti
 
 Factors include value, unit, source reference, region, and year for full traceability. The UI surfaces dataset version/count via `/api/pcf/health`.
 
-## Passport Mode (Digital Product Passport Visualization)
+---
+
+## <a name="passport-mode"></a>Passport Mode (Digital Product Passport Visualization)
 
 Switch between Editor and Passport views to visualize submodel data as Digital Product Passport cards. The system auto-detects template types and renders appropriate card styles.
 
@@ -198,7 +223,9 @@ Detection is case-insensitive and supports ECLASS IDs.
 - **Unit tests** cover registry detection, schema indexing, value extraction, and pie chart math.
 - **Integration tests** verify toggle behavior and live form updates.
 
-## Magic Import (PDF-to-AAS Extraction)
+---
+
+## <a name="magic-import"></a>Magic Import (PDF-to-AAS Extraction)
 
 Upload a PDF datasheet or nameplate and let an LLM extract field values directly into your IDTA submodel form. Magic Import provides source highlighting, confidence scoring, and full transparency over extracted data.
 
@@ -320,7 +347,9 @@ export MAGIC_IMPORT_LLM_MODEL=llama3
 export OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-## Architecture
+---
+
+## <a name="architecture"></a>Architecture
 
 The application follows a three-pipeline architecture:
 
@@ -329,9 +358,11 @@ The application follows a three-pipeline architecture:
 3. **Hydrator Service**: Reconstitutes complete AAS objects by merging user input with preserved metadata
 4. **Validation Service**: Shared validation used by validate/hydrate/export endpoints
 
-## Quick Start
+---
 
-## Three-Step Demo
+## <a name="quick-start"></a>Quick Start
+
+### Three-Step Demo
 
 1. **Start the stack**
    ```bash
@@ -393,7 +424,9 @@ npm run lint
 npm run type-check
 ```
 
-## Configuration
+---
+
+## <a name="configuration"></a>Configuration
 
 ### Environment Variables
 
@@ -435,7 +468,9 @@ npm run type-check
 |----------|-------------|---------|
 | `VITE_API_URL` | Backend API URL | http://localhost:8000 |
 
-## API Endpoints
+---
+
+## <a name="api-endpoints"></a>API Endpoints
 
 ### Templates
 
@@ -493,7 +528,9 @@ npm run type-check
 - `GET /api/magic-import/jobs` - List recent jobs
 - `POST /api/magic-import/health` - Service health check (LLM provider, OCR, Redis)
 
-## Supported Element Types
+---
+
+## <a name="supported-element-types"></a>Supported Element Types
 
 | Element Type | Editing Support |
 |--------------|-----------------|
@@ -511,7 +548,9 @@ npm run type-check
 | Capability | Read-only |
 | BasicEventElement | Read-only |
 
-## Deployment
+---
+
+## <a name="deployment"></a>Deployment
 
 ### Kubernetes
 
@@ -535,7 +574,9 @@ docker run -d -p 8000:8000 submodel-editor-backend:1.0.0
 docker run -d -p 80:80 submodel-editor-frontend:1.0.0
 ```
 
-## Project Structure
+---
+
+## <a name="project-structure"></a>Project Structure
 
 ```
 idta-submodel-editor/
@@ -579,7 +620,9 @@ idta-submodel-editor/
 └── README.md
 ```
 
-## Technology Stack
+---
+
+## <a name="technology-stack"></a>Technology Stack
 
 ### Backend
 - Python 3.11+
@@ -606,7 +649,9 @@ idta-submodel-editor/
 - Redis (optional caching)
 - Keycloak (optional authentication)
 
-## Contributing
+---
+
+## <a name="contributing"></a>Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -622,11 +667,13 @@ idta-submodel-editor/
 - A nightly workflow refreshes fixtures and opens a PR. Set the
   `FIXTURE_SECRET_KEY` repository secret (32+ characters).
 
-## License
+---
+
+## <a name="license"></a>License
 
 This project is licensed under the MIT License.
 
-## Acknowledgments
+## <a name="acknowledgments"></a>Acknowledgments
 
 - [IDTA](https://industrialdigitaltwin.org/) for the submodel template specifications
 - [Eclipse BaSyx](https://www.eclipse.org/basyx/) for the AAS SDK
