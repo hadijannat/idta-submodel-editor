@@ -47,6 +47,7 @@ RUN useradd --create-home --shell /bin/bash appuser && \
 
 # Copy application code
 COPY --chown=appuser:appuser app /app/app
+COPY --chown=appuser:appuser celery_app.py /app/celery_app.py
 
 # Switch to non-root user
 USER appuser

@@ -205,6 +205,29 @@ class TestConfidenceScorer:
         # String accepts anything
         assert scorer.validate_against_type("anything", "xs:string") == 1.0
 
+        # Comma decimal + thousands
+        assert scorer.validate_against_type("1.234,56", "xs:decimal") == 1.0
+        assert scorer.validate_against_type("1 234,56", "xsd:float") == 1.0
+
+        # DateTime variants
+        assert scorer.validate_against_type("2024-01-15T10:20:30Z", "xs:dateTime") == 1.0
+        assert scorer.validate_against_type("2024-01-15 10:20:30+02:00", "xs:dateTime") == 1.0
+
+        # gYear / gYearMonth
+        assert scorer.validate_against_type("2024", "xs:gYear") == 1.0
+        assert scorer.validate_against_type("2024-05", "xs:gYearMonth") == 1.0
+
+        # duration
+        assert scorer.validate_against_type("P3Y6M4DT12H30M5S", "xs:duration") == 1.0
+
+        # anyURI (urn + fragment)
+        assert scorer.validate_against_type("urn:example:foo", "xs:anyURI") == 1.0
+        assert scorer.validate_against_type("#section-1", "xs:anyURI") >= 0.7
+
+        # hexBinary + base64Binary
+        assert scorer.validate_against_type("0A0B0C", "xs:hexBinary") == 1.0
+        assert scorer.validate_against_type("TWFu", "xs:base64Binary") >= 0.8
+
     def test_ocr_quality_calculation(self):
         """Test OCR quality calculation."""
         scorer = ConfidenceScorer()

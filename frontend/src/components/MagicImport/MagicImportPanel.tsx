@@ -107,7 +107,11 @@ export default function MagicImportPanel({
             Extract data from PDF datasheets using AI
           </p>
           {onClose && (
-            <button className="magic-import-panel__close" onClick={onClose}>
+            <button
+              type="button"
+              className="magic-import-panel__close"
+              onClick={onClose}
+            >
               &times;
             </button>
           )}
@@ -146,7 +150,11 @@ export default function MagicImportPanel({
         <div className="magic-import-panel__header">
           <h3>Magic Import</h3>
           {onClose && (
-            <button className="magic-import-panel__close" onClick={onClose}>
+            <button
+              type="button"
+              className="magic-import-panel__close"
+              onClick={onClose}
+            >
               &times;
             </button>
           )}
@@ -178,7 +186,11 @@ export default function MagicImportPanel({
             </div>
           )}
 
-          <button className="magic-import-panel__cancel" onClick={cancelJob}>
+          <button
+            type="button"
+            className="magic-import-panel__cancel"
+            onClick={cancelJob}
+          >
             Cancel
           </button>
         </div>
@@ -195,7 +207,11 @@ export default function MagicImportPanel({
         <div className="magic-import-panel__header">
           <h3>Magic Import</h3>
           {onClose && (
-            <button className="magic-import-panel__close" onClick={onClose}>
+            <button
+              type="button"
+              className="magic-import-panel__close"
+              onClick={onClose}
+            >
               &times;
             </button>
           )}
@@ -207,7 +223,7 @@ export default function MagicImportPanel({
           <p className="magic-import-panel__error-detail">
             {job.error_message || 'Unknown error'}
           </p>
-          <button className="magic-import-panel__retry" onClick={reset}>
+          <button type="button" className="magic-import-panel__retry" onClick={reset}>
             Try Again
           </button>
         </div>
@@ -234,7 +250,11 @@ export default function MagicImportPanel({
           </div>
         )}
         {onClose && (
-          <button className="magic-import-panel__close" onClick={onClose}>
+          <button
+            type="button"
+            className="magic-import-panel__close"
+            onClick={onClose}
+          >
             &times;
           </button>
         )}
@@ -260,10 +280,15 @@ export default function MagicImportPanel({
       </div>
 
       <div className="magic-import-panel__footer">
-        <button className="magic-import-panel__btn--secondary" onClick={reset}>
+        <button
+          type="button"
+          className="magic-import-panel__btn--secondary"
+          onClick={reset}
+        >
           Start Over
         </button>
         <button
+          type="button"
           className="magic-import-panel__btn--primary"
           onClick={applyToForm}
           disabled={readyCount === 0}

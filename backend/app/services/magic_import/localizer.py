@@ -23,6 +23,7 @@ from app.schemas.magic_import import (
     LLMFieldExtraction,
     PDFIndex,
     PDFWord,
+    ExtractionHint,
 )
 
 logger = logging.getLogger(__name__)
@@ -269,6 +270,7 @@ class EvidenceLocalizer:
         self,
         extractions: list[LLMFieldExtraction],
         index: PDFIndex,
+        hints_by_path: dict[str, "ExtractionHint"] | None = None,
     ) -> list[FieldExtraction]:
         """Localize all LLM extractions and return FieldExtractions with evidence."""
         results: list[FieldExtraction] = []
@@ -279,9 +281,14 @@ class EvidenceLocalizer:
                 index,
             )
 
+            value_type = None
+            if hints_by_path and extraction.path in hints_by_path:
+                value_type = hints_by_path[extraction.path].value_type
+
             results.append(
                 FieldExtraction(
                     path=extraction.path,
+                    value_type=value_type,
                     value_raw=str(extraction.value),
                     value_normalized=None,
                     confidence=float(extraction.confidence),

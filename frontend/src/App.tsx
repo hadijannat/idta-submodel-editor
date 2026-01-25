@@ -11,6 +11,7 @@ import TemplateSelector from './components/TemplateSelector';
 import AASRenderer from './components/AASRenderer';
 import ExportPanel from './components/ExportPanel';
 import SmartMapperPage from './components/SmartMapper/SmartMapperPage';
+import { MagicImportPanel } from './components/MagicImport';
 import PCFPanel from './components/PCFPanel';
 import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
 import { PassportView } from './components/PassportMode';
@@ -82,11 +83,16 @@ function App() {
     },
     {
       id: 4,
+      title: 'Magic Import',
+      description: 'Extract fields from PDF datasheets',
+    },
+    {
+      id: 5,
       title: 'Fill Required Fields',
       description: 'Complete mandatory elements',
     },
     {
-      id: 5,
+      id: 6,
       title: 'Review & Export',
       description: 'Validate and export',
     },
@@ -356,6 +362,36 @@ function App() {
     }
 
     if (wizardStep === 4) {
+      return (
+        <div className="wizard-panel">
+          <MagicImportPanel
+            templateName={selectedTemplate.name}
+            templateStatus={templateStatus}
+            templateVersion={selectedVersion}
+            form={form}
+          />
+
+          <div className="wizard-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleStepChange(3)}
+            >
+              Back to Smart Mapper
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => handleStepChange(5)}
+            >
+              Continue to fields
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (wizardStep === 5) {
       const metadataIdShort =
         watchedValues?.metadata &&
         typeof watchedValues.metadata === 'object' &&
@@ -420,14 +456,14 @@ function App() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => handleStepChange(3)}
+              onClick={() => handleStepChange(4)}
             >
-              Back to Smart Mapper
+              Back to Magic Import
             </button>
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => handleStepChange(5)}
+              onClick={() => handleStepChange(6)}
             >
               Review & export
             </button>
@@ -436,7 +472,7 @@ function App() {
       );
     }
 
-    if (wizardStep === 5) {
+    if (wizardStep === 6) {
       return (
         <div className="wizard-panel">
           <div className="wizard-panel-header">
@@ -511,7 +547,7 @@ function App() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => handleStepChange(4)}
+              onClick={() => handleStepChange(5)}
             >
               Back to fields
             </button>
@@ -558,7 +594,7 @@ function App() {
                     <span className="wizard-step-text">
                       <span className="wizard-step-title">{step.title}</span>
                       <span className="wizard-step-desc">{step.description}</span>
-                      {step.id === 4 && schema && (
+                      {step.id === 5 && schema && (
                         <span className="wizard-step-meta">
                           Required remaining: {requiredRemaining}
                         </span>

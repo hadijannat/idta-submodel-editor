@@ -42,6 +42,7 @@ services:
       - MAGIC_IMPORT_LLM_PROVIDER=${MAGIC_IMPORT_LLM_PROVIDER:-openai}
       - MAGIC_IMPORT_LLM_MODEL=${MAGIC_IMPORT_LLM_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - MAGIC_IMPORT_OCR_ENABLED=true
@@ -94,12 +95,14 @@ services:
     command: celery -A celery_app worker --loglevel=info --concurrency=2
     environment:
       - ENV=development
+      - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - MAGIC_IMPORT_ENABLED=true
       - MAGIC_IMPORT_LLM_PROVIDER=${MAGIC_IMPORT_LLM_PROVIDER:-openai}
       - MAGIC_IMPORT_LLM_MODEL=${MAGIC_IMPORT_LLM_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - MAGIC_IMPORT_OCR_ENABLED=true

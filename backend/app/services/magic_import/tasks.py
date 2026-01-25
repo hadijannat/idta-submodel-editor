@@ -166,8 +166,11 @@ def process_magic_import_job(self, job_id: str) -> dict:
         )
 
         localizer = EvidenceLocalizer()
+        hints_by_path = {hint.path: hint for hint in hints}
         extractions_with_evidence = localizer.localize_all(
-            llm_extractions.extractions, index
+            llm_extractions.extractions,
+            index,
+            hints_by_path=hints_by_path,
         )
 
         # Step 7: Score confidence

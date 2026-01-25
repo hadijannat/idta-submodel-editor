@@ -67,6 +67,9 @@ class FieldExtraction(BaseModel):
     """Extracted field value with evidence and confidence."""
 
     path: str = Field(description="idShortPath to target field")
+    value_type: str | None = Field(
+        default=None, description="Expected value type (XSD) when known"
+    )
     value_raw: str = Field(description="Raw extracted value")
     value_normalized: str | int | float | bool | None = Field(
         default=None, description="Normalized/parsed value"

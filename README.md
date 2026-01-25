@@ -246,9 +246,26 @@ confidence = 0.35 × llm + 0.40 × localizer + 0.15 × ocr + 0.10 × rules
 
 | Screenshot | Description |
 |------------|-------------|
-| ![Upload](docs/magic-import/magic-import-upload.png) | Upload PDF and select target template |
-| ![Review](docs/magic-import/magic-import-review.png) | Review extracted values with confidence badges |
-| ![Highlight](docs/magic-import/magic-import-highlight.png) | Click field to highlight source in PDF viewer |
+| ![Upload](docs/magic-import/magic-import-upload.png) | Drag-drop zone for PDF upload and template selection |
+| ![Processing](docs/magic-import/magic-import-processing.png) | Progress bar with status message and PDF info (pages, words, OCR) |
+| ![Review](docs/magic-import/magic-import-review.png) | Split view: PDF viewer (left) + extraction table (right) with filter tabs |
+| ![Highlight](docs/magic-import/magic-import-highlight.png) | Click field → PDF evidence highlighted with quote display |
+| ![Edit](docs/magic-import/magic-import-edit-value.png) | Inline editing mode with text input |
+| ![Apply](docs/magic-import/magic-import-apply.png) | "Apply X Fields to Form" button enabled, ready to apply |
+
+#### Confidence Badges
+
+The extraction table displays confidence badges indicating extraction quality:
+
+| Badge | Condition | Description |
+|-------|-----------|-------------|
+| **Edited** | User modified | User changed the extracted value (blue) |
+| **Approved** | User confirmed | User approved a low-confidence extraction (green) |
+| **High** | ≥90% confidence | Auto-approved, high extraction confidence (green) |
+| **Medium** | 80–89% confidence | Auto-approved, moderate confidence (neutral) |
+| **Low** | <80% confidence | Needs review, amber badge with "Approve" button |
+
+Users can filter the table using tabs: **All** / **Needs Review** / **Ready**. The "Approve All" button bulk-approves all low-confidence fields.
 
 ### Background Processing
 

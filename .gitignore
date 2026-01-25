@@ -39,3 +39,9 @@ Thumbs.db
 .vscode/
 AGENTS.md
 CLAUDE.md
+
+# Example datasheets (local only)
+examples/
+
+# Playwright MCP output
+.playwright-mcp/

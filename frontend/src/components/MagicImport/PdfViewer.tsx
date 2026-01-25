@@ -20,6 +20,7 @@ interface PDFPageProxy {
     canvasContext: CanvasRenderingContext2D;
     viewport: PDFPageViewport;
   }): { promise: Promise<void> };
+  getTextContent(): Promise<{ items: Array<{ str?: string }> }>;
 }
 
 interface PDFPageViewport {
@@ -39,8 +40,13 @@ interface PdfViewerProps {
 }
 
 export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingFocusRef = useRef<{ page: number; box: EvidenceRef['boxes'][0] } | null>(
+    null
+  );
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [pageText, setPageText] = useState('');
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -48,6 +54,9 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pageViewport, setPageViewport] = useState<PDFPageViewport | null>(null);
+  const [thumbnails, setThumbnails] = useState<Array<{ page: number; dataUrl: string }>>(
+    []
+  );
 
   // Load PDF.js dynamically
   const loadPdfJs = useCallback(async () => {
@@ -148,6 +157,33 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
           canvasContext: context,
           viewport,
         }).promise;
+
+        try {
+          const textContent = await page.getTextContent();
+          if (!cancelled) {
+            const text = textContent.items.map((item) => item.str || '').join(' ');
+            setPageText(text);
+          }
+        } catch {
+          if (!cancelled) {
+            setPageText('');
+          }
+        }
+
+        const pending = pendingFocusRef.current;
+        if (pending && pending.page === currentPage && scrollRef.current) {
+          const box = pending.box;
+          const centerX =
+            (box.x0 + (box.x1 - box.x0) / 2) * viewport.width;
+          const centerY =
+            (box.y0 + (box.y1 - box.y0) / 2) * viewport.height;
+          scrollRef.current.scrollTo({
+            left: Math.max(0, centerX - scrollRef.current.clientWidth / 2),
+            top: Math.max(0, centerY - scrollRef.current.clientHeight / 2),
+            behavior: 'smooth',
+          });
+          pendingFocusRef.current = null;
+        }
       } catch (err) {
         console.error('Failed to render page:', err);
       }
@@ -159,6 +195,45 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
       cancelled = true;
     };
   }, [pdfDoc, currentPage, scale]);
+
+  // Generate thumbnails for quick navigation
+  useEffect(() => {
+    if (!pdfDoc) {
+      setThumbnails([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const buildThumbnails = async () => {
+      const thumbs: Array<{ page: number; dataUrl: string }> = [];
+      const maxPages = Math.min(pdfDoc.numPages, 12);
+      for (let pageNum = 1; pageNum <= maxPages; pageNum += 1) {
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          if (cancelled) return;
+          const viewport = page.getViewport({ scale: 0.2 });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (!context) continue;
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: context, viewport }).promise;
+          const dataUrl = canvas.toDataURL('image/png');
+          thumbs.push({ page: pageNum, dataUrl });
+        } catch {
+          // Skip thumbnail on failure
+        }
+      }
+      if (!cancelled) setThumbnails(thumbs);
+    };
+
+    buildThumbnails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfDoc]);
 
   // Navigate to evidence page when evidence changes
   useEffect(() => {
@@ -178,6 +253,34 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
     },
     [totalPages, onPageChange]
   );
+
+  const focusEvidence = useCallback(() => {
+    if (!evidence || !pageViewport) return;
+    if (!evidence.boxes || evidence.boxes.length === 0) return;
+
+    const box = evidence.boxes[0];
+    const targetPage = evidence.page + 1;
+
+    const boxWidth = (box.x1 - box.x0) * pageViewport.width;
+    const container = scrollRef.current;
+    let nextScale = scale;
+
+    if (container && boxWidth > 0) {
+      const targetWidth = Math.min(container.clientWidth, container.clientHeight) * 0.45;
+      const factor = targetWidth / boxWidth;
+      if (factor > 1.05) {
+        nextScale = Math.min(3.0, scale * factor);
+      }
+    }
+
+    pendingFocusRef.current = { page: targetPage, box };
+    if (targetPage !== currentPage) {
+      setCurrentPage(targetPage);
+    }
+    if (nextScale !== scale) {
+      setScale(nextScale);
+    }
+  }, [evidence, pageViewport, scale, currentPage]);
 
   // Zoom controls
   const zoomIn = () => setScale((s) => Math.min(s + 0.25, 3.0));
@@ -213,11 +316,12 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
   }
 
   return (
-    <div className="pdf-viewer" ref={containerRef}>
+    <div className="pdf-viewer" ref={viewerRef}>
       {/* Toolbar */}
       <div className="pdf-viewer__toolbar">
         <div className="pdf-viewer__nav">
           <button
+            type="button"
             className="pdf-viewer__btn"
             onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage <= 1}
@@ -228,6 +332,7 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
             Page {currentPage} of {totalPages}
           </span>
           <button
+            type="button"
             className="pdf-viewer__btn"
             onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= totalPages}
@@ -237,21 +342,31 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
         </div>
 
         <div className="pdf-viewer__zoom">
-          <button className="pdf-viewer__btn" onClick={zoomOut}>
+          <button type="button" className="pdf-viewer__btn" onClick={zoomOut}>
             -
           </button>
           <span className="pdf-viewer__zoom-level">{Math.round(scale * 100)}%</span>
-          <button className="pdf-viewer__btn" onClick={zoomIn}>
+          <button type="button" className="pdf-viewer__btn" onClick={zoomIn}>
             +
           </button>
-          <button className="pdf-viewer__btn" onClick={resetZoom}>
+          <button type="button" className="pdf-viewer__btn" onClick={resetZoom}>
             Reset
           </button>
         </div>
+
+        {evidence && (
+          <button
+            type="button"
+            className="pdf-viewer__btn pdf-viewer__btn--focus"
+            onClick={focusEvidence}
+          >
+            Focus evidence
+          </button>
+        )}
       </div>
 
       {/* Canvas container */}
-      <div className="pdf-viewer__container">
+      <div className="pdf-viewer__container" ref={scrollRef}>
         {loading && (
           <div className="pdf-viewer__loading">
             <span>Loading PDF...</span>
@@ -264,25 +379,49 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
           </div>
         )}
 
-        <div className="pdf-viewer__page" style={{ position: 'relative' }}>
-          <canvas ref={canvasRef} className="pdf-viewer__canvas" />
+        <div className="pdf-viewer__content">
+          <div className="pdf-viewer__thumbs">
+            {thumbnails.map((thumb) => (
+              <button
+                type="button"
+                key={`thumb-${thumb.page}`}
+                className={`pdf-viewer__thumb ${
+                  thumb.page === currentPage ? 'active' : ''
+                }`}
+                onClick={() => goToPage(thumb.page)}
+                title={`Page ${thumb.page}`}
+              >
+                <img src={thumb.dataUrl} alt={`Page ${thumb.page}`} />
+                <span>{thumb.page}</span>
+              </button>
+            ))}
+            {totalPages > thumbnails.length && (
+              <div className="pdf-viewer__thumb-more">
+                +{totalPages - thumbnails.length} pages
+              </div>
+            )}
+          </div>
 
-          {/* Highlight overlay */}
-          {pageViewport && (
-            <div
-              className="pdf-viewer__overlay"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: pageViewport.width,
-                height: pageViewport.height,
-                pointerEvents: 'none',
-              }}
-            >
-              {renderHighlights()}
-            </div>
-          )}
+          <div className="pdf-viewer__page" style={{ position: 'relative' }}>
+            <canvas ref={canvasRef} className="pdf-viewer__canvas" />
+
+            {/* Highlight overlay */}
+            {pageViewport && (
+              <div
+                className="pdf-viewer__overlay"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: pageViewport.width,
+                  height: pageViewport.height,
+                  pointerEvents: 'none',
+                }}
+              >
+                {renderHighlights()}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -294,6 +433,13 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
             (Page {evidence.page + 1}, {evidence.method}, {Math.round(evidence.locator_score * 100)}
             % match)
           </span>
+        </div>
+      )}
+
+      {pageText && (
+        <div className="pdf-viewer__page-text">
+          <strong>Page text:</strong> {pageText.slice(0, 240)}
+          {pageText.length > 240 ? '…' : ''}
         </div>
       )}
     </div>

@@ -88,6 +88,20 @@ class TestEvidenceLocalizer:
         assert evidence.page == 0
         assert score >= 0.6
 
+    def test_localize_token_overlap_fallback(self, sample_index):
+        """Test token-overlap fallback when exact match fails."""
+        localizer = EvidenceLocalizer()
+
+        # Tokens overlap but not exact sequence
+        evidence, score = localizer._localize_quote(
+            "Serial Number manufactured",
+            sample_index,
+        )
+
+        assert evidence is not None
+        assert evidence.page == 0
+        assert score >= localizer.MIN_MATCH_SCORE
+
     def test_localize_no_match(self, sample_index):
         """Test localizing a quote that doesn't exist."""
         localizer = EvidenceLocalizer()

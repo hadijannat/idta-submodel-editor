@@ -9,9 +9,12 @@ The following assets are referenced in the main README.md:
 | File | Description | Status |
 |------|-------------|--------|
 | `magic-import-live-demo.gif` | Animated demo showing full extraction workflow | TODO |
-| `magic-import-upload.png` | Upload PDF and select template | TODO |
-| `magic-import-review.png` | Review extracted values with confidence badges | TODO |
-| `magic-import-highlight.png` | Click field to highlight source in PDF viewer | TODO |
+| `magic-import-upload.png` | Drag-drop zone for PDF upload and template selection | ✅ Done |
+| `magic-import-processing.png` | Progress bar with status message and PDF info (pages, words, OCR) | TODO (extraction too fast to capture) |
+| `magic-import-review.png` | Split view: PDF viewer + extraction table with filter tabs | ✅ Done (Danfoss APP 11-13 datasheet) |
+| `magic-import-highlight.png` | Click field → PDF evidence highlighted with quote display | ✅ Done |
+| `magic-import-edit-value.png` | Inline editing mode with text input | ✅ Done |
+| `magic-import-apply.png` | "Apply X Fields to Form" button enabled, ready to apply | ✅ Done |
 
 ## Capture Guidelines
 

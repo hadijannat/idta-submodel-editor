@@ -79,43 +79,158 @@ class ConfidenceScorer:
         if not value:
             return 1.0
 
+        value_clean = value.strip()
+        value_lower = value_clean.lower()
+        type_clean = (value_type or "").strip()
+        if type_clean.startswith("xsd:"):
+            type_clean = "xs:" + type_clean[4:]
+
         # xs:string accepts anything
-        if value_type in ("xs:string", "string"):
+        if type_clean in ("xs:string", "string"):
             return 1.0
 
+        def normalize_number(raw: str) -> str:
+            # Remove spaces and apostrophes used as thousands separators
+            cleaned = raw.replace(" ", "").replace("'", "")
+            if "," in cleaned and "." in cleaned:
+                last_comma = cleaned.rfind(",")
+                last_dot = cleaned.rfind(".")
+                if last_comma > last_dot:
+                    cleaned = cleaned.replace(".", "")
+                    cleaned = cleaned.replace(",", ".")
+                else:
+                    cleaned = cleaned.replace(",", "")
+            elif "," in cleaned and "." not in cleaned:
+                cleaned = cleaned.replace(",", ".")
+            return cleaned
+
         # xs:int / xs:integer
-        if value_type in ("xs:int", "xs:integer", "int", "integer"):
+        if type_clean in ("xs:int", "xs:integer", "int", "integer"):
             try:
-                int(value.strip())
+                normalized = normalize_number(value_clean)
+                number = float(normalized)
+                if not number.is_integer():
+                    return 0.5
                 return 1.0
             except ValueError:
                 return 0.5
 
         # xs:float / xs:double / xs:decimal
-        if value_type in ("xs:float", "xs:double", "xs:decimal", "float", "double", "decimal"):
+        if type_clean in ("xs:float", "xs:double", "xs:decimal", "float", "double", "decimal"):
             try:
-                float(value.strip())
+                normalized = normalize_number(value_clean)
+                float(normalized)
                 return 1.0
             except ValueError:
                 return 0.5
 
         # xs:boolean
-        if value_type in ("xs:boolean", "boolean"):
-            if value.strip().lower() in ("true", "false", "yes", "no", "1", "0"):
+        if type_clean in ("xs:boolean", "boolean"):
+            if value_lower in ("true", "false", "yes", "no", "1", "0"):
                 return 1.0
             return 0.5
 
         # xs:date
-        if value_type in ("xs:date", "date"):
+        if type_clean in ("xs:date", "date"):
             # Simple date pattern check
-            if re.match(r"^\d{4}-\d{2}-\d{2}$", value.strip()):
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", value_clean):
                 return 1.0
             return 0.5
 
-        # xs:dateTime
-        if value_type in ("xs:dateTime", "dateTime"):
-            if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", value.strip()):
+        # xs:time
+        if type_clean in ("xs:time", "time"):
+            iso = value_clean.replace("Z", "+00:00")
+            try:
+                from datetime import time
+
+                time.fromisoformat(iso)
                 return 1.0
+            except ValueError:
+                return 0.5
+
+        # xs:dateTime
+        if type_clean in ("xs:dateTime", "dateTime"):
+            # Accept ISO with optional milliseconds and timezone
+            iso = value_clean.replace(" ", "T").replace("Z", "+00:00")
+            try:
+                from datetime import datetime
+
+                datetime.fromisoformat(iso)
+                return 1.0
+            except ValueError:
+                pass
+            if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", value_clean):
+                return 1.0
+            return 0.5
+
+        # xs:gYear
+        if type_clean in ("xs:gYear", "gYear"):
+            if re.match(r"^\d{4}(?:Z|[+-]\d{2}:\d{2})?$", value_clean):
+                return 1.0
+            return 0.5
+
+        # xs:gYearMonth
+        if type_clean in ("xs:gYearMonth", "gYearMonth"):
+            if re.match(r"^\d{4}-\d{2}(?:Z|[+-]\d{2}:\d{2})?$", value_clean):
+                return 1.0
+            return 0.5
+
+        # xs:gMonthDay
+        if type_clean in ("xs:gMonthDay", "gMonthDay"):
+            if re.match(r"^--\d{2}-\d{2}(?:Z|[+-]\d{2}:\d{2})?$", value_clean):
+                return 1.0
+            return 0.5
+
+        # xs:gMonth
+        if type_clean in ("xs:gMonth", "gMonth"):
+            if re.match(r"^--\d{2}(?:Z|[+-]\d{2}:\d{2})?$", value_clean):
+                return 1.0
+            return 0.5
+
+        # xs:gDay
+        if type_clean in ("xs:gDay", "gDay"):
+            if re.match(r"^---\d{2}(?:Z|[+-]\d{2}:\d{2})?$", value_clean):
+                return 1.0
+            return 0.5
+
+        # xs:duration (ISO 8601 duration)
+        if type_clean in ("xs:duration", "duration"):
+            if re.match(
+                r"^P(?!$)(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$",
+                value_clean,
+            ):
+                return 1.0
+            return 0.5
+
+        # xs:anyURI
+        if type_clean in ("xs:anyURI", "anyURI"):
+            try:
+                from urllib.parse import urlparse
+
+                parsed = urlparse(value_clean)
+                if parsed.scheme and parsed.netloc:
+                    return 1.0
+                # Accept URN/URN-like identifiers
+                if value_lower.startswith("urn:"):
+                    return 1.0
+                # Accept relative/fragment URIs as weak signal
+                if value_clean.startswith("#"):
+                    return 0.7
+                return 0.5
+            except Exception:
+                return 0.5
+
+        # xs:hexBinary
+        if type_clean in ("xs:hexBinary", "hexBinary"):
+            if re.match(r"^[0-9A-Fa-f]+$", value_clean) and len(value_clean) % 2 == 0:
+                return 1.0
+            return 0.5
+
+        # xs:base64Binary
+        if type_clean in ("xs:base64Binary", "base64Binary"):
+            # Accept standard/base64url with optional padding
+            if re.match(r"^[A-Za-z0-9+/_-]*={0,2}$", value_clean):
+                return 0.8
             return 0.5
 
         # Default: accept
@@ -186,8 +301,12 @@ class ConfidenceScorer:
             else:
                 ocr_score = 1.0
 
-            # Rules score based on format validation
+            # Rules score based on format validation + optional type validation
             rules_score = self._validate_format(extraction.value_raw)
+            if extraction.value_type:
+                rules_score *= self.validate_against_type(
+                    extraction.value_raw, extraction.value_type
+                )
             if extraction.value_raw and extraction.value_raw.strip().lower() in (
                 "n/a",
                 "na",

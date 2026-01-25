@@ -161,6 +161,10 @@ class SchemaResolver:
         cardinality = element.get("cardinality", "") or "[1]"
         required = self._min_cardinality(cardinality) >= 1
 
+        value_type = element.get("valueType")
+        if isinstance(value_type, str) and value_type.startswith("xsd:"):
+            value_type = "xs:" + value_type[4:]
+
         # Extract semantic ID
         semantic_id = None
         semantic_label = element.get("semanticLabel")
@@ -186,7 +190,7 @@ class SchemaResolver:
             path=".".join(path),
             label=id_short,
             element_type=element.get("modelType", "Property"),
-            value_type=element.get("valueType"),
+            value_type=value_type,
             semantic_id=semantic_id,
             semantic_label=semantic_label,
             keywords=keywords,
@@ -272,7 +276,7 @@ class SchemaResolver:
         if ".." in value and not value.startswith("["):
             value = f"[{value}]"
 
-        match = re.match(r"^\\[(\\d+)(?:\\.\\.(\\d+|\\*))?\\]$", value)
+        match = re.match(r"^\[(\d+)(?:\.\.(\d+|\*))?\]$", value)
         if match:
             return int(match.group(1))
 

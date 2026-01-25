@@ -53,6 +53,7 @@ export interface ConfidenceBreakdown {
  */
 export interface FieldExtraction {
   path: string;
+  value_type?: string | null;
   value_raw: string;
   value_normalized: string | number | boolean | null;
   confidence: number;
