@@ -34,3 +34,28 @@ def test_mapper_required_and_semantic_id():
     )
     assert field_optional.required is False
     assert field_optional.semantic_id == "urn:bar"
+
+
+def test_mapper_list_template_id_short_none():
+    mapper = MapperService(
+        fetcher=TemplateFetcherService(),
+        parser=ParserService(),
+        hydrator=HydratorService(),
+    )
+    schema = [
+        {
+            "idShort": "Items",
+            "modelType": "SubmodelElementList",
+            "cardinality": "[0..*]",
+            "itemTemplate": {
+                "idShort": None,
+                "modelType": "Property",
+                "cardinality": "[1]",
+                "valueType": "xs:string",
+            },
+        }
+    ]
+
+    fields = mapper._extract_target_fields(schema)
+    assert fields
+    assert fields[0].id_short_path == "Items[].value"

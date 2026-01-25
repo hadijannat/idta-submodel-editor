@@ -406,10 +406,12 @@ class MapperService:
                 )
                 if template:
                     if template.get("modelType") in leaf_types:
-                        leaf_path = list_path + [template.get("idShort", "value")]
+                        template_id_short = template.get("idShort") or "value"
+                        leaf_path = list_path + [template_id_short]
                         result.append(self._make_target_field(template, leaf_path))
                     else:
-                        base_path = list_path + [template.get("idShort", "")]
+                        template_id_short = template.get("idShort") or ""
+                        base_path = list_path + [template_id_short]
                         if template.get("elements"):
                             result.extend(self._extract_target_fields(template["elements"], base_path))
                         if template.get("statements"):
@@ -473,7 +475,7 @@ class MapperService:
             id_short_path=".".join(path),
             element_type=element.get("modelType", "Property"),
             value_type=element.get("valueType"),
-            label=element.get("idShort", path[-1] if path else ""),
+            label=element.get("idShort") or (path[-1] if path else ""),
             required=required,
             semantic_id=semantic_id,
             semantic_label=element.get("semanticLabel"),

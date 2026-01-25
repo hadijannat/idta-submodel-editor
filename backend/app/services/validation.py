@@ -128,7 +128,10 @@ def _validate_element(
 
     elif model_type == "MultiLanguageProperty":
         value = form_elem.get("value", {}) if form_elem else {}
-        if min_items >= 1 and not any(value.values()):
+        has_translation = any(
+            str(v).strip() for v in value.values() if v is not None
+        )
+        if min_items >= 1 and not has_translation:
             errors.append(
                 ValidationError(
                     field=elem_path,
@@ -136,7 +139,7 @@ def _validate_element(
                     code="required_translation",
                 )
             )
-        elif not any(value.values()):
+        elif not has_translation:
             warnings.append(
                 ValidationError(
                     field=elem_path,

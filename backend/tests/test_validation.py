@@ -89,3 +89,20 @@ def test_list_min_items_enforced():
 
     assert any(e.code == "min_items" for e in errors)
     assert warnings == []
+
+
+def test_multilang_whitespace_is_invalid():
+    schema = _schema(
+        [
+            {
+                "idShort": "Label",
+                "modelType": "MultiLanguageProperty",
+                "cardinality": "[1]",
+            }
+        ]
+    )
+    form_data = {"elements": {"Label": {"value": {"en": "   "}}}}
+    errors, warnings = validate_form_data(schema, form_data)
+
+    assert any(e.code == "required_translation" for e in errors)
+    assert warnings == []

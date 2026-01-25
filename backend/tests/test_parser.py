@@ -31,6 +31,14 @@ class TestParserService:
         result = parser._serialize_reference(None)
         assert result is None
 
+    def test_serialize_reference_uses_last_key(self):
+        """Test serializing reference uses the most specific key."""
+        parser = ParserService()
+        mock_ref = MagicMock()
+        mock_ref.key = [MagicMock(value="first"), MagicMock(value="last")]
+        result = parser._serialize_reference(mock_ref)
+        assert result == "last"
+
     def test_extract_cardinality_default(self):
         """Test extracting default cardinality."""
         parser = ParserService()

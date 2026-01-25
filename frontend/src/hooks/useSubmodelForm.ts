@@ -110,9 +110,22 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
     }
 
     case 'MultiLanguageProperty': {
+      const valueSchema = z
+        .record(z.string())
+        .optional()
+        .refine(
+          (value) =>
+            !!value &&
+            Object.values(value).some(
+              (entry) => entry !== undefined && entry.trim().length > 0
+            ),
+          {
+            message: 'At least one translation is required',
+          }
+        );
       return withSemanticFields(
         z.object({
-          value: z.record(z.string()).optional(),
+          value: required ? valueSchema : z.record(z.string()).optional(),
         })
       );
     }

@@ -560,8 +560,8 @@ class ParserService:
         if ref is None:
             return None
         if hasattr(ref, "key") and ref.key:
-            # Return the first key's value (typically the identifier)
-            return ref.key[0].value
+            # Return the last key's value (most specific identifier)
+            return ref.key[-1].value
         return str(ref)
 
     def _serialize_administration(

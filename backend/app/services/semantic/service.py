@@ -90,11 +90,21 @@ class SemanticService:
     ) -> tuple[list[SemanticEntry], int]:
         providers = self._select_providers(provider)
 
+        # When aggregating across providers, fetch enough from each to support
+        # global sorting and pagination.
+        per_provider_limit = limit
+        per_provider_offset = offset
+        if provider is None:
+            per_provider_limit = limit + offset
+            per_provider_offset = 0
+
         results: list[SemanticEntry] = []
         total = 0
         for prov in providers:
             try:
-                entries, count = await prov.search(q, kind, lang, limit, offset)
+                entries, count = await prov.search(
+                    q, kind, lang, per_provider_limit, per_provider_offset
+                )
             except SemanticRateLimitError:
                 if provider:
                     raise
@@ -107,6 +117,8 @@ class SemanticService:
             total += count
 
         results.sort(key=lambda entry: entry.score or 0, reverse=True)
+        if provider is None:
+            return results[offset : offset + limit], total
         return results[:limit], total
 
     async def resolve(
