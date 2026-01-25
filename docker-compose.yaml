@@ -37,10 +37,22 @@ services:
       - SEMANTIC_CACHE_TTL_SECONDS=${SEMANTIC_CACHE_TTL_SECONDS:-86400}
       - SEMANTIC_SEARCH_RATE_LIMIT_PER_MIN=${SEMANTIC_SEARCH_RATE_LIMIT_PER_MIN:-60}
       - SEMANTIC_RESOLVE_RATE_LIMIT_PER_MIN=${SEMANTIC_RESOLVE_RATE_LIMIT_PER_MIN:-120}
+      # Magic Import
+      - MAGIC_IMPORT_ENABLED=true
+      - MAGIC_IMPORT_LLM_PROVIDER=${MAGIC_IMPORT_LLM_PROVIDER:-openai}
+      - MAGIC_IMPORT_LLM_MODEL=${MAGIC_IMPORT_LLM_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - MAGIC_IMPORT_OCR_ENABLED=true
+      - MAGIC_IMPORT_CONFIDENCE_THRESHOLD=0.80
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       - ./backend/app:/app/app
       - template_cache:/app/cache
       - temp_storage:/app/tmp
+      - magic_import_cache:/app/cache/magic_import
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -73,6 +85,36 @@ services:
       - backend
     networks:
       - idta-network
+
+  # Celery worker for background jobs (Magic Import)
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - ENV=development
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MAGIC_IMPORT_ENABLED=true
+      - MAGIC_IMPORT_LLM_PROVIDER=${MAGIC_IMPORT_LLM_PROVIDER:-openai}
+      - MAGIC_IMPORT_LLM_MODEL=${MAGIC_IMPORT_LLM_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - MAGIC_IMPORT_OCR_ENABLED=true
+      - MAGIC_IMPORT_CONFIDENCE_THRESHOLD=0.80
+    volumes:
+      - ./backend/app:/app/app
+      - template_cache:/app/cache
+      - temp_storage:/app/tmp
+      - magic_import_cache:/app/cache/magic_import
+    depends_on:
+      - redis
+    networks:
+      - idta-network
+    profiles:
+      - magic-import  # Only start with: docker-compose --profile magic-import up
 
   # Redis for caching (optional)
   redis:
@@ -114,6 +156,8 @@ volumes:
   redis_data:
     driver: local
   keycloak_data:
+    driver: local
+  magic_import_cache:
     driver: local
 
 networks:

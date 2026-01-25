@@ -89,6 +89,29 @@ class Settings(BaseSettings):
     # PDF generation
     pdf_enabled: bool = True
 
+    # Magic Import - Core
+    magic_import_enabled: bool = True
+    magic_import_cache_dir: Path = Path("./cache/magic_import")
+    magic_import_confidence_threshold: float = 0.80
+    magic_import_max_pdf_size_mb: int = 50
+    magic_import_job_ttl_hours: int = 24
+
+    # Magic Import - LLM Provider (supports openai, anthropic, local)
+    magic_import_llm_provider: Literal["openai", "anthropic", "local"] = "openai"
+    magic_import_llm_model: str = "gpt-4o-mini"
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    ollama_base_url: str = "http://localhost:11434"
+
+    # Magic Import - OCR (Tesseract)
+    magic_import_ocr_enabled: bool = True
+    magic_import_ocr_language: str = "eng+deu"
+    magic_import_ocr_dpi: int = 300
+
+    # Celery + Redis (for background job processing)
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/0"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
@@ -117,6 +140,7 @@ class Settings(BaseSettings):
         "iec_cdd_index_path",
         "mapper_cache_dir",
         "local_templates_dir",
+        "magic_import_cache_dir",
         mode="before",
     )
     @classmethod
