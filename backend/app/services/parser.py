@@ -70,7 +70,12 @@ class ParserService:
         submodel_id = getattr(submodel, "id_", None) or getattr(submodel, "id", None)
         logger.info(f"Parsing submodel: {submodel.id_short} ({submodel_id})")
 
+        # Find and extract AAS metadata for PDF export
+        aas = self._find_aas(object_store)
+        aas_metadata = self._extract_aas_metadata(aas) if aas else None
+
         return {
+            "aas": aas_metadata,
             "submodelId": submodel_id,
             "idShort": submodel.id_short,
             "semanticId": self._serialize_reference(submodel.semantic_id),
@@ -82,6 +87,95 @@ class ParserService:
             ],
             "supplementaryFiles": list(file_store),
         }
+
+    def _find_aas(
+        self, object_store: model.DictObjectStore
+    ) -> model.AssetAdministrationShell | None:
+        """Find the first AssetAdministrationShell in the object store."""
+        for obj in object_store:
+            if isinstance(obj, model.AssetAdministrationShell):
+                return obj
+        return None
+
+    def _extract_aas_metadata(
+        self, aas: model.AssetAdministrationShell
+    ) -> dict[str, Any]:
+        """
+        Extract AAS-level metadata for PDF rendering.
+
+        Per IDTA AAS Metamodel V3.0, includes:
+        - AAS identifier (id, idShort)
+        - assetInformation (MANDATORY)
+        - submodel references
+        - derivedFrom (optional)
+        """
+        aas_id = getattr(aas, "id_", None) or getattr(aas, "id", None)
+        return {
+            "id": aas_id,
+            "idShort": aas.id_short,
+            "assetInformation": self._serialize_asset_information(aas.asset_information),
+            "submodelRefs": [
+                self._serialize_reference(ref) for ref in (aas.submodel or [])
+            ],
+            "derivedFrom": (
+                self._serialize_reference(aas.derived_from) if aas.derived_from else None
+            ),
+            "administration": self._serialize_administration(
+                getattr(aas, "administration", None)
+            ),
+        }
+
+    def _serialize_asset_information(
+        self, asset_info: model.AssetInformation
+    ) -> dict[str, Any]:
+        """
+        Serialize AssetInformation per IDTA Metamodel V3.0.
+
+        AssetInformation contains:
+        - assetKind (MANDATORY): Instance or Type
+        - globalAssetId: Globally unique identifier for the asset
+        - specificAssetIds: Additional identifiers (e.g., serial number)
+        - assetType: Type of asset (optional)
+        """
+        if asset_info is None:
+            return {
+                "assetKind": None,
+                "globalAssetId": None,
+                "specificAssetIds": [],
+                "assetType": None,
+            }
+
+        return {
+            "assetKind": (
+                str(asset_info.asset_kind.name) if asset_info.asset_kind else None
+            ),
+            "globalAssetId": asset_info.global_asset_id,
+            "specificAssetIds": self._serialize_specific_asset_ids(
+                asset_info.specific_asset_id
+            ),
+            "assetType": getattr(asset_info, "asset_type", None),
+        }
+
+    def _serialize_specific_asset_ids(
+        self, specific_asset_ids
+    ) -> list[dict[str, Any]]:
+        """Serialize SpecificAssetId list for PDF rendering."""
+        if not specific_asset_ids:
+            return []
+
+        result = []
+        for asset_id in specific_asset_ids:
+            serialized = {
+                "name": asset_id.name,
+                "value": asset_id.value,
+            }
+            # externalSubjectId is optional
+            if hasattr(asset_id, "external_subject_id") and asset_id.external_subject_id:
+                serialized["externalSubjectId"] = self._serialize_reference(
+                    asset_id.external_subject_id
+                )
+            result.append(serialized)
+        return result
 
     def _find_submodel(
         self, object_store: model.DictObjectStore

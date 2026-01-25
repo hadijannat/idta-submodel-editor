@@ -139,6 +139,191 @@
         .required {
             color: #c53030;
         }
+
+        /* AAS Section Styles - Blue Theme */
+        .aas-section {
+            background: linear-gradient(135deg, #ebf8ff 0%, #f0f9ff 100%);
+            border: 1px solid #90cdf4;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .aas-header {
+            background-color: #2b6cb0;
+            color: white;
+            border-left: none;
+            border-radius: 4px;
+        }
+
+        .aas-section .element {
+            border-bottom-color: #bee3f8;
+        }
+
+        .aas-section .element-label {
+            color: #2c5282;
+        }
+
+        .asset-info-block {
+            background: white;
+            border: 1px solid #bee3f8;
+            border-radius: 6px;
+            padding: 0.75rem;
+            margin: 0.5rem 0 0.5rem 1rem;
+        }
+
+        .section-subtitle {
+            font-weight: 600;
+            color: #2b6cb0;
+            font-size: 10pt;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.25rem;
+            border-bottom: 1px solid #bee3f8;
+        }
+
+        .asset-kind-badge {
+            display: inline-block;
+            background: #2b6cb0;
+            color: white;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 8pt;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .specific-asset-id {
+            background: #f7fafc;
+            padding: 0.25rem 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 4px;
+            font-size: 9pt;
+        }
+
+        .specific-asset-id-name {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .submodel-ref-item {
+            font-family: monospace;
+            font-size: 8pt;
+            background: #f7fafc;
+            padding: 0.25rem 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        /* AAS Missing Notice */
+        .aas-missing-notice {
+            background: #fffbeb;
+            border: 1px solid #f6e05e;
+            border-left: 4px solid #ecc94b;
+            padding: 0.75rem 1rem;
+            margin-bottom: 2rem;
+            border-radius: 4px;
+            color: #744210;
+            font-size: 9pt;
+        }
+
+        .aas-missing-notice strong {
+            color: #975a16;
+        }
+
+        /* Conformance Summary Styles */
+        .conformance-summary {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .conformance-header {
+            background-color: #4a5568;
+            color: white;
+            border-left: none;
+            border-radius: 4px;
+        }
+
+        .conformance-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .conformance-item {
+            padding: 0.5rem;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .conformance-label {
+            font-size: 8pt;
+            color: #718096;
+            text-transform: uppercase;
+        }
+
+        .conformance-value {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .status-valid {
+            color: #2f855a;
+        }
+
+        .status-invalid {
+            color: #c53030;
+        }
+
+        .status-warnings {
+            color: #c05621;
+        }
+
+        .check-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.35rem 0;
+            border-bottom: 1px solid #edf2f7;
+        }
+
+        .check-item:last-child {
+            border-bottom: none;
+        }
+
+        .check-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            text-align: center;
+            font-weight: bold;
+            font-size: 10pt;
+        }
+
+        .check-pass { color: #2f855a; }
+        .check-fail { color: #c53030; }
+        .check-warning { color: #c05621; }
+        .check-info { color: #3182ce; }
+
+        .check-content {
+            flex: 1;
+        }
+
+        .check-name {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 9pt;
+        }
+
+        .check-message {
+            color: #718096;
+            font-size: 8pt;
+        }
     </style>
 </head>
 <body>
@@ -154,6 +339,161 @@
             {% endif %}
         </div>
     </div>
+
+    {# Conformance Summary Section #}
+    {% if conformance %}
+    <div class="conformance-summary">
+        <div class="section-title conformance-header">Conformance Summary</div>
+
+        <div class="conformance-grid">
+            <div class="conformance-item">
+                <div class="conformance-label">Template</div>
+                <div class="conformance-value">{{ conformance.templateName }}</div>
+            </div>
+            <div class="conformance-item">
+                <div class="conformance-label">Version</div>
+                <div class="conformance-value">{{ conformance.templateVersion or 'Not specified' }}</div>
+            </div>
+            <div class="conformance-item">
+                <div class="conformance-label">Validation Status</div>
+                <div class="conformance-value status-{{ conformance.validationStatus }}">
+                    {% if conformance.validationStatus == 'valid' %}
+                        Valid
+                    {% elif conformance.validationStatus == 'invalid' %}
+                        Invalid ({{ conformance.errorCount }} error{{ 's' if conformance.errorCount != 1 else '' }})
+                    {% else %}
+                        Warnings ({{ conformance.warningCount }})
+                    {% endif %}
+                </div>
+            </div>
+            <div class="conformance-item">
+                <div class="conformance-label">Metamodel</div>
+                <div class="conformance-value">{{ conformance.metamodelVersion }}</div>
+            </div>
+        </div>
+
+        {% if conformance.checks %}
+        <div class="section-subtitle">Compliance Checks</div>
+        {% for check in conformance.checks %}
+        <div class="check-item">
+            <div class="check-icon check-{{ check.status }}">
+                {% if check.status == 'pass' %}&#10003;{% elif check.status == 'fail' %}&#10007;{% elif check.status == 'warning' %}&#9888;{% else %}&#9432;{% endif %}
+            </div>
+            <div class="check-content">
+                <div class="check-name">{{ check.name }}</div>
+                <div class="check-message">{{ check.message }}</div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# AAS Section #}
+    {% if submodel.aas %}
+    <div class="section aas-section">
+        <div class="section-title aas-header">Asset Administration Shell</div>
+
+        {# AAS Identifier #}
+        <div class="element">
+            <span class="element-label">AAS Identifier</span>
+            <span class="element-value">{{ submodel.aas.id }}</span>
+        </div>
+
+        {% if submodel.aas.idShort %}
+        <div class="element">
+            <span class="element-label">AAS Short Name</span>
+            <span class="element-value">{{ submodel.aas.idShort }}</span>
+        </div>
+        {% endif %}
+
+        {# Asset Information (MANDATORY per IDTA Metamodel V3.0) #}
+        <div class="asset-info-block">
+            <div class="section-subtitle">Asset Information</div>
+
+            <div class="element">
+                <span class="element-label">Asset Kind</span>
+                <span class="element-value">
+                    {% if submodel.aas.assetInformation.assetKind %}
+                    <span class="asset-kind-badge">{{ submodel.aas.assetInformation.assetKind }}</span>
+                    {% else %}
+                    <span class="empty-value">Not specified</span>
+                    {% endif %}
+                </span>
+            </div>
+
+            {% if submodel.aas.assetInformation.globalAssetId %}
+            <div class="element">
+                <span class="element-label">Global Asset ID</span>
+                <span class="element-value">{{ submodel.aas.assetInformation.globalAssetId }}</span>
+            </div>
+            {% endif %}
+
+            {% if submodel.aas.assetInformation.assetType %}
+            <div class="element">
+                <span class="element-label">Asset Type</span>
+                <span class="element-value">{{ submodel.aas.assetInformation.assetType }}</span>
+            </div>
+            {% endif %}
+
+            {% if submodel.aas.assetInformation.specificAssetIds %}
+            <div class="element">
+                <span class="element-label">Specific Asset IDs</span>
+                <div style="margin-left: 1rem;">
+                    {% for assetId in submodel.aas.assetInformation.specificAssetIds %}
+                    <div class="specific-asset-id">
+                        <span class="specific-asset-id-name">{{ assetId.name }}:</span>
+                        {{ assetId.value }}
+                        {% if assetId.externalSubjectId %}
+                        <span class="element-type">({{ assetId.externalSubjectId }})</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {# Submodel References #}
+        {% if submodel.aas.submodelRefs %}
+        <div class="element">
+            <span class="element-label">Referenced Submodels</span>
+            <div style="margin-left: 1rem;">
+                {% for ref in submodel.aas.submodelRefs %}
+                <div class="submodel-ref-item">{{ ref }}</div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# Derived From (optional) #}
+        {% if submodel.aas.derivedFrom %}
+        <div class="element">
+            <span class="element-label">Derived From</span>
+            <span class="element-value">{{ submodel.aas.derivedFrom }}</span>
+        </div>
+        {% endif %}
+
+        {# AAS Administration #}
+        {% if submodel.aas.administration %}
+        <div class="element">
+            <span class="element-label">AAS Version</span>
+            <span class="element-value">
+                {% if submodel.aas.administration.version %}
+                    {{ submodel.aas.administration.version }}{% if submodel.aas.administration.revision %}.{{ submodel.aas.administration.revision }}{% endif %}
+                {% else %}
+                    <span class="empty-value">Not specified</span>
+                {% endif %}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    {# Notice for submodel-only templates #}
+    <div class="aas-missing-notice">
+        <strong>Note:</strong> This template contains only Submodel data. No Asset Administration Shell (AAS) wrapper is present in the source template.
+    </div>
+    {% endif %}
 
     {% macro render_element(element, depth=0) %}
     {% if element.modelType == 'Property' %}

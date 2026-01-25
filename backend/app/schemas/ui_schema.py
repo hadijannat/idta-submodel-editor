@@ -120,6 +120,50 @@ class AdministrationSchema(BaseModel):
     templateId: str | None = None
 
 
+class SpecificAssetIdSchema(BaseModel):
+    """Schema for SpecificAssetId per IDTA Metamodel V3.0."""
+
+    name: str
+    value: str
+    externalSubjectId: str | None = None
+
+
+class AssetInformationSchema(BaseModel):
+    """
+    Schema for AssetInformation per IDTA Metamodel V3.0.
+
+    AssetInformation is MANDATORY in an AAS and contains:
+    - assetKind: Whether the asset is a Type or Instance (MANDATORY)
+    - globalAssetId: Globally unique identifier
+    - specificAssetIds: Additional identifiers (e.g., serial numbers)
+    - assetType: Classification of the asset
+    """
+
+    assetKind: str | None = None  # "INSTANCE" or "TYPE"
+    globalAssetId: str | None = None
+    specificAssetIds: list[SpecificAssetIdSchema] = Field(default_factory=list)
+    assetType: str | None = None
+
+
+class AASMetadataSchema(BaseModel):
+    """
+    Schema for AssetAdministrationShell metadata per IDTA Metamodel V3.0.
+
+    Used for PDF export to display AAS-level information including:
+    - AAS identifier
+    - Asset information (MANDATORY per metamodel)
+    - Submodel references
+    - derivedFrom reference (optional inheritance)
+    """
+
+    id: str
+    idShort: str | None = None
+    assetInformation: AssetInformationSchema
+    submodelRefs: list[str] = Field(default_factory=list)
+    derivedFrom: str | None = None
+    administration: AdministrationSchema | None = None
+
+
 class SubmodelUISchema(BaseModel):
     """
     Complete UI schema for a Submodel.
@@ -127,6 +171,7 @@ class SubmodelUISchema(BaseModel):
     This is the top-level structure returned by the parser.
     """
 
+    aas: AASMetadataSchema | None = None
     templateName: str | None = None
     templatePath: str | None = None
     submodelId: str

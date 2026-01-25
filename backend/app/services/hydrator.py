@@ -777,6 +777,7 @@ class PDFExportService:
         self,
         submodel_data: dict[str, Any],
         template_name: str = "pdf_report.html",
+        conformance_data: dict[str, Any] | None = None,
     ) -> bytes:
         """
         Generate PDF from submodel data.
@@ -784,6 +785,7 @@ class PDFExportService:
         Args:
             submodel_data: Parsed submodel UI schema
             template_name: Jinja2 template file name
+            conformance_data: Optional conformance summary for PDF header
 
         Returns:
             PDF file as bytes
@@ -821,6 +823,7 @@ class PDFExportService:
         html_content = template.render(
             submodel=submodel_data,
             elements=submodel_data.get("elements", []),
+            conformance=conformance_data,
         )
 
         # Convert to PDF
@@ -832,11 +835,24 @@ class PDFExportService:
         template_aasx_bytes: bytes,
         form_data: dict[str, Any],
         template_name: str = "pdf_report.html",
+        include_conformance: bool = True,
+        errors: list | None = None,
+        warnings: list | None = None,
+        display_template_name: str | None = None,
     ) -> bytes:
         """
         Generate PDF from form data.
 
         Hydrates the template and then generates PDF.
+
+        Args:
+            template_aasx_bytes: Original template AASX bytes
+            form_data: Form data from user
+            template_name: Jinja2 template file name
+            include_conformance: Whether to include conformance summary
+            errors: Pre-computed validation errors
+            warnings: Pre-computed validation warnings
+            display_template_name: Template name to display in PDF header
         """
         from app.services.parser import ParserService
 
@@ -847,4 +863,18 @@ class PDFExportService:
         parser = ParserService()
         parsed = parser.parse_aasx_to_ui_schema(hydrated)
 
-        return self.generate_pdf(parsed, template_name)
+        # Generate conformance summary if requested
+        conformance_data = None
+        if include_conformance:
+            from app.services.pdf_conformance import generate_conformance_summary
+
+            summary = generate_conformance_summary(
+                schema=parsed,
+                form_data=form_data,
+                errors=errors,
+                warnings=warnings,
+                template_name=display_template_name,
+            )
+            conformance_data = summary.to_dict()
+
+        return self.generate_pdf(parsed, template_name, conformance_data)

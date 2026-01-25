@@ -8,9 +8,10 @@
  * - Apply to form
  */
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useId } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelFormData } from '../../types/aas-elements';
+import type { SubmodelUISchema } from '../../types/ui-schema';
 import { useMagicImport } from './useMagicImport';
 import PdfViewer from './PdfViewer';
 import ExtractionReviewTable from './ExtractionReviewTable';
@@ -21,6 +22,7 @@ interface MagicImportPanelProps {
   templateStatus: 'published' | 'deprecated';
   templateVersion?: string | null;
   form: UseFormReturn<SubmodelFormData>;
+  schema?: SubmodelUISchema | null;
   onClose?: () => void;
 }
 
@@ -29,6 +31,7 @@ export default function MagicImportPanel({
   templateStatus,
   templateVersion,
   form,
+  schema,
   onClose,
 }: MagicImportPanelProps) {
   const {
@@ -53,9 +56,11 @@ export default function MagicImportPanel({
     templateStatus,
     templateVersion,
     form,
+    schema,
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
 
   // Handle file selection
   const handleFileSelect = useCallback(
@@ -88,6 +93,16 @@ export default function MagicImportPanel({
     e.preventDefault();
   }, []);
 
+  const handleDropzoneKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLLabelElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInputRef.current?.click();
+      }
+    },
+    []
+  );
+
   // Get selected extraction for highlighting
   const selectedExtraction = useMemo(
     () => extractions.find((e) => e.path === selectedExtractionPath),
@@ -117,12 +132,17 @@ export default function MagicImportPanel({
           )}
         </div>
 
-        <div
+        <label
+          htmlFor={inputId}
           className="magic-import-panel__dropzone"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
+          onKeyDown={handleDropzoneKeyDown}
+          tabIndex={0}
+          aria-label="Upload PDF"
         >
           <input
+            id={inputId}
             ref={fileInputRef}
             type="file"
             accept=".pdf"
@@ -136,7 +156,7 @@ export default function MagicImportPanel({
               Supports datasheets, nameplates, and technical documents
             </p>
           </div>
-        </div>
+        </label>
 
         {error && <div className="magic-import-panel__error">{error}</div>}
       </div>

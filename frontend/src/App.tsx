@@ -369,6 +369,7 @@ function App() {
             templateStatus={templateStatus}
             templateVersion={selectedVersion}
             form={form}
+            schema={schema}
           />
 
           <div className="wizard-actions">

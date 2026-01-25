@@ -38,6 +38,10 @@ async def export_submodel(
         Query(description="Template status filter"),
     ] = "published",
     version: Annotated[str | None, Query(description="Template version")] = None,
+    include_conformance: Annotated[
+        bool,
+        Query(description="Include conformance summary in PDF export"),
+    ] = True,
     fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)] = None,
     hydrator: Annotated[HydratorService, Depends(get_hydrator)] = None,
     parser: Annotated[ParserService, Depends(get_parser)] = None,
@@ -116,7 +120,12 @@ async def export_submodel(
                 )
 
             content = pdf_service.generate_pdf_from_form(
-                template_bytes, form_data.model_dump()
+                template_bytes,
+                form_data.model_dump(),
+                include_conformance=include_conformance,
+                errors=errors,
+                warnings=warnings,
+                display_template_name=template_name,
             )
             return Response(
                 content=content,

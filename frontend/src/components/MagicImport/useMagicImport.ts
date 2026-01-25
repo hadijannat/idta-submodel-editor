@@ -4,7 +4,8 @@
 
 import { useState, useCallback, useRef } from 'react';
 import type { UseFormReturn, FieldPath } from 'react-hook-form';
-import type { SubmodelFormData } from '../../types/aas-elements';
+import type { SubmodelFormData, ElementFormData } from '../../types/aas-elements';
+import type { SubmodelUISchema, UIElementSchema } from '../../types/ui-schema';
 import {
   createMagicImportJob,
   getMagicImportJob,
@@ -21,6 +22,7 @@ interface UseMagicImportOptions {
   templateStatus: 'published' | 'deprecated';
   templateVersion?: string | null;
   form: UseFormReturn<SubmodelFormData>;
+  schema?: SubmodelUISchema | null;
 }
 
 interface UseMagicImportReturn {
@@ -52,6 +54,7 @@ export function useMagicImport({
   templateStatus,
   templateVersion,
   form,
+  schema,
 }: UseMagicImportOptions): UseMagicImportReturn {
   const [job, setJob] = useState<MagicImportJob | null>(null);
   const [result, setResult] = useState<MagicImportResult | null>(null);
@@ -206,16 +209,45 @@ export function useMagicImport({
     const approvedExtractions = extractions.filter(
       (e) => e.user_approved || !e.needs_review
     );
+    const listIndexCache = new Map<string, number>();
 
     for (const extraction of approvedExtractions) {
-      const formPath = pathToFormPath(extraction.path);
+      const resolved = resolveFormPath(
+        extraction.path,
+        schema,
+        form,
+        listIndexCache
+      );
       const value = extraction.value_normalized ?? extraction.value_raw;
 
       try {
-        // Dynamic form paths from extraction - cast to FieldPath
-        form.setValue(formPath as FieldPath<SubmodelFormData>, value, { shouldDirty: true });
+        const formPath = resolved.formPath;
+        if (resolved.elementSchema?.modelType === 'MultiLanguageProperty') {
+          const current = form.getValues(
+            formPath as FieldPath<SubmodelFormData>
+          ) as unknown;
+          const base =
+            current && typeof current === 'object' && !Array.isArray(current)
+              ? (current as Record<string, unknown>)
+              : {};
+          const lang =
+            resolved.elementSchema.supportedLanguages?.[0] ||
+            DEFAULT_LANGUAGE;
+          const next = {
+            ...base,
+            [lang]: value == null ? '' : String(value),
+          };
+          form.setValue(formPath as FieldPath<SubmodelFormData>, next, {
+            shouldDirty: true,
+          });
+        } else {
+          // Dynamic form paths from extraction - cast to FieldPath
+          form.setValue(formPath as FieldPath<SubmodelFormData>, value, {
+            shouldDirty: true,
+          });
+        }
       } catch (err) {
-        console.warn(`Failed to set value for ${formPath}:`, err);
+        console.warn(`Failed to set value for ${resolved.formPath}:`, err);
       }
     }
 
@@ -227,7 +259,7 @@ export function useMagicImport({
       llmProvider: result?.llm_provider,
       llmModel: result?.llm_model,
     });
-  }, [extractions, form, job, result]);
+  }, [extractions, form, job, result, schema]);
 
   // Reset state
   const reset = useCallback(() => {
@@ -291,3 +323,232 @@ function pathToFormPath(idShortPath: string): string {
 
   return formSegments.join('.');
 }
+
+type PathSegment = { name: string; isList: boolean };
+
+const parseIdShortPath = (path: string): PathSegment[] =>
+  path
+    .split('.')
+    .filter(Boolean)
+    .map((segment) =>
+      segment.endsWith('[]')
+        ? { name: segment.slice(0, -2), isList: true }
+        : { name: segment, isList: false }
+    );
+
+const getListItemSchema = (listSchema: UIElementSchema | null | undefined): UIElementSchema | null => {
+  if (!listSchema) return null;
+  if (listSchema.itemTemplate) return listSchema.itemTemplate;
+  if (listSchema.items && listSchema.items.length > 0) return listSchema.items[0];
+  return null;
+};
+
+const createDefaultItem = (template: UIElementSchema | null): ElementFormData => {
+  const withSemanticDefaults = (
+    defaults: ElementFormData,
+    source?: UIElementSchema | null
+  ): ElementFormData => ({
+    ...defaults,
+    semanticId: source?.semanticId ?? null,
+    valueId: source?.valueId ?? null,
+    semanticIdListElement: source?.semanticIdListElement ?? null,
+  });
+
+  if (!template) return withSemanticDefaults({ value: '' });
+
+  switch (template.modelType) {
+    case 'Property':
+      return withSemanticDefaults({ value: template.value ?? '' }, template);
+
+    case 'MultiLanguageProperty':
+      return withSemanticDefaults({ value: {} }, template);
+
+    case 'SubmodelElementCollection': {
+      const elements: Record<string, ElementFormData> = {};
+      for (const child of template.elements || []) {
+        elements[child.idShort] = createDefaultItem(child);
+      }
+      return withSemanticDefaults({ elements }, template);
+    }
+
+    case 'SubmodelElementList': {
+      const itemSchema = getListItemSchema(template);
+      const items = itemSchema ? [createDefaultItem(itemSchema)] : [];
+      return withSemanticDefaults(
+        {
+          items,
+          semanticIdListElement: template.semanticIdListElement ?? null,
+        },
+        template
+      );
+    }
+
+    case 'Range':
+      return withSemanticDefaults({ min: '', max: '' }, template);
+
+    case 'File':
+      return withSemanticDefaults(
+        { value: template.value ?? '', contentType: template.contentType ?? '' },
+        template
+      );
+
+    case 'ReferenceElement':
+      return withSemanticDefaults({ value: template.value ?? '' }, template);
+
+    case 'Entity': {
+      const statements: Record<string, ElementFormData> = {};
+      for (const stmt of template.statements || []) {
+        statements[stmt.idShort] = createDefaultItem(stmt);
+      }
+      return withSemanticDefaults(
+        { statements, globalAssetId: template.globalAssetId ?? '' },
+        template
+      );
+    }
+
+    default:
+      return withSemanticDefaults({ value: template.value ?? '' }, template);
+  }
+};
+
+const isGuidelineSpecificList = (listSchema: UIElementSchema | null | undefined): boolean =>
+  listSchema?.idShort === 'GuidelineSpecificProperties';
+
+const DEFAULT_GUIDELINE_DECLARATION = 'Manufacturer Datasheet';
+const DEFAULT_LANGUAGE = 'en';
+
+const ensureListIndex = (
+  listPath: string,
+  listSchema: UIElementSchema | null | undefined,
+  form: UseFormReturn<SubmodelFormData>,
+  listIndexCache: Map<string, number>
+): number => {
+  const cached = listIndexCache.get(listPath);
+  if (cached !== undefined) return cached;
+
+  const current = form.getValues(
+    listPath as FieldPath<SubmodelFormData>
+  ) as unknown;
+  const items = Array.isArray(current)
+    ? [...(current as ElementFormData[])]
+    : [];
+  let index = -1;
+
+  if (items.length > 0 && isGuidelineSpecificList(listSchema)) {
+    index = items.findIndex((item) => {
+      const value =
+        item.elements &&
+        typeof item.elements === 'object' &&
+        item.elements.GuidelineForConformityDeclaration &&
+        (item.elements.GuidelineForConformityDeclaration as ElementFormData).value;
+      return !value;
+    });
+  }
+
+  if (index < 0 && items.length > 0) {
+    index = 0;
+  }
+
+  if (index < 0) {
+    const itemSchema = getListItemSchema(listSchema);
+    items.push(createDefaultItem(itemSchema));
+    index = items.length - 1;
+    if (isGuidelineSpecificList(listSchema)) {
+      const item = items[index];
+      if (item && item.elements && typeof item.elements === 'object') {
+        const guideline = item.elements.GuidelineForConformityDeclaration as
+          | ElementFormData
+          | undefined;
+        if (guideline && (guideline.value === undefined || guideline.value === '')) {
+          guideline.value = DEFAULT_GUIDELINE_DECLARATION;
+        }
+      }
+    }
+    form.setValue(listPath as FieldPath<SubmodelFormData>, items, {
+      shouldDirty: true,
+    });
+  }
+
+  listIndexCache.set(listPath, index);
+  return index;
+};
+
+const resolveFormPath = (
+  idShortPath: string,
+  schema: SubmodelUISchema | null | undefined,
+  form: UseFormReturn<SubmodelFormData>,
+  listIndexCache: Map<string, number>
+): { formPath: string; elementSchema: UIElementSchema | null } => {
+  if (!schema) {
+    return { formPath: pathToFormPath(idShortPath), elementSchema: null };
+  }
+
+  const segments = parseIdShortPath(idShortPath);
+  let elements: UIElementSchema[] = schema.elements ?? [];
+  const formParts: string[] = ['elements'];
+  let skipIdShort: string | null = null;
+  let nextContainerKey: 'elements' | 'statements' | null = null;
+  let leafSchema: UIElementSchema | null = null;
+
+  for (const segment of segments) {
+    if (skipIdShort && segment.name === skipIdShort) {
+      skipIdShort = null;
+      continue;
+    }
+
+    if (nextContainerKey) {
+      formParts.push(nextContainerKey);
+      nextContainerKey = null;
+    }
+
+    if (segment.isList) {
+      const listSchema = elements.find((el) => el.idShort === segment.name);
+      if (!listSchema) {
+        return { formPath: pathToFormPath(idShortPath), elementSchema: null };
+      }
+
+      formParts.push(segment.name, 'items');
+      const listPath = formParts.join('.');
+      const index = ensureListIndex(listPath, listSchema, form, listIndexCache);
+      formParts.push(String(index));
+
+      const itemSchema = getListItemSchema(listSchema);
+      if (itemSchema?.modelType === 'SubmodelElementCollection') {
+        if (itemSchema.idShort) {
+          skipIdShort = itemSchema.idShort;
+        }
+        elements = itemSchema.elements ?? [];
+        nextContainerKey = 'elements';
+      } else if (itemSchema?.modelType === 'Entity') {
+        elements = itemSchema.statements ?? [];
+        nextContainerKey = 'statements';
+      } else {
+        elements = [];
+        nextContainerKey = null;
+      }
+      continue;
+    }
+
+    formParts.push(segment.name);
+    const elementSchema = elements.find((el) => el.idShort === segment.name);
+    if (!elementSchema) {
+      return { formPath: pathToFormPath(idShortPath), elementSchema: null };
+    }
+
+    leafSchema = elementSchema;
+
+    if (elementSchema.modelType === 'SubmodelElementCollection') {
+      elements = elementSchema.elements ?? [];
+      nextContainerKey = 'elements';
+    } else if (elementSchema.modelType === 'Entity') {
+      elements = elementSchema.statements ?? [];
+      nextContainerKey = 'statements';
+    } else {
+      elements = [];
+      nextContainerKey = null;
+    }
+  }
+
+  formParts.push('value');
+  return { formPath: formParts.join('.'), elementSchema: leafSchema };
+};

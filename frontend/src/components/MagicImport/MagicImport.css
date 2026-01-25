@@ -63,6 +63,7 @@
 
 /* Dropzone */
 .magic-import-panel__dropzone {
+  display: block;
   position: relative;
   margin: 20px;
   padding: 40px;
