@@ -428,19 +428,46 @@ class MapperService:
 
         return result
 
+    @staticmethod
+    def _min_cardinality(cardinality: str) -> int:
+        """Parse minimum cardinality from bracket or legacy formats."""
+        import re
+
+        value = str(cardinality or "").strip()
+        mapping = {
+            "ZeroToOne": "[0..1]",
+            "ZeroToMany": "[0..*]",
+            "OneToMany": "[1..*]",
+            "One": "[1]",
+            "Zero": "[0]",
+        }
+        if value in mapping:
+            value = mapping[value]
+        if value.startswith("[") and value.endswith("]"):
+            match = re.match(r"^\[(\d+)", value)
+            if match:
+                return int(match.group(1))
+        if value.isdigit():
+            return int(value)
+        return 1
+
     def _make_target_field(
         self, element: dict, path: list[str]
     ) -> MapperTargetFieldInfo:
         """Create a MapperTargetFieldInfo from an element."""
         cardinality = element.get("cardinality", "")
-        required = cardinality.startswith("One")
+        required = self._min_cardinality(cardinality) >= 1
 
         semantic_id = None
         sem_ref = element.get("semanticId")
-        if sem_ref and isinstance(sem_ref, dict):
+        if isinstance(sem_ref, str):
+            semantic_id = sem_ref
+        elif sem_ref and isinstance(sem_ref, dict):
             keys = sem_ref.get("keys", [])
             if keys and isinstance(keys, list):
                 semantic_id = keys[-1].get("value")
+        elif sem_ref is not None:
+            semantic_id = str(sem_ref)
 
         return MapperTargetFieldInfo(
             id_short_path=".".join(path),

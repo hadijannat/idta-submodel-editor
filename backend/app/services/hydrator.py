@@ -389,6 +389,8 @@ class HydratorService:
             }
             if filtered_values:
                 element.value = model.MultiLanguageTextType(filtered_values)
+            else:
+                element.value = None
 
     def _hydrate_collection(
         self,
@@ -545,8 +547,11 @@ class HydratorService:
         value_data: dict[str, Any],
     ) -> None:
         """Hydrate a Blob element."""
-        if "value" in value_data and value_data["value"]:
-            element.value = value_data["value"].encode("utf-8")
+        if "value" in value_data:
+            if value_data["value"]:
+                element.value = value_data["value"].encode("utf-8")
+            else:
+                element.value = None
         if "contentType" in value_data:
             element.content_type = value_data["contentType"]
 
@@ -567,9 +572,12 @@ class HydratorService:
         value_data: dict[str, Any],
     ) -> None:
         """Hydrate a ReferenceElement."""
-        if "value" in value_data and value_data["value"]:
+        if "value" in value_data:
             ref_value = value_data["value"]
-            element.value = self._build_reference(ref_value, element.value)
+            if ref_value:
+                element.value = self._build_reference(ref_value, element.value)
+            else:
+                element.value = None
 
     def _hydrate_entity(
         self,
@@ -588,10 +596,16 @@ class HydratorService:
         value_data: dict[str, Any],
     ) -> None:
         """Hydrate a RelationshipElement."""
-        if "first" in value_data and value_data["first"]:
-            element.first = self._build_reference(value_data["first"], element.first)
-        if "second" in value_data and value_data["second"]:
-            element.second = self._build_reference(value_data["second"], element.second)
+        if "first" in value_data:
+            if value_data["first"]:
+                element.first = self._build_reference(value_data["first"], element.first)
+            else:
+                element.first = None
+        if "second" in value_data:
+            if value_data["second"]:
+                element.second = self._build_reference(value_data["second"], element.second)
+            else:
+                element.second = None
 
     def _hydrate_annotated_relationship(
         self,

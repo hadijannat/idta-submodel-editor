@@ -89,6 +89,22 @@ class OIDCValidator:
         self.audience = settings.oidc_audience
         self._jwks_cache = None
 
+    def _select_jwk(self, jwks: dict, kid: str | None) -> dict | None:
+        """Select a JWK from a JWKS payload by key id."""
+        if not isinstance(jwks, dict):
+            return None
+        keys = jwks.get("keys") or []
+        if not isinstance(keys, list) or not keys:
+            return None
+        if kid:
+            for key in keys:
+                if isinstance(key, dict) and key.get("kid") == kid:
+                    return key
+            return None
+        if len(keys) == 1 and isinstance(keys[0], dict):
+            return keys[0]
+        return None
+
     async def _get_jwks(self) -> dict:
         """Fetch and cache JWKS from the OIDC provider."""
         if self._jwks_cache:
@@ -136,14 +152,21 @@ class OIDCValidator:
         try:
             import jwt
             from jwt.exceptions import InvalidTokenError
+            from jwt.algorithms import RSAAlgorithm
 
             token = credentials.credentials
             jwks = await self._get_jwks()
+            unverified_header = jwt.get_unverified_header(token)
+            kid = unverified_header.get("kid") if isinstance(unverified_header, dict) else None
+            jwk = self._select_jwk(jwks, kid)
+            if jwk is None:
+                raise InvalidTokenError("Unable to find matching JWK for token")
+            signing_key = RSAAlgorithm.from_jwk(jwk)
 
             # Decode and validate the token
             payload = jwt.decode(
                 token,
-                jwks,
+                signing_key,
                 algorithms=["RS256"],
                 audience=self.audience,
                 issuer=self.issuer,

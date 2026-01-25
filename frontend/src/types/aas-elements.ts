@@ -94,8 +94,8 @@ export type MultiLanguageValue = Partial<Record<LanguageCode, string>>;
  * Helper to check if a cardinality indicates required.
  */
 export function isRequired(cardinality: string): boolean {
-  const normalized = normalizeCardinality(cardinality);
-  return normalized === '[1]' || normalized === '[1..*]';
+  const { min } = parseCardinality(cardinality);
+  return min >= 1;
 }
 
 /**
@@ -110,21 +110,27 @@ export function allowsMultiple(cardinality: string): boolean {
  * Get minimum required items from cardinality.
  */
 export function getMinItems(cardinality: string): number {
-  const normalized = normalizeCardinality(cardinality);
-  if (normalized === '[1..*]') return 1;
-  if (normalized === '[0..*]' || normalized === '[0..1]') return 0;
-  if (normalized === '[1]') return 1;
-  return 0;
+  return parseCardinality(cardinality).min;
 }
 
 /**
  * Get maximum allowed items from cardinality.
  */
 export function getMaxItems(cardinality: string): number | undefined {
+  return parseCardinality(cardinality).max;
+}
+
+export function parseCardinality(
+  cardinality: string
+): { min: number; max?: number } {
   const normalized = normalizeCardinality(cardinality);
-  if (normalized.includes('*')) return undefined;
-  if (normalized === '[0..1]' || normalized === '[1]') return 1;
-  return undefined;
+  const match = normalized.match(/^\[(\d+)(?:\.\.(\d+|\*))?\]$/);
+  if (!match) return { min: 1, max: 1 };
+  const min = Number.parseInt(match[1], 10);
+  const maxGroup = match[2];
+  if (!maxGroup) return { min, max: min };
+  if (maxGroup === '*') return { min };
+  return { min, max: Number.parseInt(maxGroup, 10) };
 }
 
 /**

@@ -3,51 +3,63 @@ Tests for PCF emission factors search API endpoint.
 """
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from app.routers.pcf import router
 
+pytestmark = pytest.mark.asyncio
 
-@pytest.fixture
-def client():
+
+@pytest_asyncio.fixture
+async def client():
     """Create test client with PCF router."""
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app)
+    transport = ASGITransport(app=app)
+    client = AsyncClient(transport=transport, base_url="http://testserver")
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 class TestEmissionFactorsSearchEndpoint:
     """Tests for GET /api/pcf/factors/search endpoint."""
 
-    def test_search_returns_matching_factors(self, client):
+    async def test_search_returns_matching_factors(self, client):
         """Search should return factors matching the query."""
-        response = client.get("/api/pcf/factors/search", params={"query": "electricity"})
+        response = await client.get(
+            "/api/pcf/factors/search", params={"query": "electricity"}
+        )
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
         assert len(data) > 0
         assert all("electricity" in f["name"].lower() for f in data)
 
-    def test_search_with_empty_query_returns_all(self, client):
+    async def test_search_with_empty_query_returns_all(self, client):
         """Empty query should return all factors up to limit."""
-        response = client.get("/api/pcf/factors/search", params={"query": ""})
+        response = await client.get("/api/pcf/factors/search", params={"query": ""})
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
         assert len(data) > 0
 
-    def test_search_respects_limit(self, client):
+    async def test_search_respects_limit(self, client):
         """Search should respect the limit parameter."""
-        response = client.get(
+        response = await client.get(
             "/api/pcf/factors/search", params={"query": "", "limit": 3}
         )
         assert response.status_code == 200
         data = response.json()
         assert len(data) <= 3
 
-    def test_search_returns_correct_structure(self, client):
+    async def test_search_returns_correct_structure(self, client):
         """Each factor should have the expected fields."""
-        response = client.get("/api/pcf/factors/search", params={"query": "steel"})
+        response = await client.get(
+            "/api/pcf/factors/search", params={"query": "steel"}
+        )
         assert response.status_code == 200
         data = response.json()
         assert len(data) > 0
@@ -59,21 +71,21 @@ class TestEmissionFactorsSearchEndpoint:
         assert "factor_unit" in factor
         assert "source" in factor
 
-    def test_search_no_match_returns_empty_list(self, client):
+    async def test_search_no_match_returns_empty_list(self, client):
         """Search with no matches should return empty list."""
-        response = client.get(
+        response = await client.get(
             "/api/pcf/factors/search", params={"query": "xyznonexistent123"}
         )
         assert response.status_code == 200
         data = response.json()
         assert data == []
 
-    def test_search_is_case_insensitive(self, client):
+    async def test_search_is_case_insensitive(self, client):
         """Search should be case insensitive."""
-        response_lower = client.get(
+        response_lower = await client.get(
             "/api/pcf/factors/search", params={"query": "electricity"}
         )
-        response_upper = client.get(
+        response_upper = await client.get(
             "/api/pcf/factors/search", params={"query": "ELECTRICITY"}
         )
         assert response_lower.status_code == 200
@@ -84,21 +96,21 @@ class TestEmissionFactorsSearchEndpoint:
 class TestEmissionFactorByIdEndpoint:
     """Tests for GET /api/pcf/factors/{factor_id} endpoint."""
 
-    def test_get_existing_factor(self, client):
+    async def test_get_existing_factor(self, client):
         """Should return factor when ID exists."""
         # First search to get a valid ID
-        search_response = client.get(
+        search_response = await client.get(
             "/api/pcf/factors/search", params={"query": "", "limit": 1}
         )
         factors = search_response.json()
         if factors:
             factor_id = factors[0]["id"]
-            response = client.get(f"/api/pcf/factors/{factor_id}")
+            response = await client.get(f"/api/pcf/factors/{factor_id}")
             assert response.status_code == 200
             data = response.json()
             assert data["id"] == factor_id
 
-    def test_get_nonexistent_factor_returns_404(self, client):
+    async def test_get_nonexistent_factor_returns_404(self, client):
         """Should return 404 for non-existent ID."""
-        response = client.get("/api/pcf/factors/nonexistent-id-12345")
+        response = await client.get("/api/pcf/factors/nonexistent-id-12345")
         assert response.status_code == 404

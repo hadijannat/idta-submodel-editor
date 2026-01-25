@@ -16,7 +16,7 @@ import {
   exportAsPdf,
   verifyExport,
 } from '../services/api';
-import { isRequired } from '../types/aas-elements';
+import { getMaxItems, getMinItems, isRequired } from '../types/aas-elements';
 
 interface UseSubmodelFormOptions {
   /** Template name to load */
@@ -133,10 +133,14 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
       const itemSchema = element.itemTemplate
         ? generateZodSchema(element.itemTemplate)
         : z.any();
-      const minItems = element.cardinality === '[1..*]' ? 1 : 0;
+      const minItems = getMinItems(element.cardinality);
+      const maxItems = getMaxItems(element.cardinality);
+      const itemsSchema = maxItems
+        ? z.array(itemSchema).min(minItems).max(maxItems)
+        : z.array(itemSchema).min(minItems);
       return withSemanticFields(
         z.object({
-          items: z.array(itemSchema).min(minItems),
+          items: itemsSchema,
           semanticIdListElement: z.string().optional().nullable(),
         })
       );

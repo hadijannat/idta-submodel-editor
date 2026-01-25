@@ -55,11 +55,11 @@ class SQLiteSemanticProvider:
         sql = (
             "SELECT e.canonical_id, e.canonical_iri, e.kind, e.preferred_name_json, "
             "e.definition_json, e.datatype_hint, e.unit_hint, e.synonyms_json, "
-            "bm25(semantic_fts) AS score "
+            "(1.0 / (1.0 + bm25(semantic_fts))) AS score "
             "FROM semantic_fts JOIN semantic_entries e ON semantic_fts.rowid = e.id "
             "WHERE semantic_fts MATCH ? "
             f"{where_clause} "
-            "ORDER BY score LIMIT ? OFFSET ?"
+            "ORDER BY score DESC LIMIT ? OFFSET ?"
         )
         params = [query]
         if kind is not None:
