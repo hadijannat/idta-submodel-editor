@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-dataspace
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: postgres-dataspace
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: postgres-dataspace
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    protocol: TCP

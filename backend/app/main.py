@@ -133,6 +133,16 @@ def create_application() -> FastAPI:
         """Kubernetes startup probe."""
         return {"status": "started"}
 
+    @app.get("/api/settings", tags=["settings"])
+    async def get_public_settings():
+        """Return public settings needed by the frontend."""
+        return {
+            "mnestix_enabled": settings.mnestix_enabled,
+            "mnestix_url": settings.mnestix_url if settings.mnestix_enabled else None,
+            "basyx_registry_url": settings.basyx_registry_url if settings.mnestix_enabled else None,
+            "dataspace_enabled": settings.dataspace_enabled,
+        }
+
     # Global exception handler
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):

@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edc-data-plane
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: edc-data-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: idta-submodel-editor
+      app.kubernetes.io/component: edc-data-plane
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: idta-submodel-editor
+        app.kubernetes.io/component: edc-data-plane
+    spec:
+      containers:
+      - name: edc-data-plane
+        image: ghcr.io/eclipse-tractusx/edc-dataplane-hashicorp-vault:0.7.3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 19290
+          name: default
+          protocol: TCP
+        - containerPort: 19291
+          name: public
+          protocol: TCP
+        - containerPort: 19292
+          name: control
+          protocol: TCP
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        # Data plane ports
+        - name: WEB_HTTP_PORT
+          value: "19290"
+        - name: WEB_HTTP_PATH
+          value: "/api"
+        - name: WEB_HTTP_PUBLIC_PORT
+          value: "19291"
+        - name: WEB_HTTP_PUBLIC_PATH
+          value: "/public"
+        - name: WEB_HTTP_CONTROL_PORT
+          value: "19292"
+        - name: WEB_HTTP_CONTROL_PATH
+          value: "/control"
+        # Control plane
+        - name: EDC_CONTROLPLANE_VALIDATION_ENDPOINT
+          value: "http://edc-control-plane:19195/control/token"
+        # Vault
+        - name: EDC_VAULT_HASHICORP_URL
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: VAULT_URL
+        - name: EDC_VAULT_HASHICORP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: dataspace-secrets
+              key: VAULT_DEV_ROOT_TOKEN
+        - name: EDC_VAULT_HASHICORP_HEALTH_CHECK_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: VAULT_HEALTH_CHECK_ENABLED
+        livenessProbe:
+          httpGet:
+            path: /public/health
+            port: 19291
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /public/health
+            port: 19291
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /public/health
+            port: 19291
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          failureThreshold: 12

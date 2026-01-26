@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mnestix
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: mnestix
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: mnestix
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+    protocol: TCP

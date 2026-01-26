@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edc-control-plane
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: edc-control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: idta-submodel-editor
+      app.kubernetes.io/component: edc-control-plane
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: idta-submodel-editor
+        app.kubernetes.io/component: edc-control-plane
+    spec:
+      containers:
+      - name: edc-control-plane
+        image: ghcr.io/eclipse-tractusx/edc-controlplane-postgresql-hashicorp-vault:0.7.3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 19191
+          name: default
+          protocol: TCP
+        - containerPort: 19192
+          name: management
+          protocol: TCP
+        - containerPort: 19193
+          name: protocol
+          protocol: TCP
+        - containerPort: 19194
+          name: public
+          protocol: TCP
+        - containerPort: 19195
+          name: control
+          protocol: TCP
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        # EDC Identity
+        - name: EDC_PARTICIPANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: dataspace-secrets
+              key: EDC_PARTICIPANT_ID
+        - name: EDC_IDS_ID
+          value: "urn:connector:edc-control-plane"
+        # API ports
+        - name: WEB_HTTP_PORT
+          value: "19191"
+        - name: WEB_HTTP_PATH
+          value: "/api"
+        - name: WEB_HTTP_MANAGEMENT_PORT
+          value: "19192"
+        - name: WEB_HTTP_MANAGEMENT_PATH
+          value: "/management"
+        - name: WEB_HTTP_PROTOCOL_PORT
+          value: "19193"
+        - name: WEB_HTTP_PROTOCOL_PATH
+          value: "/protocol"
+        - name: WEB_HTTP_PUBLIC_PORT
+          value: "19194"
+        - name: WEB_HTTP_PUBLIC_PATH
+          value: "/public"
+        - name: WEB_HTTP_CONTROL_PORT
+          value: "19195"
+        - name: WEB_HTTP_CONTROL_PATH
+          value: "/control"
+        # DSP Protocol
+        - name: EDC_DSP_CALLBACK_ADDRESS
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: EDC_DSP_CALLBACK_ADDRESS
+        # Data plane
+        - name: EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_URL
+          value: "http://edc-data-plane:19292/control"
+        - name: EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_SOURCETYPES
+          value: "HttpData"
+        - name: EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_DESTINATIONTYPES
+          value: "HttpProxy,HttpData"
+        - name: EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_PROPERTIES_PUBLICAPIURL
+          value: "http://edc-data-plane:19291/public"
+        # Vault
+        - name: EDC_VAULT_HASHICORP_URL
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: VAULT_URL
+        - name: EDC_VAULT_HASHICORP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: dataspace-secrets
+              key: VAULT_DEV_ROOT_TOKEN
+        - name: EDC_VAULT_HASHICORP_HEALTH_CHECK_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: VAULT_HEALTH_CHECK_ENABLED
+        # PostgreSQL
+        - name: EDC_DATASOURCE_DEFAULT_URL
+          value: "jdbc:postgresql://postgres-dataspace:5432/edc"
+        - name: EDC_DATASOURCE_DEFAULT_USER
+          valueFrom:
+            secretKeyRef:
+              name: dataspace-secrets
+              key: EDC_DB_USER
+        - name: EDC_DATASOURCE_DEFAULT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: dataspace-secrets
+              key: EDC_DB_PASSWORD
+        # API Key
+        - name: EDC_API_AUTH_KEY
+          valueFrom:
+            secretKeyRef:
+              name: dataspace-secrets
+              key: EDC_API_KEY
+        livenessProbe:
+          httpGet:
+            path: /management/v2/health
+            port: 19192
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /management/v2/health
+            port: 19192
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /management/v2/health
+            port: 19192
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          failureThreshold: 12

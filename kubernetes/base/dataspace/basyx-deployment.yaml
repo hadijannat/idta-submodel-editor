@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: basyx-aas-server
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: basyx-aas-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: idta-submodel-editor
+      app.kubernetes.io/component: basyx-aas-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: idta-submodel-editor
+        app.kubernetes.io/component: basyx-aas-server
+    spec:
+      containers:
+      - name: aas-server
+        image: eclipsebasyx/aas-server:2.0.0-SNAPSHOT
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4001
+          name: http
+          protocol: TCP
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: SERVER_PORT
+          value: "4001"
+        - name: BASYX_AASSERVER_BACKEND
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: BASYX_BACKEND
+        - name: BASYX_AASSERVER_AASXUPLOAD_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: BASYX_AASX_UPLOAD_ENABLED
+        - name: BASYX_AASSERVER_REGISTRY_PATH
+          value: "http://basyx-registry:4002/api/v1/registry"
+        volumeMounts:
+        - name: basyx-data
+          mountPath: /data
+        livenessProbe:
+          httpGet:
+            path: /shells
+            port: 4001
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /shells
+            port: 4001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /shells
+            port: 4001
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          failureThreshold: 12
+      volumes:
+      - name: basyx-data
+        persistentVolumeClaim:
+          claimName: basyx-data-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: basyx-registry
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: basyx-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: idta-submodel-editor
+      app.kubernetes.io/component: basyx-registry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: idta-submodel-editor
+        app.kubernetes.io/component: basyx-registry
+    spec:
+      containers:
+      - name: registry
+        image: eclipsebasyx/aas-registry:2.0.0-SNAPSHOT
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 4002
+          name: http
+          protocol: TCP
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "125m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        env:
+        - name: SERVER_PORT
+          value: "4002"
+        - name: BASYX_REGISTRY_BACKEND
+          valueFrom:
+            configMapKeyRef:
+              name: dataspace-config
+              key: BASYX_BACKEND
+        livenessProbe:
+          httpGet:
+            path: /api/v1/registry
+            port: 4002
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/v1/registry
+            port: 4002
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3

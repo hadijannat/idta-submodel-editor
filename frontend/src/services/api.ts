@@ -407,3 +407,24 @@ export async function checkHealth(): Promise<{
 }> {
   return apiFetch<{ status: string; version: string }>('/health');
 }
+
+// ============================================================================
+// Settings API
+// ============================================================================
+
+/**
+ * Public settings from backend.
+ */
+export interface PublicSettings {
+  mnestix_enabled: boolean;
+  mnestix_url: string | null;
+  basyx_registry_url: string | null;
+  dataspace_enabled: boolean;
+}
+
+/**
+ * Get public settings from the backend.
+ */
+export async function getPublicSettings(): Promise<PublicSettings> {
+  return apiFetch<PublicSettings>('/api/settings');
+}

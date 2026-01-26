@@ -16,7 +16,8 @@ import PCFPanel from './components/PCFPanel';
 import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
 import { PassportView } from './components/PassportMode';
 import { DataspaceConnectorPanel } from './components/DataspaceConnector';
-import { getTemplateVersions } from './services/api';
+import { MnestixBrowser } from './components/MnestixBrowser';
+import { getTemplateVersions, getPublicSettings, type PublicSettings } from './services/api';
 import { computeCompletion } from './utils/completion';
 import './App.css';
 
@@ -30,7 +31,16 @@ function App() {
   const [templateVersions, setTemplateVersions] = useState<TemplateVersionInfo[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
+  const [showAASBrowser, setShowAASBrowser] = useState(false);
+  const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
   const templateStatus = selectedTemplate?.status ?? 'published';
+
+  // Load public settings on mount
+  useEffect(() => {
+    getPublicSettings()
+      .then(setPublicSettings)
+      .catch((err) => console.error('Failed to load public settings:', err));
+  }, []);
 
   const {
     schema,
@@ -600,13 +610,37 @@ function App() {
     return null;
   };
 
+  // Render AAS Browser overlay
+  if (showAASBrowser) {
+    return (
+      <div className="app app--browser-mode">
+        <MnestixBrowser onClose={() => setShowAASBrowser(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="app-header">
-        <h1>IDTA Submodel Template Editor</h1>
-        <p className="app-subtitle">
-          Universal metamodel-driven editor for Asset Administration Shell submodels
-        </p>
+        <div className="app-header-content">
+          <div className="app-header-title">
+            <h1>IDTA Submodel Template Editor</h1>
+            <p className="app-subtitle">
+              Universal metamodel-driven editor for Asset Administration Shell submodels
+            </p>
+          </div>
+          {publicSettings?.mnestix_enabled && (
+            <div className="app-header-actions">
+              <button
+                type="button"
+                className="app-header-btn"
+                onClick={() => setShowAASBrowser(true)}
+              >
+                AAS Browser
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="app-layout wizard-layout">

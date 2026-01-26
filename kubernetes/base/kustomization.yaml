@@ -15,6 +15,10 @@ resources:
   - ingress.yaml
   - hpa.yaml
 
+# Optional components - uncomment to include
+# components:
+#   - dataspace  # Enables BaSyx, DTR, EDC, Vault, Mnestix
+
 commonLabels:
   app.kubernetes.io/name: idta-submodel-editor
   app.kubernetes.io/managed-by: kustomize

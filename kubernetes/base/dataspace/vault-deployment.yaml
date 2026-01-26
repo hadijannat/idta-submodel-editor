@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: vault
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: idta-submodel-editor
+      app.kubernetes.io/component: vault
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: idta-submodel-editor
+        app.kubernetes.io/component: vault
+    spec:
+      containers:
+      - name: vault
+        image: hashicorp/vault:1.15
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8200
+          name: http
+          protocol: TCP
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        env:
+        - name: VAULT_DEV_ROOT_TOKEN_ID
+          valueFrom:
+            secretKeyRef:
+              name: dataspace-secrets
+              key: VAULT_DEV_ROOT_TOKEN
+        - name: VAULT_DEV_LISTEN_ADDRESS
+          value: "0.0.0.0:8200"
+        - name: VAULT_ADDR
+          value: "http://0.0.0.0:8200"
+        volumeMounts:
+        - name: vault-data
+          mountPath: /vault/data
+        livenessProbe:
+          exec:
+            command:
+            - vault
+            - status
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - vault
+            - status
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          capabilities:
+            add:
+              - IPC_LOCK
+      volumes:
+      - name: vault-data
+        persistentVolumeClaim:
+          claimName: vault-data-pvc

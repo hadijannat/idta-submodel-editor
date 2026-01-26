@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: edc-control-plane
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: edc-control-plane
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: edc-control-plane
+  ports:
+  - name: default
+    port: 19191
+    targetPort: 19191
+    protocol: TCP
+  - name: management
+    port: 19192
+    targetPort: 19192
+    protocol: TCP
+  - name: protocol
+    port: 19193
+    targetPort: 19193
+    protocol: TCP
+  - name: public
+    port: 19194
+    targetPort: 19194
+    protocol: TCP
+  - name: control
+    port: 19195
+    targetPort: 19195
+    protocol: TCP

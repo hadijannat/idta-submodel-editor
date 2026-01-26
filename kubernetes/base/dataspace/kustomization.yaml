@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Dataspace component - provides AAS infrastructure
+# Include with: kustomize build --enable-alpha-plugins kubernetes/overlays/production
+# Or add to kustomization.yaml under 'components'
+
+resources:
+  - dataspace-configmap.yaml
+  - dataspace-secrets.yaml
+  - dataspace-pvc.yaml
+  - postgres-deployment.yaml
+  - postgres-service.yaml
+  - vault-deployment.yaml
+  - vault-service.yaml
+  - basyx-deployment.yaml
+  - basyx-service.yaml
+  - dtr-deployment.yaml
+  - dtr-service.yaml
+  - edc-control-deployment.yaml
+  - edc-control-service.yaml
+  - edc-data-deployment.yaml
+  - edc-data-service.yaml
+  - mnestix-deployment.yaml
+  - mnestix-service.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: dataspace

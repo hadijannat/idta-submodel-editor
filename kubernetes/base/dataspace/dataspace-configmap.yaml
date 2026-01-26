@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dataspace-config
+  labels:
+    app.kubernetes.io/name: idta-submodel-editor
+    app.kubernetes.io/component: dataspace-config
+data:
+  # Dataspace feature flag
+  DATASPACE_ENABLED: "true"
+
+  # BaSyx AAS Server
+  BASYX_AAS_SERVER_URL: "http://basyx-aas-server:4001"
+  BASYX_REGISTRY_URL: "http://basyx-registry:4002"
+  BASYX_BACKEND: "InMemory"
+  BASYX_AASX_UPLOAD_ENABLED: "true"
+
+  # Digital Twin Registry (DTR)
+  DTR_URL: "http://dtr:4003"
+  DTR_ALLOW_ALL_TENANTS: "true"
+  DTR_ID_TYPE_URL: "false"
+
+  # Vault
+  VAULT_URL: "http://vault:8200"
+  VAULT_HEALTH_CHECK_ENABLED: "false"
+
+  # EDC Control Plane
+  EDC_CONTROL_PLANE_URL: "http://edc-control-plane:19192"
+  EDC_PROTOCOL_URL: "http://edc-control-plane:19193"
+  EDC_PUBLIC_URL: "http://edc-control-plane:19194"
+  EDC_DSP_CALLBACK_ADDRESS: "http://edc-control-plane:19193/protocol"
+
+  # EDC Data Plane
+  EDC_DATA_PLANE_URL: "http://edc-data-plane:19291"
+  EDC_DATA_CONTROL_URL: "http://edc-data-plane:19292"
+
+  # PostgreSQL
+  POSTGRES_HOST: "postgres-dataspace"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DTR_DATABASE: "dtr"
+  POSTGRES_EDC_DATABASE: "edc"
+
+  # Mnestix Browser
+  MNESTIX_URL: "http://mnestix:3000"
+  MNESTIX_AAS_LIST_FEATURE: "true"
+  MNESTIX_COMPARISON_FEATURE: "true"
+  MNESTIX_AUTH_FEATURE: "false"
+  MNESTIX_TIMESERIES_FEATURE: "true"
+
+  # Integration URLs for backend
+  DATASPACE_BASYX_URL: "http://basyx-aas-server:4001"
+  DATASPACE_REGISTRY_URL: "http://basyx-registry:4002"
+  DATASPACE_DTR_URL: "http://dtr:4003"
+  DATASPACE_EDC_MANAGEMENT_URL: "http://edc-control-plane:19192/management"

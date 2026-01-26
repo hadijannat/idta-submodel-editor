@@ -6,6 +6,10 @@ namespace: idta-editor
 resources:
   - ../../base
 
+# Uncomment to enable dataspace components (BaSyx, DTR, EDC, Vault, Mnestix)
+# components:
+#   - ../../base/dataspace
+
 namePrefix: prod-
 
 patches:
