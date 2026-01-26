@@ -65,10 +65,11 @@ class JobManager:
         for dir_path in [self.jobs_dir, self.pdfs_dir, self.indices_dir, self.results_dir, self.artifacts_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
 
-    def _compute_idempotency_key(
+    def compute_idempotency_key(
         self,
         pdf_content: bytes,
         template_name: str,
+        template_status: str,
         template_version: str | None,
     ) -> str:
         """
@@ -85,6 +86,7 @@ class JobManager:
         hasher = hashlib.sha256()
         hasher.update(pdf_content)
         hasher.update(template_name.encode("utf-8"))
+        hasher.update(template_status.encode("utf-8"))
         hasher.update((template_version or "").encode("utf-8"))
         hasher.update(EXTRACTOR_VERSION.encode("utf-8"))
         return hasher.hexdigest()[:32]
@@ -133,8 +135,8 @@ class JobManager:
         now = datetime.utcnow()
 
         # Compute idempotency key for reproducibility
-        idempotency_key = self._compute_idempotency_key(
-            pdf_content, template_name, template_version
+        idempotency_key = self.compute_idempotency_key(
+            pdf_content, template_name, template_status, template_version
         )
 
         # Save PDF file

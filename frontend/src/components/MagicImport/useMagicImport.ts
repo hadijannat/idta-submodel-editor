@@ -180,6 +180,7 @@ export function useMagicImport({
               value_normalized: value,
               user_edited: true,
               needs_review: false,
+              status: 'filled',
               confidence: 1.0,
             }
           : e
@@ -196,6 +197,7 @@ export function useMagicImport({
               ...e,
               user_approved: true,
               needs_review: false,
+              status: e.status === 'empty' ? e.status : 'filled',
             }
           : e
       )
@@ -209,6 +211,7 @@ export function useMagicImport({
         ...e,
         user_approved: true,
         needs_review: false,
+        status: e.status === 'empty' ? e.status : 'filled',
       }))
     );
   }, []);
@@ -242,9 +245,7 @@ export function useMagicImport({
   const applyToForm = useCallback(() => {
     // Only apply extractions that are approved/ready AND have valid status
     const approvedExtractions = extractions.filter(
-      (e) =>
-        (e.user_approved || !e.needs_review) &&
-        (e.status === 'filled' || e.user_edited)
+      (e) => e.user_approved || e.status === 'filled' || e.user_edited
     );
     const listIndexCache = new Map<string, number>();
 

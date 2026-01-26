@@ -67,6 +67,18 @@ async def create_job(
     validator.validate_and_raise(content, file.filename)
 
     try:
+        idempotency_key = job_manager.compute_idempotency_key(
+            content, template_name, template_status, template_version
+        )
+        existing = job_manager.find_by_idempotency_key(idempotency_key)
+        if existing is not None and existing.status != JobStatus.FAILED:
+            logger.info(
+                "Reusing Magic Import job %s for idempotency key %s",
+                existing.job_id,
+                idempotency_key[:8],
+            )
+            return existing
+
         # Create job
         job = job_manager.create_job(
             pdf_content=content,

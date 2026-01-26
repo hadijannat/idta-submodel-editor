@@ -518,7 +518,8 @@ class ConfidenceScorer:
             )
 
             # Generate actionable reasons for confidence score
-            reasons = list(self._generate_reasons(
+            reasons = list(extraction.confidence_reasons or [])
+            reasons.extend(self._generate_reasons(
                 extraction,
                 llm_score,
                 localizer_score,
@@ -544,10 +545,14 @@ class ConfidenceScorer:
                         )
                     )
 
-            # Determine extraction status based on evidence grounding
-            status = self._determine_extraction_status(
-                extraction, overall, confidence_threshold
-            )
+            # Preserve conflict status from verification
+            if extraction.status == ExtractionStatus.CONFLICT:
+                status = ExtractionStatus.CONFLICT
+            else:
+                # Determine extraction status based on evidence grounding
+                status = self._determine_extraction_status(
+                    extraction, overall, confidence_threshold
+                )
 
             scored.append(
                 extraction.model_copy(

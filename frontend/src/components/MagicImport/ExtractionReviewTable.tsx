@@ -50,8 +50,8 @@ export default function ExtractionReviewTable({
   const normalizedQuery = query.trim().toLowerCase();
   const filteredExtractions = extractions
     .filter((e) => {
-      if (filter === 'review') return e.needs_review;
-      if (filter === 'approved') return e.user_approved || !e.needs_review;
+      if (filter === 'review') return e.status === 'needs_review' || e.status === 'conflict';
+      if (filter === 'approved') return e.user_approved || e.status === 'filled';
       return true;
     })
     .filter((e) => (evidenceOnly ? !!e.evidence : true))
@@ -78,8 +78,12 @@ export default function ExtractionReviewTable({
     });
 
   // Counts
-  const needsReviewCount = extractions.filter((e) => e.needs_review).length;
-  const approvedCount = extractions.filter((e) => e.user_approved || !e.needs_review).length;
+  const needsReviewCount = extractions.filter(
+    (e) => e.status === 'needs_review' || e.status === 'conflict'
+  ).length;
+  const approvedCount = extractions.filter(
+    (e) => e.user_approved || e.status === 'filled'
+  ).length;
   const evidenceCount = extractions.filter((e) => e.evidence).length;
   const avgConfidence =
     extractions.length > 0
@@ -167,7 +171,12 @@ export default function ExtractionReviewTable({
   const handleApproveAboveThreshold = useCallback(
     (threshold: number) => {
       const pathsAboveThreshold = filteredExtractions
-        .filter((e) => e.confidence >= threshold && e.needs_review && !e.user_approved)
+        .filter(
+          (e) =>
+            e.confidence >= threshold &&
+            (e.status === 'needs_review' || e.status === 'conflict') &&
+            !e.user_approved
+        )
         .map((e) => e.path);
 
       if (onApproveMany) {
@@ -183,7 +192,10 @@ export default function ExtractionReviewTable({
   // Counts for threshold options
   const countAboveThreshold = (threshold: number) =>
     filteredExtractions.filter(
-      (e) => e.confidence >= threshold && e.needs_review && !e.user_approved
+      (e) =>
+        e.confidence >= threshold &&
+        (e.status === 'needs_review' || e.status === 'conflict') &&
+        !e.user_approved
     ).length;
 
   return (

@@ -39,6 +39,7 @@ export default function MagicImportPanel({
     job,
     result,
     extractions,
+    unmappedFindings,
     selectedExtractionPath,
     isUploading,
     isProcessing,
@@ -114,9 +115,11 @@ export default function MagicImportPanel({
   );
 
   // Count ready extractions
-  const readyCount = extractions.filter((e) => e.user_approved || !e.needs_review).length;
+  const readyCount = extractions.filter((e) => e.user_approved || e.status === 'filled').length;
   const fieldsExtracted = extractions.length;
-  const fieldsNeedingReview = extractions.filter((e) => e.needs_review).length;
+  const fieldsNeedingReview = extractions.filter(
+    (e) => e.status === 'needs_review' || e.status === 'conflict'
+  ).length;
   const avgConfidence =
     extractions.length > 0
       ? Math.round(
@@ -318,6 +321,7 @@ export default function MagicImportPanel({
           <div className="magic-import-panel__review-content">
             <ExtractionReviewTable
               extractions={extractions}
+              unmappedFindings={unmappedFindings}
               selectedPath={selectedExtractionPath}
               onSelect={selectExtraction}
               onUpdate={updateExtraction}

@@ -19,6 +19,7 @@ Enhanced Pipeline (Two-Pass Extraction):
 from __future__ import annotations
 
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -34,6 +35,8 @@ from app.schemas.magic_import import (
     MagicImportResult,
     FieldExtraction,
     ConfidenceBreakdown,
+    EvidenceRef,
+    UnmappedFinding,
 )
 
 logger = logging.getLogger(__name__)
@@ -444,6 +447,12 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             else 0.0
         )
 
+        unmapped_findings = _build_unmapped_findings(
+            hints=hints,
+            tables=table_result.tables if table_result else [],
+            extractions=final_extractions,
+        )
+
         processing_time = time.time() - start_time
 
         # Save final extractions artifact
@@ -462,7 +471,7 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             processing_time_seconds=processing_time,
             validation_result=validation_result,
             template_version_used=job.template_version,
-            unmapped_findings=[],  # TODO: Populate with table findings not matching template
+            unmapped_findings=unmapped_findings,
         )
         job_manager.save_result(result)
 
@@ -526,6 +535,115 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         ).observe(processing_time)
 
         return {"error": str(e), "job_id": job_id}
+
+
+def _build_unmapped_findings(
+    hints: list,
+    tables: list,
+    extractions: list[FieldExtraction],
+) -> list[UnmappedFinding]:
+    """Collect values from tables that do not map to any extraction hints."""
+    if not tables:
+        return []
+
+    def tokenize(text: str) -> set[str]:
+        return {t for t in re.split(r"[^a-zA-Z0-9]+", (text or "").lower()) if t}
+
+    hint_tokens: dict[str, set[str]] = {}
+    for hint in hints:
+        tokens = set()
+        tokens.update(tokenize(hint.label))
+        tokens.update(tokenize(hint.path))
+        tokens.update(tokenize(" ".join(hint.keywords or [])))
+        hint_tokens[hint.path] = tokens
+
+    extracted_values = {str(e.value_raw).strip().lower() for e in extractions if e.value_raw}
+    seen: set[tuple[str, int, str]] = set()
+    findings: list[UnmappedFinding] = []
+
+    def match_hint(label: str) -> list[str]:
+        label_tokens = tokenize(label)
+        scored: list[tuple[int, str]] = []
+        for path, tokens in hint_tokens.items():
+            score = len(label_tokens & tokens)
+            if score > 0:
+                scored.append((score, path))
+        scored.sort(reverse=True)
+        return [path for _, path in scored[:3]]
+
+    def is_mapped(label: str) -> bool:
+        return len(match_hint(label)) > 0
+
+    for table in tables:
+        if table.table_type == "key_value":
+            for row in table.rows:
+                if len(row) < 2:
+                    continue
+                key = (row[0] or "").strip()
+                value = (row[1] or "").strip()
+                if not key or not value:
+                    continue
+                if is_mapped(key):
+                    continue
+                if value.lower() in extracted_values:
+                    continue
+                signature = (value.lower(), table.page, key.lower())
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                findings.append(
+                    UnmappedFinding(
+                        value=value,
+                        evidence=EvidenceRef(
+                            page=table.page,
+                            quote=value,
+                            boxes=[table.bbox],
+                            method="TEXT",
+                            locator_score=0.6,
+                        ),
+                        suggested_paths=match_hint(key),
+                        confidence=0.6,
+                        source="table",
+                        context=key,
+                    )
+                )
+        else:
+            for col_idx, header in enumerate(table.headers):
+                header_text = (header or "").strip()
+                if not header_text:
+                    continue
+                if is_mapped(header_text):
+                    continue
+                for row in table.rows:
+                    if col_idx >= len(row):
+                        continue
+                    value = (row[col_idx] or "").strip()
+                    if not value:
+                        continue
+                    if value.lower() in extracted_values:
+                        continue
+                    signature = (value.lower(), table.page, header_text.lower())
+                    if signature in seen:
+                        continue
+                    seen.add(signature)
+                    findings.append(
+                        UnmappedFinding(
+                            value=value,
+                            evidence=EvidenceRef(
+                                page=table.page,
+                                quote=value,
+                                boxes=[table.bbox],
+                                method="TEXT",
+                                locator_score=0.6,
+                            ),
+                            suggested_paths=match_hint(header_text),
+                            confidence=0.6,
+                            source="table",
+                            context=header_text,
+                        )
+                    )
+
+    return findings
 
 
 @shared_task(name="magic_import.cleanup_expired")

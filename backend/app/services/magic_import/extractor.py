@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 from app.config import get_settings
 from app.schemas.magic_import import (
     CandidateSet,
+    ConfidenceReason,
+    ConfidenceReasonCode,
     ExtractionCandidate,
     ExtractionHint,
     ExtractionStatus,
@@ -407,9 +409,7 @@ class Extractor:
     ) -> FieldExtraction:
         """Verify a single candidate set and return the best verified extraction."""
         path = candidate_set.path
-        best_candidate: ExtractionCandidate | None = None
-        best_evidence: EvidenceRef | None = None
-        best_location: tuple[int, int, int] | None = None
+        verified: list[tuple[ExtractionCandidate, EvidenceRef]] = []
 
         # Try each candidate in order (they're ranked by confidence)
         for idx, candidate in enumerate(candidate_set.candidates):
@@ -427,9 +427,7 @@ class Extractor:
                 if location is not None:
                     # Found the quote in the document - this is grounded
                     page, char_start, char_end = location
-                    best_candidate = candidate
-                    best_location = location
-                    best_evidence = EvidenceRef(
+                    evidence = EvidenceRef(
                         page=page,
                         quote=candidate.evidence_quote,
                         boxes=[],  # Will be populated by localizer
@@ -439,10 +437,7 @@ class Extractor:
                         char_start=char_start,
                         char_end=char_end,
                     )
-                    # Mark this candidate as selected
-                    candidate_set.selected_index = idx
-                    candidate_set.verification_notes = "Quote found in document"
-                    break
+                    verified.append((candidate, evidence))
             else:
                 # No quote provided - cannot ground this candidate
                 logger.debug(
@@ -451,7 +446,7 @@ class Extractor:
                 )
 
         # If no candidate was verified, check for NOT_FOUND
-        if best_candidate is None:
+        if not verified:
             not_found_candidates = [
                 c for c in candidate_set.candidates
                 if c.value == "NOT_FOUND"
@@ -482,6 +477,36 @@ class Extractor:
                     evidence=None,
                     needs_review=True,
                 )
+
+        unique_values = {candidate.value.strip() for candidate, _ in verified if candidate.value}
+        if len(unique_values) > 1:
+            best_candidate, best_evidence = max(
+                verified, key=lambda item: item[0].llm_confidence
+            )
+            candidate_set.selected_index = candidate_set.candidates.index(best_candidate)
+            candidate_set.verification_notes = "Multiple grounded candidates found"
+            return FieldExtraction(
+                path=path,
+                value_type=hint.value_type if hint else None,
+                value_raw=best_candidate.value,
+                value_normalized=None,
+                status=ExtractionStatus.CONFLICT,
+                confidence=best_candidate.llm_confidence,
+                evidence=best_evidence,
+                needs_review=True,
+                confidence_reasons=[
+                    ConfidenceReason(
+                        code=ConfidenceReasonCode.MULTIPLE_CANDIDATES,
+                        message="Multiple grounded values found for this field",
+                        severity="warning",
+                        detail={"candidates": sorted(unique_values)},
+                    )
+                ],
+            )
+
+        best_candidate, best_evidence = verified[0]
+        candidate_set.selected_index = candidate_set.candidates.index(best_candidate)
+        candidate_set.verification_notes = "Quote found in document"
 
         # Return verified extraction
         return FieldExtraction(
