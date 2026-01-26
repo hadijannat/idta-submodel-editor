@@ -1,3 +1,5 @@
+// Copyright (c) 2024-2025 Hadi Jannatabadi <h.jannatabadi@iat.rwth-aachen.de>
+// SPDX-License-Identifier: MIT
 /**
  * Application entry point.
  */

@@ -7,6 +7,8 @@ A metamodel-driven application for editing any IDTA submodel template without co
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"/></a>
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose"/></a>
   <a href="https://github.com/hadijannat/idta-submodel-editor/tags"><img src="https://img.shields.io/badge/version-1.0.0-2F80ED" alt="Version"/></a>
+  <a href="https://github.com/hadijannat"><img src="https://img.shields.io/badge/Author-Hadi%20Jannatabadi-blue" alt="Author"/></a>
+  <a href="https://www.iat.rwth-aachen.de/"><img src="https://img.shields.io/badge/RWTH-IAT-green" alt="RWTH Aachen"/></a>
 </p>
 
 ---
@@ -209,6 +211,24 @@ idta-submodel-editor/
 ### CI & Conformance
 
 CI runs backend tests, frontend quality checks, and AAS conformance validation. Conformance fixtures in `backend/tests/fixtures/` are auto-generated via nightly workflow.
+
+---
+
+## Citing this Project
+
+If you use this software in academic work, please cite:
+
+```bibtex
+@software{jannatabadi2024idta,
+  author = {Jannatabadi, Hadi},
+  title = {IDTA Submodel Editor},
+  year = {2024},
+  url = {https://github.com/hadijannat/idta-submodel-editor},
+  license = {MIT}
+}
+```
+
+Or use the "Cite this repository" button on GitHub (generated from CITATION.cff).
 
 ---
 

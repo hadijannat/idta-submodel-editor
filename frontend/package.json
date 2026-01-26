@@ -2,6 +2,20 @@
   "name": "idta-submodel-editor-frontend",
   "version": "1.0.0",
   "description": "Universal IDTA Submodel Template Editor Frontend",
+  "author": {
+    "name": "Hadi Jannatabadi",
+    "email": "h.jannatabadi@iat.rwth-aachen.de",
+    "url": "https://github.com/hadijannat"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hadijannat/idta-submodel-editor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hadijannat/idta-submodel-editor/issues"
+  },
+  "homepage": "https://github.com/hadijannat/idta-submodel-editor#readme",
   "type": "module",
   "scripts": {
     "dev": "vite",

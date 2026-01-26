@@ -1,3 +1,5 @@
+# Copyright (c) 2024-2025 Hadi Jannatabadi <h.jannatabadi@iat.rwth-aachen.de>
+# SPDX-License-Identifier: MIT
 """
 Tool registry for the IDTA Submodel Editor.
 

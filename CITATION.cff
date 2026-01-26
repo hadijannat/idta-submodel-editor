@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "IDTA Submodel Editor"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: "Jannatabadi"
+    given-names: "Hadi"
+    email: "h.jannatabadi@iat.rwth-aachen.de"
+    affiliation: "RWTH Aachen University, Institute of Automation Technology"
+version: "1.0.0"
+date-released: "2024-01-01"
+repository-code: "https://github.com/hadijannat/idta-submodel-editor"
+url: "https://github.com/hadijannat/idta-submodel-editor"
+license: MIT
+keywords:
+  - asset-administration-shell
+  - industry-4-0
+  - digital-twin
+  - idta
+  - submodel-templates
+  - manufacturing-x
+  - catena-x
+abstract: >-
+  Universal IDTA Submodel Template Editor - a metamodel-driven application
+  for editing any IDTA submodel template without code modifications. Features
+  include semantic lookup, smart mapping, PDF-to-AAS extraction, PCF calculation,
+  and Manufacturing-X dataspace integration.
