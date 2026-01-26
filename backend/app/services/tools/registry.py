@@ -437,10 +437,12 @@ async def initialize_registry() -> ToolRegistry:
         The initialized ToolRegistry
     """
     global _registry
-    _registry = ToolRegistry()
+    if _registry is None:
+        _registry = ToolRegistry()
 
-    # Discover builtin tools
-    _registry.discover_tools("app.services.tools.builtin")
+    # Discover builtin tools if not already populated
+    if not _registry.get_all():
+        _registry.discover_tools("app.services.tools.builtin")
 
     # Validate dependency graph before initialization
     try:

@@ -82,13 +82,6 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
   const [manifestLoaded, setManifestLoaded] = useState(toolRegistry.isManifestLoaded());
   const [version, setVersion] = useState(0); // Force re-render on refresh
 
-  // Load manifest on mount if requested
-  useEffect(() => {
-    if (fetchOnMount && !toolRegistry.isManifestLoaded()) {
-      loadManifest();
-    }
-  }, [fetchOnMount]);
-
   const loadManifest = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -103,6 +96,13 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
       setLoading(false);
     }
   }, []);
+
+  // Load manifest on mount if requested
+  useEffect(() => {
+    if (fetchOnMount && !toolRegistry.isManifestLoaded()) {
+      loadManifest();
+    }
+  }, [fetchOnMount, loadManifest]);
 
   // Get all tools
   const tools = useMemo(() => {

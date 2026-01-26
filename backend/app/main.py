@@ -28,7 +28,7 @@ from app.errors import APIError, ErrorCode, ErrorResponse
 from app.metrics import set_app_info
 from app.middleware.correlation import CorrelationIdMiddleware, get_correlation_id
 from app.routers import editor, templates, tools
-from app.services.tools.registry import initialize_registry, shutdown_registry
+from app.services.tools.registry import initialize_registry, shutdown_registry, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _bootstrap_tool_registry(app: FastAPI) -> ToolRegistry:
+    """Discover tools and mount their routers before startup."""
+    registry = ToolRegistry()
+    registry.discover_tools("app.services.tools.builtin")
+    # Set global registry so /api/tools can respond even before startup
+    try:
+        from app.services.tools import registry as registry_module
+
+        registry_module._registry = registry  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    for router in registry.get_all_routers():
+        app.include_router(router)
+
+    return registry
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown."""
@@ -73,8 +91,7 @@ async def lifespan(app: FastAPI):
     # Create temp directory for file processing
     Path("./tmp").mkdir(parents=True, exist_ok=True)
 
-    # Initialize tool registry and mount tool routers
-    # This discovers and initializes all builtin tools
+    # Initialize tool registry (routers already mounted during bootstrap)
     logger.info("Initializing tool registry...")
     registry = await initialize_registry()
     logger.info(
@@ -130,6 +147,7 @@ def create_application() -> FastAPI:
     app.include_router(templates.router)
     app.include_router(editor.router)
     app.include_router(tools.router)
+    _bootstrap_tool_registry(app)
 
     # Health check endpoints
     @app.get("/health", tags=["health"])
