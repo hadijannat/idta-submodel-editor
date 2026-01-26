@@ -112,6 +112,47 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/0"
 
+    # =========================================================================
+    # Dataspace Integration
+    # =========================================================================
+
+    # Feature flag and general settings
+    dataspace_enabled: bool = False
+    dataspace_cache_dir: Path = Path("./cache/dataspace")
+    dataspace_default_environment: Literal["sandbox", "catena-x-test", "catena-x-prod"] = "sandbox"
+    dataspace_default_edc_mode: Literal["tractus-x", "aas-extension"] = "tractus-x"
+
+    # BaSyx AAS Server
+    basyx_aas_server_url: str = "http://basyx-aas-server:4001"
+    basyx_registry_url: str = "http://basyx-registry:4002"
+
+    # EDC - Tractus-X
+    edc_control_plane_url: str = "http://edc-control-plane:19192"
+    edc_data_plane_url: str = "http://edc-data-plane:19291"
+    edc_api_key: str | None = None
+
+    # EDC - AAS Extension
+    edc_aas_extension_url: str | None = None
+
+    # Digital Twin Registry (DTR)
+    dtr_url: str = "http://dtr:4003"
+
+    # Vault (for secrets management)
+    vault_url: str = "http://vault:8200"
+    vault_token: str | None = None
+
+    # Catena-X specific
+    catena_x_portal_url: str | None = None
+    catena_x_bpn: str | None = None
+
+    # PLC4X Bridge (industrial protocol integration)
+    plc4x_bridge_url: str | None = None
+    plc4x_bridge_enabled: bool = False
+
+    # Mnestix (AAS viewer/browser)
+    mnestix_enabled: bool = True
+    mnestix_url: str = "http://mnestix:3000"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
@@ -141,6 +182,7 @@ class Settings(BaseSettings):
         "mapper_cache_dir",
         "local_templates_dir",
         "magic_import_cache_dir",
+        "dataspace_cache_dir",
         mode="before",
     )
     @classmethod
