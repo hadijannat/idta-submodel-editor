@@ -263,3 +263,227 @@ class HealthCheckResult:
             "message": self.message,
             "checked_at": self.checked_at.isoformat(),
         }
+
+
+class TransferState(str, Enum):
+    """State of a data transfer process."""
+
+    INITIAL = "initial"
+    PROVISIONING = "provisioning"
+    PROVISIONED = "provisioned"
+    REQUESTING = "requesting"
+    STARTED = "started"
+    SUSPENDED = "suspended"
+    COMPLETED = "completed"
+    TERMINATED = "terminated"
+    DEPROVISIONING = "deprovisioning"
+    DEPROVISIONED = "deprovisioned"
+    ERROR = "error"
+
+
+@dataclass
+class TransferProcess:
+    """
+    Internal state for a data transfer process.
+
+    Tracks the transfer of data from a provider to consumer after
+    a contract has been negotiated.
+    """
+
+    transfer_id: str
+    connection_id: str
+    agreement_id: str
+    asset_id: str
+    provider_bpn: str
+    consumer_bpn: str | None = None
+    state: TransferState = TransferState.INITIAL
+    edc_transfer_id: str | None = None  # ID assigned by EDC
+    edr_endpoint: str | None = None  # Endpoint Data Reference URL
+    edr_token: str | None = None  # EDR auth token
+    edr_expires_at: datetime | None = None
+    data_destination: str | None = None  # Where to send the data
+    transfer_type: str = "HttpData-PULL"  # HttpData-PULL, HttpData-PUSH, etc.
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary for JSON persistence."""
+        return {
+            "transfer_id": self.transfer_id,
+            "connection_id": self.connection_id,
+            "agreement_id": self.agreement_id,
+            "asset_id": self.asset_id,
+            "provider_bpn": self.provider_bpn,
+            "consumer_bpn": self.consumer_bpn,
+            "state": self.state.value,
+            "edc_transfer_id": self.edc_transfer_id,
+            "edr_endpoint": self.edr_endpoint,
+            "edr_token": self.edr_token,
+            "edr_expires_at": self.edr_expires_at.isoformat() if self.edr_expires_at else None,
+            "data_destination": self.data_destination,
+            "transfer_type": self.transfer_type,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "error_message": self.error_message,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TransferProcess":
+        """Deserialize from dictionary."""
+        return cls(
+            transfer_id=data["transfer_id"],
+            connection_id=data["connection_id"],
+            agreement_id=data["agreement_id"],
+            asset_id=data["asset_id"],
+            provider_bpn=data["provider_bpn"],
+            consumer_bpn=data.get("consumer_bpn"),
+            state=TransferState(data["state"]),
+            edc_transfer_id=data.get("edc_transfer_id"),
+            edr_endpoint=data.get("edr_endpoint"),
+            edr_token=data.get("edr_token"),
+            edr_expires_at=(
+                datetime.fromisoformat(data["edr_expires_at"])
+                if data.get("edr_expires_at")
+                else None
+            ),
+            data_destination=data.get("data_destination"),
+            transfer_type=data.get("transfer_type", "HttpData-PULL"),
+            created_at=datetime.fromisoformat(data["created_at"]),
+            updated_at=datetime.fromisoformat(data["updated_at"]),
+            started_at=(
+                datetime.fromisoformat(data["started_at"])
+                if data.get("started_at")
+                else None
+            ),
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"])
+                if data.get("completed_at")
+                else None
+            ),
+            error_message=data.get("error_message"),
+            metadata=data.get("metadata", {}),
+        )
+
+    @property
+    def is_terminal(self) -> bool:
+        """Check if transfer is in a terminal state."""
+        return self.state in (
+            TransferState.COMPLETED,
+            TransferState.TERMINATED,
+            TransferState.ERROR,
+        )
+
+    @property
+    def is_active(self) -> bool:
+        """Check if transfer is actively in progress."""
+        return self.state in (
+            TransferState.PROVISIONING,
+            TransferState.REQUESTING,
+            TransferState.STARTED,
+        )
+
+
+class AuditEventType(str, Enum):
+    """Type of audit event."""
+
+    # Connection events
+    CONNECTION_CREATED = "connection_created"
+    CONNECTION_CONNECTED = "connection_connected"
+    CONNECTION_DISCONNECTED = "connection_disconnected"
+    CONNECTION_FAILED = "connection_failed"
+    CONNECTION_HEALTH_CHECK = "connection_health_check"
+
+    # Publication events
+    PUBLICATION_STARTED = "publication_started"
+    PUBLICATION_COMPLETED = "publication_completed"
+    PUBLICATION_FAILED = "publication_failed"
+    PUBLICATION_UPDATED = "publication_updated"
+    PUBLICATION_UNPUBLISHED = "publication_unpublished"
+
+    # Catalog events
+    CATALOG_SEARCHED = "catalog_searched"
+    PROVIDER_ADDED = "provider_added"
+
+    # Negotiation events
+    NEGOTIATION_INITIATED = "negotiation_initiated"
+    NEGOTIATION_COMPLETED = "negotiation_completed"
+    NEGOTIATION_FAILED = "negotiation_failed"
+    NEGOTIATION_TERMINATED = "negotiation_terminated"
+
+    # Transfer events
+    TRANSFER_INITIATED = "transfer_initiated"
+    TRANSFER_STARTED = "transfer_started"
+    TRANSFER_COMPLETED = "transfer_completed"
+    TRANSFER_FAILED = "transfer_failed"
+    TRANSFER_TERMINATED = "transfer_terminated"
+
+    # Policy events
+    POLICY_CREATED = "policy_created"
+    POLICY_UPDATED = "policy_updated"
+    POLICY_DELETED = "policy_deleted"
+
+    # General events
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
+@dataclass
+class AuditLogEntry:
+    """
+    Audit log entry for dataspace events.
+
+    Provides a complete audit trail of all dataspace operations.
+    """
+
+    entry_id: str
+    event_type: AuditEventType
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    connection_id: str | None = None
+    resource_id: str | None = None
+    resource_type: str | None = None  # connection, publication, transfer, negotiation, policy
+    actor: str | None = None  # User or system ID
+    action: str = ""  # Human-readable action description
+    details: dict[str, Any] = field(default_factory=dict)
+    success: bool = True
+    error_message: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary for JSON persistence."""
+        return {
+            "entry_id": self.entry_id,
+            "event_type": self.event_type.value,
+            "timestamp": self.timestamp.isoformat(),
+            "connection_id": self.connection_id,
+            "resource_id": self.resource_id,
+            "resource_type": self.resource_type,
+            "actor": self.actor,
+            "action": self.action,
+            "details": self.details,
+            "success": self.success,
+            "error_message": self.error_message,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AuditLogEntry":
+        """Deserialize from dictionary."""
+        return cls(
+            entry_id=data["entry_id"],
+            event_type=AuditEventType(data["event_type"]),
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            connection_id=data.get("connection_id"),
+            resource_id=data.get("resource_id"),
+            resource_type=data.get("resource_type"),
+            actor=data.get("actor"),
+            action=data.get("action", ""),
+            details=data.get("details", {}),
+            success=data.get("success", True),
+            error_message=data.get("error_message"),
+        )

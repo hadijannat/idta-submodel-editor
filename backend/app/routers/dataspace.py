@@ -20,9 +20,14 @@ from app.errors import APIError, ErrorCode
 from app.schemas.dataspace import (
     # Enums
     AccessType,
+    AuditEventType as AuditEventTypeSchema,
     DataspaceConnectionStatus,
+    NegotiationStatus,
     PublicationStatus,
+    TransferStatus,
     # Connection types
+    ConnectorCapability,
+    ConnectorEndpoint,
     CreateConnectionRequest,
     CreateConnectionResponse,
     ConnectionStatusResponse,
@@ -30,6 +35,7 @@ from app.schemas.dataspace import (
     DisconnectRequest,
     DisconnectResponse,
     ListConnectionsResponse,
+    SelfDescriptionResponse,
     # Publication types
     ListPublicationsResponse,
     PolicyConfig,
@@ -43,14 +49,36 @@ from app.schemas.dataspace import (
     # Health types
     HealthCheckResponse,
     HealthCheckResult,
+    # Catalog types
+    CatalogOffer,
+    CatalogProviderInfo,
+    ListProvidersResponse,
+    NegotiateContractRequest,
+    NegotiationResponse,
+    SearchCatalogDetailedResponse,
+    SearchCatalogRequest,
+    # Transfer types
+    InitiateTransferRequest,
+    ListTransfersResponse,
+    Transfer,
+    TransferEDR,
+    TransferEDRResponse,
+    TransferResponse,
+    # Audit types
+    AuditEvent,
+    ListAuditLogsResponse,
 )
+from app.services.dataspace.catalog_service import CatalogService, CatalogServiceError
 from app.services.dataspace.connection_manager import ConnectionManager
 from app.services.dataspace.health import DataspaceHealthChecker
 from app.services.dataspace.identity.vault_client import VaultClient
 from app.services.dataspace.models import (
+    AuditEventType as InternalAuditEventType,
     ConnectionStatus as InternalConnectionStatus,
     DataspaceType,
+    TransferState as InternalTransferState,
 )
+from app.services.dataspace.audit_service import AuditService
 from app.services.dataspace.policy.engine import PolicyEngine
 from app.services.dataspace.policy.store import PolicyStore
 from app.services.dataspace.policy.odrl_builder import ODRLBuilder
@@ -84,6 +112,16 @@ def get_policy_engine() -> PolicyEngine:
 def get_policy_store() -> PolicyStore:
     """Get policy store instance."""
     return PolicyStore()
+
+
+def get_catalog_service() -> CatalogService:
+    """Get catalog service instance."""
+    return CatalogService()
+
+
+def get_audit_service() -> AuditService:
+    """Get audit service instance."""
+    return AuditService()
 
 
 def _check_dataspace_enabled() -> None:
@@ -126,6 +164,44 @@ def _map_internal_status(status: InternalConnectionStatus) -> DataspaceConnectio
         InternalConnectionStatus.AUTHENTICATING: DataspaceConnectionStatus.PROVISIONING_SECRETS,
     }
     return status_map.get(status, DataspaceConnectionStatus.NOT_CONNECTED)
+
+
+def _map_transfer_state(state: InternalTransferState) -> TransferStatus:
+    """Map internal transfer state to API status."""
+    state_map = {
+        InternalTransferState.INITIAL: TransferStatus.INITIAL,
+        InternalTransferState.PROVISIONING: TransferStatus.PROVISIONING,
+        InternalTransferState.PROVISIONED: TransferStatus.PROVISIONED,
+        InternalTransferState.REQUESTING: TransferStatus.REQUESTING,
+        InternalTransferState.STARTED: TransferStatus.STARTED,
+        InternalTransferState.SUSPENDED: TransferStatus.SUSPENDED,
+        InternalTransferState.COMPLETED: TransferStatus.COMPLETED,
+        InternalTransferState.TERMINATED: TransferStatus.TERMINATED,
+        InternalTransferState.DEPROVISIONING: TransferStatus.DEPROVISIONING,
+        InternalTransferState.DEPROVISIONED: TransferStatus.DEPROVISIONED,
+        InternalTransferState.ERROR: TransferStatus.ERROR,
+    }
+    return state_map.get(state, TransferStatus.INITIAL)
+
+
+def _transfer_to_response(transfer) -> Transfer:
+    """Convert internal transfer state to API response model."""
+    return Transfer(
+        transfer_id=transfer.transfer_id,
+        connection_id=transfer.connection_id,
+        agreement_id=transfer.agreement_id,
+        asset_id=transfer.asset_id,
+        provider_bpn=transfer.provider_bpn,
+        consumer_bpn=transfer.consumer_bpn,
+        state=_map_transfer_state(transfer.state),
+        transfer_type=transfer.transfer_type,
+        data_destination=transfer.data_destination,
+        created_at=transfer.created_at,
+        updated_at=transfer.updated_at,
+        started_at=transfer.started_at,
+        completed_at=transfer.completed_at,
+        error_message=transfer.error_message,
+    )
 
 
 def _map_dataspace_type(env: str) -> DataspaceType:
@@ -353,6 +429,110 @@ async def get_connection(
     return ConnectionStatusResponse(
         connection=_connection_to_response(connection),
         health_checks=api_health_results,
+    )
+
+
+@router.get("/connections/{connection_id}/self-description", response_model=SelfDescriptionResponse)
+async def get_self_description(
+    connection_id: str,
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    health_checker: Annotated[DataspaceHealthChecker, Depends(get_health_checker)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> SelfDescriptionResponse:
+    """
+    Get the connector self-description for a connection.
+
+    Returns IDS/Gaia-X style self-description with connector info,
+    endpoints, and capabilities.
+    """
+    _check_dataspace_enabled()
+
+    connection = conn_manager.get_connection(connection_id)
+    if connection is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
+    _assert_owner(connection, user)
+
+    # Build endpoints list
+    endpoints = []
+    if connection.provider_url:
+        endpoints.append(ConnectorEndpoint(
+            name="BaSyx AAS Server",
+            url=connection.provider_url,
+            protocol="HTTP/REST",
+            healthy=None,
+        ))
+    if connection.dtr_url:
+        endpoints.append(ConnectorEndpoint(
+            name="Digital Twin Registry",
+            url=connection.dtr_url,
+            protocol="HTTP/REST",
+            healthy=None,
+        ))
+    if connection.edc_url:
+        endpoints.append(ConnectorEndpoint(
+            name="EDC Control Plane",
+            url=connection.edc_url,
+            protocol="DSP",
+            healthy=None,
+        ))
+
+    # Get EDC data plane URL from metadata if available
+    edc_data_url = connection.metadata.get("edc_data_url")
+    if edc_data_url:
+        endpoints.append(ConnectorEndpoint(
+            name="EDC Data Plane",
+            url=edc_data_url,
+            protocol="HTTP/REST",
+            healthy=None,
+        ))
+
+    # Build capabilities list based on connection type
+    capabilities = [
+        ConnectorCapability(name="AAS Submodel Hosting", version="3.0", enabled=True),
+        ConnectorCapability(name="Digital Twin Registry", version="3.0", enabled=bool(connection.dtr_url)),
+    ]
+
+    # Add EDC capabilities
+    edc_mode = connection.metadata.get("edc_mode", "tractus-x")
+    if edc_mode == "tractus-x":
+        capabilities.extend([
+            ConnectorCapability(name="Tractus-X EDC", version="0.7.x", enabled=True),
+            ConnectorCapability(name="ODRL Policy Enforcement", version="2.2", enabled=True),
+            ConnectorCapability(name="Contract Negotiation (DSP)", version="2024-1", enabled=True),
+            ConnectorCapability(name="Data Transfer (HTTP-PULL)", version="1.0", enabled=True),
+        ])
+    else:
+        capabilities.append(
+            ConnectorCapability(name="AAS Extension EDC", version="1.0", enabled=True)
+        )
+
+    # Determine environment display name
+    env = connection.dataspace_type.value
+    env_names = {
+        "sandbox": "Local Sandbox",
+        "catena-x": "Catena-X Production",
+        "manufacturing-x": "Manufacturing-X",
+    }
+    env_display = env_names.get(env, env.replace("-", " ").title())
+
+    return SelfDescriptionResponse(
+        connection_id=connection.connection_id,
+        connector_id=f"urn:connector:{connection.connection_id}",
+        bpn=connection.bpn,
+        environment=env,
+        edc_mode=edc_mode,
+        title=f"IDTA Submodel Editor - {env_display}",
+        description="Digital twin connector for AAS submodel publication and exchange",
+        maintainer="IDTA Submodel Editor",
+        endpoints=endpoints,
+        capabilities=capabilities,
+        security_profile="idsc:BASE_SECURITY_PROFILE",
+        created_at=connection.created_at,
+        raw_jsonld=None,  # Could be populated from actual IDS self-description
     )
 
 
@@ -1309,3 +1489,752 @@ async def get_edc_modes(
     ]
 
     return modes
+
+
+# ---------------------------------------------------------------------------
+# Catalog Browsing Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/catalog/search", response_model=SearchCatalogDetailedResponse)
+async def search_catalog(
+    request: SearchCatalogRequest,
+    catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> SearchCatalogDetailedResponse:
+    """
+    Search a provider's catalog for available offers.
+
+    Queries the specified provider's EDC catalog and returns matching offers.
+    Requires a provider_address to be specified in the request.
+    """
+    _check_dataspace_enabled()
+
+    # Verify connection exists and is owned by user
+    connection = conn_manager.get_connection(request.connection_id)
+    if connection is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": request.connection_id},
+        )
+    _assert_owner(connection, user)
+
+    if connection.status != InternalConnectionStatus.CONNECTED:
+        raise APIError(
+            code=ErrorCode.RESOURCE_CONFLICT,
+            message="Connection is not active",
+            detail={"current_status": connection.status.value},
+        )
+
+    # Provider address is required for catalog search
+    if not request.provider_bpn:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="provider_bpn is required for catalog search",
+        )
+
+    # Get known provider address
+    providers = await catalog_service.list_providers(request.connection_id)
+    provider = next((p for p in providers if p.bpn == request.provider_bpn), None)
+
+    if provider is None:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Unknown provider. Add the provider first using /catalog/providers endpoint.",
+            detail={"provider_bpn": request.provider_bpn},
+        )
+
+    try:
+        offers, total = await catalog_service.search_catalog(
+            connection_id=request.connection_id,
+            provider_address=provider.protocol_address,
+            provider_bpn=request.provider_bpn,
+            semantic_id=request.semantic_id,
+            limit=request.limit,
+            offset=request.offset,
+        )
+
+        return SearchCatalogDetailedResponse(
+            offers=[
+                CatalogOffer(
+                    offer_id=o.offer_id,
+                    asset_id=o.asset_id,
+                    provider_bpn=o.provider_bpn,
+                    policy=o.policy,
+                    properties=o.properties,
+                    content_type=o.content_type,
+                    name=o.name,
+                    description=o.description,
+                )
+                for o in offers
+            ],
+            total=total,
+            has_more=total > request.offset + len(offers),
+        )
+
+    except CatalogServiceError as e:
+        logger.exception("Catalog search failed")
+        raise APIError(
+            code=ErrorCode.UPSTREAM_ERROR,
+            message=f"Catalog search failed: {e}",
+        )
+
+
+@router.get(
+    "/catalog/{connection_id}/providers",
+    response_model=ListProvidersResponse,
+)
+async def list_catalog_providers(
+    connection_id: str,
+    catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> ListProvidersResponse:
+    """
+    List known catalog providers for a connection.
+
+    Returns providers that have been previously added or discovered.
+    """
+    _check_dataspace_enabled()
+
+    # Verify connection exists and is owned by user
+    connection = conn_manager.get_connection(connection_id)
+    if connection is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
+    _assert_owner(connection, user)
+
+    providers = await catalog_service.list_providers(connection_id)
+
+    return ListProvidersResponse(
+        providers=[
+            CatalogProviderInfo(
+                bpn=p.bpn,
+                name=p.name,
+                protocol_address=p.protocol_address,
+                last_seen=p.last_seen,
+            )
+            for p in providers
+        ]
+    )
+
+
+@router.post(
+    "/catalog/{connection_id}/providers",
+    response_model=CatalogProviderInfo,
+    status_code=201,
+)
+async def add_catalog_provider(
+    connection_id: str,
+    bpn: Annotated[str, Query(description="Provider's Business Partner Number")],
+    protocol_address: Annotated[str, Query(description="Provider's DSP protocol address")],
+    name: Annotated[str | None, Query(description="Provider display name")] = None,
+    catalog_service: Annotated[CatalogService, Depends(get_catalog_service)] = None,
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)] = None,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> CatalogProviderInfo:
+    """
+    Add a provider to the known providers list.
+
+    The provider's address is needed to query their catalog.
+    """
+    _check_dataspace_enabled()
+
+    # Verify connection exists and is owned by user
+    connection = conn_manager.get_connection(connection_id)
+    if connection is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
+    _assert_owner(connection, user)
+
+    provider = await catalog_service.add_provider(
+        connection_id=connection_id,
+        bpn=bpn,
+        protocol_address=protocol_address,
+        name=name,
+    )
+
+    return CatalogProviderInfo(
+        bpn=provider.bpn,
+        name=provider.name,
+        protocol_address=provider.protocol_address,
+        last_seen=provider.last_seen,
+    )
+
+
+@router.post("/catalog/negotiate", response_model=NegotiationResponse, status_code=201)
+async def initiate_catalog_negotiation(
+    request: NegotiateContractRequest,
+    catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> NegotiationResponse:
+    """
+    Initiate a contract negotiation for a catalog offer.
+
+    Starts the EDC contract negotiation process. The negotiation_id can be
+    used to poll for status updates until the contract is finalized.
+    """
+    _check_dataspace_enabled()
+
+    # Verify connection exists and is owned by user
+    connection = conn_manager.get_connection(request.connection_id)
+    if connection is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": request.connection_id},
+        )
+    _assert_owner(connection, user)
+
+    if connection.status != InternalConnectionStatus.CONNECTED:
+        raise APIError(
+            code=ErrorCode.RESOURCE_CONFLICT,
+            message="Connection is not active",
+            detail={"current_status": connection.status.value},
+        )
+
+    try:
+        negotiation = await catalog_service.initiate_negotiation(
+            connection_id=request.connection_id,
+            provider_address=request.provider_address,
+            offer_id=request.offer_id,
+            asset_id=request.asset_id,
+            policy=request.policy,
+        )
+
+        # Map internal state to API state
+        state_map = {
+            "initial": NegotiationStatus.INITIAL,
+            "requesting": NegotiationStatus.REQUESTING,
+            "offered": NegotiationStatus.OFFERED,
+            "agreeing": NegotiationStatus.AGREEING,
+            "agreed": NegotiationStatus.AGREED,
+            "verifying": NegotiationStatus.VERIFYING,
+            "verified": NegotiationStatus.VERIFIED,
+            "finalized": NegotiationStatus.FINALIZED,
+            "terminated": NegotiationStatus.TERMINATED,
+            "error": NegotiationStatus.ERROR,
+        }
+
+        return NegotiationResponse(
+            negotiation_id=negotiation.negotiation_id,
+            state=state_map.get(negotiation.state.value, NegotiationStatus.INITIAL),
+            agreement_id=negotiation.agreement_id,
+            error_message=negotiation.error_message,
+            created_at=negotiation.created_at,
+            updated_at=negotiation.updated_at,
+        )
+
+    except CatalogServiceError as e:
+        logger.exception("Failed to initiate negotiation")
+        raise APIError(
+            code=ErrorCode.UPSTREAM_ERROR,
+            message=f"Failed to initiate negotiation: {e}",
+        )
+
+
+@router.get("/catalog/negotiations/{negotiation_id}", response_model=NegotiationResponse)
+async def get_negotiation_status(
+    negotiation_id: str,
+    catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> NegotiationResponse:
+    """
+    Get the current status of a contract negotiation.
+
+    Polls the EDC for the latest negotiation state.
+    """
+    _check_dataspace_enabled()
+
+    negotiation = await catalog_service.get_negotiation_status(negotiation_id)
+    if negotiation is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Negotiation not found",
+            detail={"negotiation_id": negotiation_id},
+        )
+
+    # Verify ownership
+    connection = conn_manager.get_connection(negotiation.connection_id)
+    if connection:
+        _assert_owner(connection, user)
+
+    # Map internal state to API state
+    state_map = {
+        "initial": NegotiationStatus.INITIAL,
+        "requesting": NegotiationStatus.REQUESTING,
+        "offered": NegotiationStatus.OFFERED,
+        "agreeing": NegotiationStatus.AGREEING,
+        "agreed": NegotiationStatus.AGREED,
+        "verifying": NegotiationStatus.VERIFYING,
+        "verified": NegotiationStatus.VERIFIED,
+        "finalized": NegotiationStatus.FINALIZED,
+        "terminated": NegotiationStatus.TERMINATED,
+        "error": NegotiationStatus.ERROR,
+    }
+
+    return NegotiationResponse(
+        negotiation_id=negotiation.negotiation_id,
+        state=state_map.get(negotiation.state.value, NegotiationStatus.INITIAL),
+        agreement_id=negotiation.agreement_id,
+        error_message=negotiation.error_message,
+        created_at=negotiation.created_at,
+        updated_at=negotiation.updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Transfer Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/transfers", response_model=TransferResponse, status_code=201)
+async def initiate_transfer(
+    request: InitiateTransferRequest,
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> TransferResponse:
+    """
+    Initiate a data transfer after contract negotiation.
+
+    Starts the EDC transfer process using a finalized contract agreement.
+    The transfer uses the specified transfer type (HttpData-PULL or HttpData-PUSH).
+    """
+    _check_dataspace_enabled()
+
+    # Verify connection exists and is owned by user
+    connection = conn_manager.get_connection(request.connection_id)
+    if connection is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": request.connection_id},
+        )
+    _assert_owner(connection, user)
+
+    if connection.status != InternalConnectionStatus.CONNECTED:
+        raise APIError(
+            code=ErrorCode.RESOURCE_CONFLICT,
+            message="Connection is not active",
+            detail={"current_status": connection.status.value},
+        )
+
+    try:
+        # Create transfer record
+        transfer = conn_manager.create_transfer(
+            connection_id=request.connection_id,
+            agreement_id=request.agreement_id,
+            asset_id=request.asset_id,
+            provider_bpn=request.provider_bpn or "unknown",
+            consumer_bpn=connection.bpn,
+            transfer_type=request.transfer_type,
+            data_destination=request.data_destination,
+            metadata={
+                "provider_address": request.provider_address,
+            },
+        )
+
+        # Queue background transfer task
+        try:
+            from app.services.dataspace.tasks import initiate_transfer_task
+
+            initiate_transfer_task.delay(
+                transfer.transfer_id,
+                request.provider_address,
+            )
+            logger.info("Queued transfer %s for asset %s", transfer.transfer_id, request.asset_id)
+        except Exception as e:
+            logger.warning("Celery unavailable for transfer: %s", e)
+
+        return TransferResponse(
+            transfer=_transfer_to_response(transfer),
+            message="Transfer initiated. Processing in background.",
+        )
+
+    except Exception as e:
+        logger.exception("Failed to initiate transfer")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message=f"Failed to initiate transfer: {e}",
+        )
+
+
+@router.get("/transfers", response_model=ListTransfersResponse)
+async def list_transfers(
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    connection_id: Annotated[str | None, Query()] = None,
+    status: Annotated[TransferStatus | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> ListTransfersResponse:
+    """
+    List data transfers.
+
+    Supports filtering by connection ID and transfer status.
+    """
+    _check_dataspace_enabled()
+
+    try:
+        owner_id = _get_owner_id(user)
+        allowed_connection_ids = None
+        if owner_id:
+            allowed_connection_ids = {
+                conn.connection_id
+                for conn in conn_manager.list_connections(owner_id=owner_id, limit=100)
+            }
+
+        if connection_id and allowed_connection_ids is not None:
+            if connection_id not in allowed_connection_ids:
+                raise APIError(
+                    code=ErrorCode.RESOURCE_NOT_FOUND,
+                    message="Access denied for this connection",
+                    status_code=403,
+                )
+
+        # Map API status to internal state
+        internal_state = None
+        if status:
+            state_reverse_map = {
+                TransferStatus.INITIAL: InternalTransferState.INITIAL,
+                TransferStatus.PROVISIONING: InternalTransferState.PROVISIONING,
+                TransferStatus.PROVISIONED: InternalTransferState.PROVISIONED,
+                TransferStatus.REQUESTING: InternalTransferState.REQUESTING,
+                TransferStatus.STARTED: InternalTransferState.STARTED,
+                TransferStatus.SUSPENDED: InternalTransferState.SUSPENDED,
+                TransferStatus.COMPLETED: InternalTransferState.COMPLETED,
+                TransferStatus.TERMINATED: InternalTransferState.TERMINATED,
+                TransferStatus.DEPROVISIONING: InternalTransferState.DEPROVISIONING,
+                TransferStatus.DEPROVISIONED: InternalTransferState.DEPROVISIONED,
+                TransferStatus.ERROR: InternalTransferState.ERROR,
+            }
+            internal_state = state_reverse_map.get(status)
+
+        transfers = conn_manager.list_transfers(
+            connection_id=connection_id,
+            state=internal_state,
+            limit=limit,
+        )
+
+        # Filter by allowed connections if auth is enabled
+        if allowed_connection_ids is not None:
+            transfers = [
+                t for t in transfers
+                if t.connection_id in allowed_connection_ids
+            ]
+
+        return ListTransfersResponse(
+            transfers=[_transfer_to_response(t) for t in transfers],
+            total=len(transfers),
+        )
+
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to list transfers")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to list transfers",
+        )
+
+
+@router.get("/transfers/{transfer_id}", response_model=Transfer)
+async def get_transfer(
+    transfer_id: str,
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> Transfer:
+    """
+    Get details of a specific transfer.
+    """
+    _check_dataspace_enabled()
+
+    transfer = conn_manager.get_transfer(transfer_id)
+    if transfer is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Transfer not found",
+            detail={"transfer_id": transfer_id},
+        )
+
+    # Verify ownership
+    connection = conn_manager.get_connection(transfer.connection_id)
+    if connection:
+        _assert_owner(connection, user)
+
+    return _transfer_to_response(transfer)
+
+
+@router.get("/transfers/{transfer_id}/edr", response_model=TransferEDRResponse)
+async def get_transfer_edr(
+    transfer_id: str,
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> TransferEDRResponse:
+    """
+    Get the Endpoint Data Reference (EDR) for accessing transferred data.
+
+    The EDR contains the authentication credentials and endpoint URL
+    needed to access the data from the provider.
+    """
+    _check_dataspace_enabled()
+
+    transfer = conn_manager.get_transfer(transfer_id)
+    if transfer is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Transfer not found",
+            detail={"transfer_id": transfer_id},
+        )
+
+    # Verify ownership
+    connection = conn_manager.get_connection(transfer.connection_id)
+    if connection:
+        _assert_owner(connection, user)
+
+    # Check if transfer has EDR
+    if not transfer.edr_endpoint or not transfer.edr_token:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="EDR not available for this transfer",
+            detail={
+                "transfer_id": transfer_id,
+                "state": transfer.state.value,
+                "hint": "EDR is only available for transfers in STARTED or COMPLETED state",
+            },
+        )
+
+    # Check if EDR is still valid
+    now = datetime.utcnow()
+    is_valid = transfer.edr_expires_at is None or transfer.edr_expires_at > now
+
+    return TransferEDRResponse(
+        edr=TransferEDR(
+            transfer_id=transfer_id,
+            endpoint=transfer.edr_endpoint,
+            auth_type="bearer",
+            auth_token=transfer.edr_token,
+            expires_at=transfer.edr_expires_at,
+        ),
+        valid=is_valid,
+    )
+
+
+@router.post("/transfers/{transfer_id}/terminate", response_model=Transfer)
+async def terminate_transfer(
+    transfer_id: str,
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> Transfer:
+    """
+    Terminate an active transfer.
+
+    Stops the transfer process and releases any resources.
+    """
+    _check_dataspace_enabled()
+
+    transfer = conn_manager.get_transfer(transfer_id)
+    if transfer is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Transfer not found",
+            detail={"transfer_id": transfer_id},
+        )
+
+    # Verify ownership
+    connection = conn_manager.get_connection(transfer.connection_id)
+    if connection:
+        _assert_owner(connection, user)
+
+    # Check if transfer can be terminated
+    if transfer.is_terminal:
+        raise APIError(
+            code=ErrorCode.RESOURCE_CONFLICT,
+            message="Transfer is already in a terminal state",
+            detail={"current_state": transfer.state.value},
+        )
+
+    try:
+        # Queue background termination task
+        try:
+            from app.services.dataspace.tasks import terminate_transfer_task
+
+            terminate_transfer_task.delay(transfer_id)
+            logger.info("Queued termination for transfer %s", transfer_id)
+        except Exception as e:
+            logger.warning("Celery unavailable for termination: %s", e)
+
+        # Update local state
+        transfer = conn_manager.update_transfer(
+            transfer_id,
+            state=InternalTransferState.TERMINATED,
+            completed_at=datetime.utcnow(),
+        )
+
+        return _transfer_to_response(transfer)
+
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to terminate transfer")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message=f"Failed to terminate transfer: {e}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Audit Log Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/audit", response_model=ListAuditLogsResponse)
+async def list_audit_logs(
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    connection_id: Annotated[str | None, Query()] = None,
+    event_type: Annotated[AuditEventTypeSchema | None, Query()] = None,
+    resource_type: Annotated[str | None, Query()] = None,
+    start_date: Annotated[datetime | None, Query()] = None,
+    end_date: Annotated[datetime | None, Query()] = None,
+    success: Annotated[bool | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> ListAuditLogsResponse:
+    """
+    List audit log entries with optional filters.
+
+    Returns audit events for dataspace operations with support for
+    filtering by connection, event type, date range, and success status.
+    """
+    _check_dataspace_enabled()
+
+    try:
+        # If user auth is enabled, filter by owned connections
+        owner_id = _get_owner_id(user)
+        allowed_connection_ids = None
+        if owner_id:
+            allowed_connection_ids = {
+                conn.connection_id
+                for conn in conn_manager.list_connections(owner_id=owner_id, limit=100)
+            }
+
+        # Verify access to specific connection if provided
+        if connection_id and allowed_connection_ids is not None:
+            if connection_id not in allowed_connection_ids:
+                raise APIError(
+                    code=ErrorCode.RESOURCE_NOT_FOUND,
+                    message="Access denied for this connection",
+                    status_code=403,
+                )
+
+        # Map schema event type to internal event type
+        internal_event_type = None
+        if event_type:
+            try:
+                internal_event_type = InternalAuditEventType(event_type.value)
+            except ValueError:
+                pass
+
+        entries, total = audit_service.list_entries(
+            connection_id=connection_id,
+            event_type=internal_event_type,
+            resource_type=resource_type,
+            start_date=start_date,
+            end_date=end_date,
+            success=success,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Filter by allowed connections if auth is enabled
+        if allowed_connection_ids is not None and connection_id is None:
+            entries = [
+                e for e in entries
+                if e.connection_id is None or e.connection_id in allowed_connection_ids
+            ]
+            total = len(entries)
+
+        # Convert to API model
+        api_entries = [
+            AuditEvent(
+                entry_id=e.entry_id,
+                event_type=AuditEventTypeSchema(e.event_type.value),
+                timestamp=e.timestamp,
+                connection_id=e.connection_id,
+                resource_id=e.resource_id,
+                resource_type=e.resource_type,
+                actor=e.actor,
+                action=e.action,
+                details=e.details,
+                success=e.success,
+                error_message=e.error_message,
+            )
+            for e in entries
+        ]
+
+        return ListAuditLogsResponse(
+            entries=api_entries,
+            total=total,
+            has_more=offset + len(entries) < total,
+        )
+
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to list audit logs")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to list audit logs",
+        )
+
+
+@router.get("/audit/{entry_id}", response_model=AuditEvent)
+async def get_audit_entry(
+    entry_id: str,
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> AuditEvent:
+    """
+    Get a specific audit log entry.
+    """
+    _check_dataspace_enabled()
+
+    entry = audit_service.get_entry(entry_id)
+    if entry is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Audit entry not found",
+            detail={"entry_id": entry_id},
+        )
+
+    # Verify ownership if entry has a connection_id
+    if entry.connection_id:
+        connection = conn_manager.get_connection(entry.connection_id)
+        if connection:
+            _assert_owner(connection, user)
+
+    return AuditEvent(
+        entry_id=entry.entry_id,
+        event_type=AuditEventTypeSchema(entry.event_type.value),
+        timestamp=entry.timestamp,
+        connection_id=entry.connection_id,
+        resource_id=entry.resource_id,
+        resource_type=entry.resource_type,
+        actor=entry.actor,
+        action=entry.action,
+        details=entry.details,
+        success=entry.success,
+        error_message=entry.error_message,
+    )

@@ -15,6 +15,8 @@ import pytest
 
 from app.services.dataspace.models import (
     AssetRegistration,
+    AuditEventType,
+    AuditLogEntry,
     ConnectionState,
     ConnectionStatus,
     ContractNegotiation,
@@ -22,6 +24,8 @@ from app.services.dataspace.models import (
     DataspaceType,
     HealthCheckResult,
     RegistrationStatus,
+    TransferProcess,
+    TransferState,
 )
 
 
@@ -38,6 +42,8 @@ def temp_dataspace_dir(tmp_path):
     (dataspace_dir / "connections").mkdir()
     (dataspace_dir / "registrations").mkdir()
     (dataspace_dir / "negotiations").mkdir()
+    (dataspace_dir / "transfers").mkdir()
+    (dataspace_dir / "audit").mkdir()
     return dataspace_dir
 
 
@@ -415,3 +421,197 @@ def sample_policy_config():
             }
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Transfer Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_transfer():
+    """Create a sample transfer process."""
+    return TransferProcess(
+        transfer_id="transfer-12345",
+        connection_id="test-conn-12345",
+        agreement_id="agreement-001",
+        asset_id="urn:asset:test",
+        provider_bpn="BPNL00000001PROV",
+        consumer_bpn="BPNL00000001CONS",
+        state=TransferState.STARTED,
+        edc_transfer_id="edc-transfer-001",
+        transfer_type="HttpData-PULL",
+        created_at=datetime(2024, 1, 1, 16, 0, 0),
+        updated_at=datetime(2024, 1, 1, 16, 5, 0),
+    )
+
+
+@pytest.fixture
+def sample_transfer_completed():
+    """Create a completed transfer process."""
+    return TransferProcess(
+        transfer_id="transfer-completed",
+        connection_id="test-conn-12345",
+        agreement_id="agreement-002",
+        asset_id="urn:asset:test2",
+        provider_bpn="BPNL00000001PROV",
+        consumer_bpn="BPNL00000001CONS",
+        state=TransferState.COMPLETED,
+        edc_transfer_id="edc-transfer-002",
+        edr_endpoint="http://edc:8081/data/transfer-002",
+        edr_token="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+        edr_expires_at=datetime(2024, 1, 2, 16, 0, 0),
+        created_at=datetime(2024, 1, 1, 15, 0, 0),
+        updated_at=datetime(2024, 1, 1, 15, 30, 0),
+        started_at=datetime(2024, 1, 1, 15, 5, 0),
+        completed_at=datetime(2024, 1, 1, 15, 30, 0),
+    )
+
+
+@pytest.fixture
+def sample_transfer_failed():
+    """Create a failed transfer process."""
+    return TransferProcess(
+        transfer_id="transfer-failed",
+        connection_id="test-conn-12345",
+        agreement_id="agreement-003",
+        asset_id="urn:asset:test3",
+        provider_bpn="BPNL00000001PROV",
+        state=TransferState.ERROR,
+        error_message="Provider endpoint unreachable",
+        created_at=datetime(2024, 1, 1, 14, 0, 0),
+        updated_at=datetime(2024, 1, 1, 14, 10, 0),
+    )
+
+
+@pytest.fixture
+def sample_initiate_transfer_request():
+    """Sample request for initiating a transfer."""
+    return {
+        "connection_id": "test-conn-12345",
+        "agreement_id": "agreement-001",
+        "asset_id": "urn:asset:test",
+        "provider_address": "http://provider:8080/api/v1/dsp",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Audit Log Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_audit_entry():
+    """Create a sample audit log entry."""
+    return AuditLogEntry(
+        entry_id="audit-12345",
+        event_type=AuditEventType.CONNECTION_CONNECTED,
+        connection_id="test-conn-12345",
+        resource_id="test-conn-12345",
+        resource_type="connection",
+        actor="user@example.com",
+        action="Connected to sandbox dataspace",
+        details={"environment": "sandbox", "bpn": "BPNL00000001TEST"},
+        success=True,
+        timestamp=datetime(2024, 1, 1, 12, 0, 0),
+    )
+
+
+@pytest.fixture
+def sample_audit_entries():
+    """Create a list of sample audit entries."""
+    return [
+        AuditLogEntry(
+            entry_id="audit-001",
+            event_type=AuditEventType.CONNECTION_CREATED,
+            connection_id="test-conn-12345",
+            resource_type="connection",
+            action="Created connection to sandbox",
+            success=True,
+            timestamp=datetime(2024, 1, 1, 12, 0, 0),
+        ),
+        AuditLogEntry(
+            entry_id="audit-002",
+            event_type=AuditEventType.CONNECTION_CONNECTED,
+            connection_id="test-conn-12345",
+            resource_type="connection",
+            action="Connected to dataspace",
+            success=True,
+            timestamp=datetime(2024, 1, 1, 12, 5, 0),
+        ),
+        AuditLogEntry(
+            entry_id="audit-003",
+            event_type=AuditEventType.PUBLICATION_COMPLETED,
+            connection_id="test-conn-12345",
+            resource_id="pub-001",
+            resource_type="publication",
+            action="Published Nameplate submodel",
+            success=True,
+            timestamp=datetime(2024, 1, 1, 13, 0, 0),
+        ),
+        AuditLogEntry(
+            entry_id="audit-004",
+            event_type=AuditEventType.TRANSFER_COMPLETED,
+            connection_id="test-conn-12345",
+            resource_id="transfer-001",
+            resource_type="transfer",
+            action="Completed data transfer",
+            success=True,
+            timestamp=datetime(2024, 1, 1, 14, 0, 0),
+        ),
+        AuditLogEntry(
+            entry_id="audit-005",
+            event_type=AuditEventType.TRANSFER_FAILED,
+            connection_id="test-conn-12345",
+            resource_id="transfer-002",
+            resource_type="transfer",
+            action="Transfer failed",
+            success=False,
+            error_message="Provider timeout",
+            timestamp=datetime(2024, 1, 1, 15, 0, 0),
+        ),
+    ]
+
+
+@pytest.fixture
+def mock_audit_service(temp_dataspace_dir):
+    """Create an AuditService with temporary directory."""
+    from app.services.dataspace.audit_service import AuditService
+
+    mock_settings = MagicMock()
+    mock_settings.cache_dir = temp_dataspace_dir / "cache"
+    mock_settings.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    with patch("app.services.dataspace.audit_service.get_settings", return_value=mock_settings):
+        service = AuditService()
+        yield service
+
+
+@pytest.fixture
+def mock_catalog_service():
+    """Create a mocked CatalogService."""
+    service = MagicMock()
+    service.search_catalog = AsyncMock(return_value={
+        "offers": [
+            {
+                "offer_id": "offer-001",
+                "asset_id": "urn:asset:test",
+                "provider_bpn": "BPNL00000001PROV",
+                "policy": {"@type": "Offer"},
+                "properties": {"name": "Test Asset"},
+            }
+        ],
+        "total": 1,
+    })
+    service.list_providers = AsyncMock(return_value=[
+        {
+            "bpn": "BPNL00000001PROV",
+            "name": "Test Provider",
+            "protocol_address": "http://provider:8080/api/v1/dsp",
+        }
+    ])
+    service.initiate_negotiation = AsyncMock(return_value={
+        "negotiation_id": "neg-001",
+        "state": "REQUESTED",
+    })
+    return service

@@ -126,6 +126,35 @@ export interface ListConnectionsResponse {
   total: number;
 }
 
+export interface ConnectorEndpoint {
+  name: string;
+  url: string;
+  protocol: string;
+  healthy: boolean | null;
+}
+
+export interface ConnectorCapability {
+  name: string;
+  version: string | null;
+  enabled: boolean;
+}
+
+export interface SelfDescription {
+  connection_id: string;
+  connector_id: string;
+  bpn: string | null;
+  environment: string;
+  edc_mode: string;
+  title: string;
+  description: string | null;
+  maintainer: string | null;
+  endpoints: ConnectorEndpoint[];
+  capabilities: ConnectorCapability[];
+  security_profile: string;
+  created_at: string;
+  raw_jsonld: Record<string, unknown> | null;
+}
+
 export interface DisconnectRequest {
   force?: boolean;
   unpublish_all?: boolean;
@@ -299,6 +328,17 @@ export async function reconnectConnection(
   return apiFetch<CreateConnectionResponse>(
     `/api/dataspace/connections/${encodeURIComponent(connectionId)}/reconnect`,
     { method: 'POST' }
+  );
+}
+
+/**
+ * Get connector self-description for a connection.
+ */
+export async function getSelfDescription(
+  connectionId: string
+): Promise<SelfDescription> {
+  return apiFetch<SelfDescription>(
+    `/api/dataspace/connections/${encodeURIComponent(connectionId)}/self-description`
   );
 }
 
@@ -504,4 +544,445 @@ export async function pollPublicationStatus(
   }
 
   throw new Error('Publication polling timeout');
+}
+
+// ---------------------------------------------------------------------------
+// Catalog Types
+// ---------------------------------------------------------------------------
+
+export type NegotiationStatus =
+  | 'initial'
+  | 'requesting'
+  | 'offered'
+  | 'agreeing'
+  | 'agreed'
+  | 'verifying'
+  | 'verified'
+  | 'finalized'
+  | 'terminated'
+  | 'error';
+
+export interface CatalogProviderInfo {
+  bpn: string;
+  name: string | null;
+  protocol_address: string;
+  last_seen: string | null;
+}
+
+export interface CatalogOffer {
+  offer_id: string;
+  asset_id: string;
+  provider_bpn: string;
+  policy: Record<string, unknown>;
+  properties: Record<string, unknown>;
+  content_type: string | null;
+  name: string | null;
+  description: string | null;
+}
+
+export interface SearchCatalogRequest {
+  connection_id: string;
+  semantic_id?: string | null;
+  provider_bpn?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface SearchCatalogResponse {
+  offers: CatalogOffer[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface ListProvidersResponse {
+  providers: CatalogProviderInfo[];
+}
+
+export interface NegotiateContractRequest {
+  connection_id: string;
+  provider_address: string;
+  offer_id: string;
+  asset_id: string;
+  policy: Record<string, unknown>;
+}
+
+export interface NegotiationResponse {
+  negotiation_id: string;
+  state: NegotiationStatus;
+  agreement_id: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Catalog API
+// ---------------------------------------------------------------------------
+
+/**
+ * Search a provider's catalog for available offers.
+ */
+export async function searchCatalog(
+  request: SearchCatalogRequest
+): Promise<SearchCatalogResponse> {
+  return apiFetch<SearchCatalogResponse>('/api/dataspace/catalog/search', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * List known catalog providers for a connection.
+ */
+export async function listCatalogProviders(
+  connectionId: string
+): Promise<ListProvidersResponse> {
+  return apiFetch<ListProvidersResponse>(
+    `/api/dataspace/catalog/${encodeURIComponent(connectionId)}/providers`
+  );
+}
+
+/**
+ * Add a provider to the known providers list.
+ */
+export async function addCatalogProvider(
+  connectionId: string,
+  bpn: string,
+  protocolAddress: string,
+  name?: string
+): Promise<CatalogProviderInfo> {
+  const params = new URLSearchParams({
+    bpn,
+    protocol_address: protocolAddress,
+  });
+  if (name) params.set('name', name);
+
+  return apiFetch<CatalogProviderInfo>(
+    `/api/dataspace/catalog/${encodeURIComponent(connectionId)}/providers?${params}`,
+    { method: 'POST' }
+  );
+}
+
+/**
+ * Initiate a contract negotiation for a catalog offer.
+ */
+export async function initiateCatalogNegotiation(
+  request: NegotiateContractRequest
+): Promise<NegotiationResponse> {
+  return apiFetch<NegotiationResponse>('/api/dataspace/catalog/negotiate', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Get the current status of a contract negotiation.
+ */
+export async function getNegotiationStatus(
+  negotiationId: string
+): Promise<NegotiationResponse> {
+  return apiFetch<NegotiationResponse>(
+    `/api/dataspace/catalog/negotiations/${encodeURIComponent(negotiationId)}`
+  );
+}
+
+/**
+ * Poll negotiation status until finalized, terminated, error, or timeout.
+ */
+export async function pollNegotiationStatus(
+  negotiationId: string,
+  onProgress: (negotiation: NegotiationResponse) => void,
+  intervalMs: number = 2000,
+  maxAttempts: number = 90 // 3 minutes with 2s interval
+): Promise<NegotiationResponse> {
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    const negotiation = await getNegotiationStatus(negotiationId);
+    onProgress(negotiation);
+
+    // Terminal states
+    if (
+      negotiation.state === 'finalized' ||
+      negotiation.state === 'terminated' ||
+      negotiation.state === 'error'
+    ) {
+      return negotiation;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    attempts++;
+  }
+
+  throw new Error('Negotiation polling timeout');
+}
+
+// ---------------------------------------------------------------------------
+// Transfer Types
+// ---------------------------------------------------------------------------
+
+export type TransferStatus =
+  | 'initial'
+  | 'provisioning'
+  | 'provisioned'
+  | 'requesting'
+  | 'started'
+  | 'suspended'
+  | 'completed'
+  | 'terminated'
+  | 'deprovisioning'
+  | 'deprovisioned'
+  | 'error';
+
+export interface Transfer {
+  transfer_id: string;
+  connection_id: string;
+  agreement_id: string;
+  asset_id: string;
+  provider_bpn: string;
+  consumer_bpn: string | null;
+  state: TransferStatus;
+  transfer_type: string;
+  data_destination: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+export interface InitiateTransferRequest {
+  connection_id: string;
+  agreement_id: string;
+  asset_id: string;
+  provider_address: string;
+  provider_bpn?: string | null;
+  transfer_type?: string;
+  data_destination?: string | null;
+}
+
+export interface TransferResponse {
+  transfer: Transfer;
+  message: string;
+}
+
+export interface ListTransfersResponse {
+  transfers: Transfer[];
+  total: number;
+}
+
+export interface TransferEDR {
+  transfer_id: string;
+  endpoint: string;
+  auth_type: string;
+  auth_token: string;
+  expires_at: string | null;
+}
+
+export interface TransferEDRResponse {
+  edr: TransferEDR;
+  valid: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Transfer API
+// ---------------------------------------------------------------------------
+
+/**
+ * Initiate a data transfer after contract negotiation.
+ */
+export async function initiateTransfer(
+  request: InitiateTransferRequest
+): Promise<TransferResponse> {
+  return apiFetch<TransferResponse>('/api/dataspace/transfers', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * List data transfers.
+ */
+export async function listTransfers(
+  connectionId?: string,
+  status?: TransferStatus,
+  limit: number = 50
+): Promise<ListTransfersResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (connectionId) params.set('connection_id', connectionId);
+  if (status) params.set('status', status);
+
+  return apiFetch<ListTransfersResponse>(
+    `/api/dataspace/transfers?${params}`
+  );
+}
+
+/**
+ * Get details of a specific transfer.
+ */
+export async function getTransfer(transferId: string): Promise<Transfer> {
+  return apiFetch<Transfer>(
+    `/api/dataspace/transfers/${encodeURIComponent(transferId)}`
+  );
+}
+
+/**
+ * Get the EDR for accessing transferred data.
+ */
+export async function getTransferEDR(
+  transferId: string
+): Promise<TransferEDRResponse> {
+  return apiFetch<TransferEDRResponse>(
+    `/api/dataspace/transfers/${encodeURIComponent(transferId)}/edr`
+  );
+}
+
+/**
+ * Terminate an active transfer.
+ */
+export async function terminateTransfer(transferId: string): Promise<Transfer> {
+  return apiFetch<Transfer>(
+    `/api/dataspace/transfers/${encodeURIComponent(transferId)}/terminate`,
+    { method: 'POST' }
+  );
+}
+
+/**
+ * Poll transfer status until completed, terminated, error, or timeout.
+ */
+export async function pollTransferStatus(
+  transferId: string,
+  onProgress: (transfer: Transfer) => void,
+  intervalMs: number = 2000,
+  maxAttempts: number = 150 // 5 minutes with 2s interval
+): Promise<Transfer> {
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    const transfer = await getTransfer(transferId);
+    onProgress(transfer);
+
+    // Terminal states
+    if (
+      transfer.state === 'completed' ||
+      transfer.state === 'terminated' ||
+      transfer.state === 'error' ||
+      transfer.state === 'deprovisioned'
+    ) {
+      return transfer;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    attempts++;
+  }
+
+  throw new Error('Transfer polling timeout');
+}
+
+// ---------------------------------------------------------------------------
+// Audit Log Types
+// ---------------------------------------------------------------------------
+
+export type AuditEventType =
+  // Connection events
+  | 'connection_created'
+  | 'connection_connected'
+  | 'connection_disconnected'
+  | 'connection_failed'
+  | 'connection_health_check'
+  // Publication events
+  | 'publication_started'
+  | 'publication_completed'
+  | 'publication_failed'
+  | 'publication_updated'
+  | 'publication_unpublished'
+  // Catalog events
+  | 'catalog_searched'
+  | 'provider_added'
+  // Negotiation events
+  | 'negotiation_initiated'
+  | 'negotiation_completed'
+  | 'negotiation_failed'
+  | 'negotiation_terminated'
+  // Transfer events
+  | 'transfer_initiated'
+  | 'transfer_started'
+  | 'transfer_completed'
+  | 'transfer_failed'
+  | 'transfer_terminated'
+  // Policy events
+  | 'policy_created'
+  | 'policy_updated'
+  | 'policy_deleted'
+  // General events
+  | 'error'
+  | 'warning'
+  | 'info';
+
+export interface AuditEvent {
+  entry_id: string;
+  event_type: AuditEventType;
+  timestamp: string;
+  connection_id: string | null;
+  resource_id: string | null;
+  resource_type: string | null;
+  actor: string | null;
+  action: string;
+  details: Record<string, unknown>;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface AuditFilters {
+  connection_id?: string | null;
+  event_type?: AuditEventType | null;
+  resource_type?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  success?: boolean | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListAuditLogsResponse {
+  entries: AuditEvent[];
+  total: number;
+  has_more: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Audit Log API
+// ---------------------------------------------------------------------------
+
+/**
+ * List audit log entries with optional filters.
+ */
+export async function listAuditLogs(
+  filters?: AuditFilters
+): Promise<ListAuditLogsResponse> {
+  const params = new URLSearchParams();
+  if (filters?.connection_id) params.set('connection_id', filters.connection_id);
+  if (filters?.event_type) params.set('event_type', filters.event_type);
+  if (filters?.resource_type) params.set('resource_type', filters.resource_type);
+  if (filters?.start_date) params.set('start_date', filters.start_date);
+  if (filters?.end_date) params.set('end_date', filters.end_date);
+  if (filters?.success !== undefined && filters.success !== null) {
+    params.set('success', String(filters.success));
+  }
+  if (filters?.limit) params.set('limit', String(filters.limit));
+  if (filters?.offset) params.set('offset', String(filters.offset));
+
+  const queryString = params.toString();
+  return apiFetch<ListAuditLogsResponse>(
+    `/api/dataspace/audit${queryString ? `?${queryString}` : ''}`
+  );
+}
+
+/**
+ * Get a specific audit log entry.
+ */
+export async function getAuditEntry(entryId: string): Promise<AuditEvent> {
+  return apiFetch<AuditEvent>(
+    `/api/dataspace/audit/${encodeURIComponent(entryId)}`
+  );
 }

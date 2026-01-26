@@ -14,6 +14,10 @@ import { usePublications } from './usePublications';
 import OnboardingWizard from './OnboardingWizard';
 import ConnectionStatus from './ConnectionStatus';
 import PublicationManager from './PublicationManager';
+import CatalogBrowser from './CatalogBrowser';
+import TransferHistory from './TransferHistory';
+import AuditLogViewer from './AuditLogViewer';
+import SelfDescription from './SelfDescription';
 import {
   listConnections,
   type DataspaceConnection,
@@ -31,6 +35,15 @@ interface DataspaceConnectorPanelProps {
 }
 
 type PanelView = 'loading' | 'onboarding' | 'connected' | 'publishing';
+type ConnectedTab = 'publish' | 'catalog' | 'transfers' | 'audit' | 'info';
+
+const TAB_LABELS: Record<ConnectedTab, string> = {
+  publish: 'Publish',
+  catalog: 'Catalog',
+  transfers: 'Transfers',
+  audit: 'Audit Log',
+  info: 'Connector Info',
+};
 
 export default function DataspaceConnectorPanel({
   templateName,
@@ -42,6 +55,7 @@ export default function DataspaceConnectorPanel({
   onPublished,
 }: DataspaceConnectorPanelProps) {
   const [view, setView] = useState<PanelView>('loading');
+  const [activeTab, setActiveTab] = useState<ConnectedTab>('publish');
   const [existingConnection, setExistingConnection] = useState<DataspaceConnection | null>(
     null
   );
@@ -185,143 +199,174 @@ export default function DataspaceConnectorPanel({
   if (view === 'connected' && activeConnection) {
     return (
       <div className="dataspace-connector-panel">
-        <div className="dataspace-connector-panel__header">
-          <h2>Dataspace Publishing</h2>
-          <p className="dataspace-connector-panel__subtitle">
-            Publish your {templateName} submodel to the connected dataspace.
-          </p>
-        </div>
-
-        {/* Connection info card */}
-        <div className="dataspace-connector-panel__connection-card">
-          <div className="dataspace-connector-panel__connection-header">
-            <span className="dataspace-connector-panel__connection-title">
-              Connected Dataspace
-            </span>
+        {/* Compact header with connection status */}
+        <div className="dataspace-connector-panel__header dataspace-connector-panel__header--connected">
+          <div className="dataspace-connector-panel__header-main">
+            <h2>Dataspace</h2>
             <ConnectionStatus status={activeConnection.status} size="sm" />
           </div>
-
-          <div className="dataspace-connector-panel__connection-details">
-            <div className="dataspace-connector-panel__detail">
-              <span className="dataspace-connector-panel__detail-label">
-                Environment:
-              </span>
-              <span className="dataspace-connector-panel__detail-value">
-                {activeConnection.environment === 'sandbox' && 'Sandbox'}
-                {activeConnection.environment === 'catena-x-test' && 'Catena-X Test'}
-                {activeConnection.environment === 'catena-x-prod' && 'Catena-X Production'}
-              </span>
-            </div>
+          <div className="dataspace-connector-panel__header-info">
+            <span className="dataspace-connector-panel__env-badge">
+              {activeConnection.environment === 'sandbox' && 'Sandbox'}
+              {activeConnection.environment === 'catena-x-test' && 'Catena-X Test'}
+              {activeConnection.environment === 'catena-x-prod' && 'Catena-X Prod'}
+              {activeConnection.environment === 'manufacturing-x' && 'Manufacturing-X'}
+            </span>
             {activeConnection.bpn && (
-              <div className="dataspace-connector-panel__detail">
-                <span className="dataspace-connector-panel__detail-label">BPN:</span>
-                <span className="dataspace-connector-panel__detail-value">
-                  {activeConnection.bpn}
-                </span>
-              </div>
+              <span className="dataspace-connector-panel__bpn-badge">
+                {activeConnection.bpn}
+              </span>
             )}
-            <div className="dataspace-connector-panel__detail">
-              <span className="dataspace-connector-panel__detail-label">EDC Mode:</span>
-              <span className="dataspace-connector-panel__detail-value">
-                {activeConnection.edc_mode === 'tractus-x'
-                  ? 'Tractus-X EDC'
-                  : 'AAS Extension'}
-              </span>
-            </div>
           </div>
+          <div className="dataspace-connector-panel__header-actions">
+            <button
+              type="button"
+              className="dataspace-connector-panel__btn--icon"
+              onClick={() => refreshStatus()}
+              title="Refresh Status"
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              className="dataspace-connector-panel__btn--icon dataspace-connector-panel__btn--danger"
+              onClick={handleDisconnect}
+              title="Disconnect"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
 
-          {/* Health checks */}
-          {healthChecks.length > 0 && (
-            <div className="dataspace-connector-panel__health">
-              <span className="dataspace-connector-panel__health-title">
-                Component Health
-              </span>
-              <div className="dataspace-connector-panel__health-checks">
-                {healthChecks.map((check) => (
-                  <div
-                    key={check.component}
-                    className={`dataspace-connector-panel__health-check ${
-                      check.healthy
-                        ? 'dataspace-connector-panel__health-check--healthy'
-                        : 'dataspace-connector-panel__health-check--unhealthy'
-                    }`}
-                  >
-                    <span className="dataspace-connector-panel__health-icon">
-                      {check.healthy ? '\u2713' : '\u2717'}
-                    </span>
-                    <span className="dataspace-connector-panel__health-name">
-                      {check.component}
-                    </span>
-                    {check.latency_ms && (
-                      <span className="dataspace-connector-panel__health-latency">
-                        {Math.round(check.latency_ms)}ms
-                      </span>
-                    )}
+        {/* Tab navigation */}
+        <div className="dataspace-connector-panel__tabs">
+          {(Object.keys(TAB_LABELS) as ConnectedTab[]).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              className={`dataspace-connector-panel__tab ${
+                activeTab === tab ? 'dataspace-connector-panel__tab--active' : ''
+              }`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {TAB_LABELS[tab]}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="dataspace-connector-panel__tab-content">
+          {/* Publish Tab */}
+          {activeTab === 'publish' && (
+            <div className="dataspace-connector-panel__publish-tab">
+              <div className="dataspace-connector-panel__publish-section">
+                <h3>Publish Current Submodel</h3>
+                <p className="dataspace-connector-panel__publish-desc">
+                  Publish the filled {templateName} submodel to the dataspace. This will:
+                </p>
+                <ul className="dataspace-connector-panel__publish-steps">
+                  <li>Create an AAS in the BaSyx repository</li>
+                  <li>Register the Digital Twin in the DTR</li>
+                  <li>Create an EDC asset with access policies</li>
+                  <li>Make the submodel discoverable to dataspace participants</li>
+                </ul>
+
+                {connectionError && (
+                  <div className="dataspace-connector-panel__error">
+                    {connectionError}
                   </div>
-                ))}
+                )}
+
+                {publicationError && (
+                  <div className="dataspace-connector-panel__error">
+                    {publicationError}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="dataspace-connector-panel__btn--primary"
+                  onClick={handlePublish}
+                  disabled={isPublishing || isConnecting}
+                >
+                  {isPublishing ? 'Publishing...' : 'Publish to Dataspace'}
+                </button>
+              </div>
+
+              <div className="dataspace-connector-panel__publications">
+                <PublicationManager
+                  connectionId={activeConnection.connection_id}
+                  onPublish={handlePublish}
+                />
               </div>
             </div>
           )}
 
-          <div className="dataspace-connector-panel__connection-actions">
-            <button
-              type="button"
-              className="dataspace-connector-panel__btn--link"
-              onClick={() => refreshStatus()}
-            >
-              Refresh Status
-            </button>
-            <button
-              type="button"
-              className="dataspace-connector-panel__btn--link dataspace-connector-panel__btn--danger"
-              onClick={handleDisconnect}
-            >
-              Disconnect
-            </button>
-          </div>
-        </div>
-
-        {/* Publish action */}
-        <div className="dataspace-connector-panel__publish-section">
-          <h3>Publish Current Submodel</h3>
-          <p className="dataspace-connector-panel__publish-desc">
-            Publish the filled {templateName} submodel to the dataspace. This will:
-          </p>
-          <ul className="dataspace-connector-panel__publish-steps">
-            <li>Create an AAS in the BaSyx repository</li>
-            <li>Register the Digital Twin in the DTR</li>
-            <li>Create an EDC asset with access policies</li>
-            <li>Make the submodel discoverable to dataspace participants</li>
-          </ul>
-
-          {connectionError && (
-            <div className="dataspace-connector-panel__error">
-              {connectionError}
-            </div>
+          {/* Catalog Tab */}
+          {activeTab === 'catalog' && (
+            <CatalogBrowser
+              connectionId={activeConnection.connection_id}
+              onNegotiationComplete={(negotiationId) => {
+                console.log('Negotiation completed:', negotiationId);
+                // Switch to transfers tab to show the result
+                setActiveTab('transfers');
+              }}
+            />
           )}
 
-          {publicationError && (
-            <div className="dataspace-connector-panel__error">
-              {publicationError}
-            </div>
+          {/* Transfers Tab */}
+          {activeTab === 'transfers' && (
+            <TransferHistory
+              connectionId={activeConnection.connection_id}
+            />
           )}
 
-          <button
-            type="button"
-            className="dataspace-connector-panel__btn--primary"
-            onClick={handlePublish}
-            disabled={isPublishing || isConnecting}
-          >
-            {isPublishing ? 'Publishing...' : 'Publish to Dataspace'}
-          </button>
-        </div>
+          {/* Audit Log Tab */}
+          {activeTab === 'audit' && (
+            <AuditLogViewer
+              connectionId={activeConnection.connection_id}
+            />
+          )}
 
-        {/* Publications manager */}
-        <div className="dataspace-connector-panel__publications">
-          <PublicationManager
-            connectionId={activeConnection.connection_id}
-            onPublish={handlePublish}
-          />
+          {/* Connector Info Tab */}
+          {activeTab === 'info' && (
+            <div className="dataspace-connector-panel__info-tab">
+              <SelfDescription
+                connectionId={activeConnection.connection_id}
+              />
+
+              {/* Health checks section */}
+              {healthChecks.length > 0 && (
+                <div className="dataspace-connector-panel__health-section">
+                  <h4>Component Health</h4>
+                  <div className="dataspace-connector-panel__health-checks">
+                    {healthChecks.map((check) => (
+                      <div
+                        key={check.component}
+                        className={`dataspace-connector-panel__health-check ${
+                          check.healthy
+                            ? 'dataspace-connector-panel__health-check--healthy'
+                            : 'dataspace-connector-panel__health-check--unhealthy'
+                        }`}
+                      >
+                        <span className="dataspace-connector-panel__health-icon">
+                          {check.healthy ? '\u2713' : '\u2717'}
+                        </span>
+                        <span className="dataspace-connector-panel__health-name">
+                          {check.component}
+                        </span>
+                        {check.latency_ms && (
+                          <span className="dataspace-connector-panel__health-latency">
+                            {Math.round(check.latency_ms)}ms
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

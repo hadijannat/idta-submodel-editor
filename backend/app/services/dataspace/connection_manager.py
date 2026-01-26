@@ -22,6 +22,8 @@ from app.services.dataspace.models import (
     ContractNegotiation,
     DataspaceType,
     RegistrationStatus,
+    TransferProcess,
+    TransferState,
 )
 
 if TYPE_CHECKING:
@@ -45,12 +47,14 @@ class ConnectionManager:
         self.connections_dir = self.base_dir / "connections"
         self.registrations_dir = self.base_dir / "registrations"
         self.negotiations_dir = self.base_dir / "negotiations"
+        self.transfers_dir = self.base_dir / "transfers"
 
         # Ensure directories exist
         for dir_path in [
             self.connections_dir,
             self.registrations_dir,
             self.negotiations_dir,
+            self.transfers_dir,
         ]:
             dir_path.mkdir(parents=True, exist_ok=True)
 
@@ -444,3 +448,193 @@ class ConnectionManager:
         """Save negotiation to disk."""
         neg_path = self.negotiations_dir / f"{negotiation.negotiation_id}.json"
         neg_path.write_text(json.dumps(negotiation.to_dict(), indent=2))
+
+    # -------------------------------------------------------------------------
+    # Transfer management
+    # -------------------------------------------------------------------------
+
+    def create_transfer(
+        self,
+        connection_id: str,
+        agreement_id: str,
+        asset_id: str,
+        provider_bpn: str,
+        consumer_bpn: str | None = None,
+        transfer_type: str = "HttpData-PULL",
+        data_destination: str | None = None,
+        metadata: dict | None = None,
+    ) -> TransferProcess:
+        """
+        Create a new transfer process.
+
+        Args:
+            connection_id: Parent connection ID
+            agreement_id: Contract agreement ID
+            asset_id: Asset to transfer
+            provider_bpn: Provider's Business Partner Number
+            consumer_bpn: Consumer's Business Partner Number
+            transfer_type: Type of transfer (HttpData-PULL, HttpData-PUSH)
+            data_destination: Where to send/receive data
+            metadata: Additional transfer metadata
+
+        Returns:
+            Created transfer process
+        """
+        transfer_id = uuid.uuid4().hex
+        now = datetime.utcnow()
+
+        transfer = TransferProcess(
+            transfer_id=transfer_id,
+            connection_id=connection_id,
+            agreement_id=agreement_id,
+            asset_id=asset_id,
+            provider_bpn=provider_bpn,
+            consumer_bpn=consumer_bpn,
+            state=TransferState.INITIAL,
+            transfer_type=transfer_type,
+            data_destination=data_destination,
+            created_at=now,
+            updated_at=now,
+            metadata=metadata or {},
+        )
+
+        self._save_transfer(transfer)
+        logger.info(
+            "Created transfer %s for asset %s (agreement %s)",
+            transfer_id,
+            asset_id,
+            agreement_id,
+        )
+        return transfer
+
+    def get_transfer(self, transfer_id: str) -> TransferProcess | None:
+        """Get a transfer by ID."""
+        transfer_path = self.transfers_dir / f"{transfer_id}.json"
+        if not transfer_path.exists():
+            return None
+
+        data = json.loads(transfer_path.read_text())
+        return TransferProcess.from_dict(data)
+
+    def update_transfer(
+        self,
+        transfer_id: str,
+        state: TransferState | None = None,
+        edc_transfer_id: str | None = None,
+        edr_endpoint: str | None = None,
+        edr_token: str | None = None,
+        edr_expires_at: datetime | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        error_message: str | None = None,
+    ) -> TransferProcess | None:
+        """
+        Update transfer state.
+
+        Args:
+            transfer_id: Transfer to update
+            state: New transfer state
+            edc_transfer_id: EDC-assigned transfer ID
+            edr_endpoint: Endpoint Data Reference URL
+            edr_token: EDR authentication token
+            edr_expires_at: EDR expiration time
+            started_at: When transfer started
+            completed_at: When transfer completed
+            error_message: Error message if state is ERROR
+
+        Returns:
+            Updated transfer or None if not found
+        """
+        transfer = self.get_transfer(transfer_id)
+        if transfer is None:
+            return None
+
+        if state is not None:
+            transfer.state = state
+        if edc_transfer_id is not None:
+            transfer.edc_transfer_id = edc_transfer_id
+        if edr_endpoint is not None:
+            transfer.edr_endpoint = edr_endpoint
+        if edr_token is not None:
+            transfer.edr_token = edr_token
+        if edr_expires_at is not None:
+            transfer.edr_expires_at = edr_expires_at
+        if started_at is not None:
+            transfer.started_at = started_at
+        if completed_at is not None:
+            transfer.completed_at = completed_at
+        if error_message is not None:
+            transfer.error_message = error_message
+
+        transfer.updated_at = datetime.utcnow()
+        self._save_transfer(transfer)
+
+        logger.info(
+            "Updated transfer %s: state=%s",
+            transfer_id,
+            transfer.state.value,
+        )
+        return transfer
+
+    def list_transfers(
+        self,
+        connection_id: str | None = None,
+        agreement_id: str | None = None,
+        state: TransferState | None = None,
+        limit: int = 100,
+    ) -> list[TransferProcess]:
+        """
+        List transfers with optional filters.
+
+        Args:
+            connection_id: Filter by connection ID
+            agreement_id: Filter by agreement ID
+            state: Filter by transfer state
+            limit: Maximum transfers to return
+
+        Returns:
+            List of matching transfers
+        """
+        transfers: list[TransferProcess] = []
+
+        for transfer_path in self.transfers_dir.glob("*.json"):
+            try:
+                data = json.loads(transfer_path.read_text())
+                transfer = TransferProcess.from_dict(data)
+
+                if connection_id is not None and transfer.connection_id != connection_id:
+                    continue
+                if agreement_id is not None and transfer.agreement_id != agreement_id:
+                    continue
+                if state is not None and transfer.state != state:
+                    continue
+
+                transfers.append(transfer)
+
+            except Exception as e:
+                logger.warning("Failed to load transfer %s: %s", transfer_path.stem, e)
+
+        transfers.sort(key=lambda t: t.created_at, reverse=True)
+        return transfers[:limit]
+
+    def delete_transfer(self, transfer_id: str) -> bool:
+        """
+        Delete a transfer record.
+
+        Args:
+            transfer_id: Transfer to delete
+
+        Returns:
+            True if transfer was deleted
+        """
+        transfer_path = self.transfers_dir / f"{transfer_id}.json"
+        if transfer_path.exists():
+            transfer_path.unlink()
+            logger.info("Deleted transfer %s", transfer_id)
+            return True
+        return False
+
+    def _save_transfer(self, transfer: TransferProcess) -> None:
+        """Save transfer to disk."""
+        transfer_path = self.transfers_dir / f"{transfer.transfer_id}.json"
+        transfer_path.write_text(json.dumps(transfer.to_dict(), indent=2))

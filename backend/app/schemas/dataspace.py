@@ -280,6 +280,50 @@ class ListConnectionsResponse(BaseModel):
     total: int = Field(description="Total number of connections")
 
 
+class ConnectorEndpoint(BaseModel):
+    """Connector endpoint information."""
+
+    name: str = Field(description="Endpoint name")
+    url: str = Field(description="Endpoint URL")
+    protocol: str = Field(description="Protocol (HTTP, IDS, DSP)")
+    healthy: bool | None = Field(default=None, description="Health status")
+
+
+class ConnectorCapability(BaseModel):
+    """Connector capability descriptor."""
+
+    name: str = Field(description="Capability name")
+    version: str | None = Field(default=None, description="Version if applicable")
+    enabled: bool = Field(default=True, description="Whether enabled")
+
+
+class SelfDescriptionResponse(BaseModel):
+    """Connector self-description (IDS/Gaia-X style)."""
+
+    connection_id: str = Field(description="Connection ID")
+    connector_id: str = Field(description="Connector identifier")
+    bpn: str | None = Field(default=None, description="Business Partner Number")
+    environment: str = Field(description="Dataspace environment")
+    edc_mode: str = Field(description="EDC connector mode")
+    title: str = Field(description="Human-readable connector title")
+    description: str | None = Field(default=None, description="Connector description")
+    maintainer: str | None = Field(default=None, description="Maintainer organization")
+    endpoints: list[ConnectorEndpoint] = Field(
+        default_factory=list, description="Available endpoints"
+    )
+    capabilities: list[ConnectorCapability] = Field(
+        default_factory=list, description="Connector capabilities"
+    )
+    security_profile: str = Field(
+        default="idsc:BASE_SECURITY_PROFILE",
+        description="IDS security profile"
+    )
+    created_at: datetime = Field(description="Connection creation time")
+    raw_jsonld: dict | None = Field(
+        default=None, description="Raw JSON-LD self-description if available"
+    )
+
+
 class DisconnectRequest(BaseModel):
     """Request to disconnect from a dataspace."""
 
@@ -447,3 +491,296 @@ class SearchCatalogResponse(BaseModel):
     )
     total: int = Field(description="Total matching entries")
     has_more: bool = Field(description="Whether more results exist")
+
+
+# ---------------------------------------------------------------------------
+# Catalog Provider Types
+# ---------------------------------------------------------------------------
+
+
+class CatalogProviderInfo(BaseModel):
+    """Information about a catalog provider."""
+
+    bpn: str = Field(description="Business Partner Number")
+    name: str | None = Field(default=None, description="Provider name")
+    protocol_address: str = Field(description="Provider's DSP protocol address")
+    last_seen: datetime | None = Field(
+        default=None, description="Last time this provider was seen in catalog"
+    )
+
+
+class CatalogOffer(BaseModel):
+    """A specific offer from the catalog (DCAT dataset)."""
+
+    offer_id: str = Field(description="Offer/dataset ID from catalog")
+    asset_id: str = Field(description="EDC asset ID")
+    provider_bpn: str = Field(description="Provider's BPN")
+    policy: dict = Field(description="ODRL policy for this offer")
+    properties: dict = Field(default_factory=dict, description="Asset properties")
+    content_type: str | None = Field(default=None, description="Content type")
+    name: str | None = Field(default=None, description="Asset name")
+    description: str | None = Field(default=None, description="Asset description")
+
+
+class SearchCatalogDetailedResponse(BaseModel):
+    """Detailed response from catalog search with full offers."""
+
+    offers: list[CatalogOffer] = Field(
+        default_factory=list, description="Catalog offers"
+    )
+    total: int = Field(description="Total matching offers")
+    has_more: bool = Field(description="Whether more results exist")
+
+
+class ListProvidersResponse(BaseModel):
+    """Response listing known catalog providers."""
+
+    providers: list[CatalogProviderInfo] = Field(
+        default_factory=list, description="Known providers"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Contract Negotiation Types
+# ---------------------------------------------------------------------------
+
+
+class NegotiationStatus(str, Enum):
+    """Status of a contract negotiation."""
+
+    INITIAL = "initial"
+    REQUESTING = "requesting"
+    OFFERED = "offered"
+    AGREEING = "agreeing"
+    AGREED = "agreed"
+    VERIFYING = "verifying"
+    VERIFIED = "verified"
+    FINALIZED = "finalized"
+    TERMINATED = "terminated"
+    ERROR = "error"
+
+
+class NegotiateContractRequest(BaseModel):
+    """Request to initiate a contract negotiation."""
+
+    connection_id: str = Field(description="Connection ID to use")
+    provider_address: str = Field(description="Provider's protocol address")
+    offer_id: str = Field(description="Offer ID from catalog")
+    asset_id: str = Field(description="Asset ID to negotiate")
+    policy: dict = Field(description="Policy to use for negotiation")
+
+
+class NegotiationResponse(BaseModel):
+    """Response from a contract negotiation."""
+
+    negotiation_id: str = Field(description="Negotiation process ID")
+    state: NegotiationStatus = Field(description="Current negotiation state")
+    agreement_id: str | None = Field(
+        default=None, description="Contract agreement ID (when finalized)"
+    )
+    error_message: str | None = Field(default=None, description="Error details if any")
+    created_at: datetime = Field(description="When negotiation was initiated")
+    updated_at: datetime = Field(description="Last update timestamp")
+
+
+# ---------------------------------------------------------------------------
+# Transfer Types
+# ---------------------------------------------------------------------------
+
+
+class TransferStatus(str, Enum):
+    """Status of a data transfer."""
+
+    INITIAL = "initial"
+    PROVISIONING = "provisioning"
+    PROVISIONED = "provisioned"
+    REQUESTING = "requesting"
+    STARTED = "started"
+    SUSPENDED = "suspended"
+    COMPLETED = "completed"
+    TERMINATED = "terminated"
+    DEPROVISIONING = "deprovisioning"
+    DEPROVISIONED = "deprovisioned"
+    ERROR = "error"
+
+
+class InitiateTransferRequest(BaseModel):
+    """Request to initiate a data transfer."""
+
+    connection_id: str = Field(description="Connection ID to use")
+    agreement_id: str = Field(description="Contract agreement ID")
+    asset_id: str = Field(description="Asset ID to transfer")
+    provider_address: str = Field(description="Provider's protocol address")
+    provider_bpn: str | None = Field(default=None, description="Provider's BPN")
+    transfer_type: str = Field(
+        default="HttpData-PULL",
+        description="Transfer type (HttpData-PULL, HttpData-PUSH)",
+    )
+    data_destination: str | None = Field(
+        default=None, description="Destination URL for PUSH transfers"
+    )
+
+
+class Transfer(BaseModel):
+    """A data transfer process."""
+
+    transfer_id: str = Field(description="Transfer process ID")
+    connection_id: str = Field(description="Connection ID")
+    agreement_id: str = Field(description="Contract agreement ID")
+    asset_id: str = Field(description="Asset being transferred")
+    provider_bpn: str = Field(description="Provider's BPN")
+    consumer_bpn: str | None = Field(default=None, description="Consumer's BPN")
+    state: TransferStatus = Field(description="Current transfer state")
+    transfer_type: str = Field(description="Transfer type")
+    data_destination: str | None = Field(
+        default=None, description="Data destination URL"
+    )
+    created_at: datetime = Field(description="When transfer was initiated")
+    updated_at: datetime = Field(description="Last update timestamp")
+    started_at: datetime | None = Field(
+        default=None, description="When transfer started"
+    )
+    completed_at: datetime | None = Field(
+        default=None, description="When transfer completed"
+    )
+    error_message: str | None = Field(default=None, description="Error details if any")
+
+
+class TransferResponse(BaseModel):
+    """Response from transfer initiation."""
+
+    transfer: Transfer = Field(description="Transfer details")
+    message: str = Field(description="Status message")
+
+
+class ListTransfersResponse(BaseModel):
+    """Response listing transfers."""
+
+    transfers: list[Transfer] = Field(default_factory=list, description="Transfers")
+    total: int = Field(description="Total transfers matching filters")
+
+
+class TransferEDR(BaseModel):
+    """Endpoint Data Reference for accessing transferred data."""
+
+    transfer_id: str = Field(description="Transfer ID")
+    endpoint: str = Field(description="Data access endpoint URL")
+    auth_type: str = Field(description="Authentication type (e.g., bearer)")
+    auth_token: str = Field(description="Authentication token/key")
+    expires_at: datetime | None = Field(
+        default=None, description="When the EDR expires"
+    )
+
+
+class TransferEDRResponse(BaseModel):
+    """Response with EDR for data access."""
+
+    edr: TransferEDR = Field(description="Endpoint Data Reference")
+    valid: bool = Field(description="Whether the EDR is still valid")
+
+
+# ---------------------------------------------------------------------------
+# Audit Log Types
+# ---------------------------------------------------------------------------
+
+
+class AuditEventType(str, Enum):
+    """Type of audit event."""
+
+    # Connection events
+    CONNECTION_CREATED = "connection_created"
+    CONNECTION_CONNECTED = "connection_connected"
+    CONNECTION_DISCONNECTED = "connection_disconnected"
+    CONNECTION_FAILED = "connection_failed"
+    CONNECTION_HEALTH_CHECK = "connection_health_check"
+
+    # Publication events
+    PUBLICATION_STARTED = "publication_started"
+    PUBLICATION_COMPLETED = "publication_completed"
+    PUBLICATION_FAILED = "publication_failed"
+    PUBLICATION_UPDATED = "publication_updated"
+    PUBLICATION_UNPUBLISHED = "publication_unpublished"
+
+    # Catalog events
+    CATALOG_SEARCHED = "catalog_searched"
+    PROVIDER_ADDED = "provider_added"
+
+    # Negotiation events
+    NEGOTIATION_INITIATED = "negotiation_initiated"
+    NEGOTIATION_COMPLETED = "negotiation_completed"
+    NEGOTIATION_FAILED = "negotiation_failed"
+    NEGOTIATION_TERMINATED = "negotiation_terminated"
+
+    # Transfer events
+    TRANSFER_INITIATED = "transfer_initiated"
+    TRANSFER_STARTED = "transfer_started"
+    TRANSFER_COMPLETED = "transfer_completed"
+    TRANSFER_FAILED = "transfer_failed"
+    TRANSFER_TERMINATED = "transfer_terminated"
+
+    # Policy events
+    POLICY_CREATED = "policy_created"
+    POLICY_UPDATED = "policy_updated"
+    POLICY_DELETED = "policy_deleted"
+
+    # General events
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
+class AuditEvent(BaseModel):
+    """An audit log entry."""
+
+    entry_id: str = Field(description="Unique entry ID")
+    event_type: AuditEventType = Field(description="Type of event")
+    timestamp: datetime = Field(description="When event occurred")
+    connection_id: str | None = Field(
+        default=None, description="Related connection ID"
+    )
+    resource_id: str | None = Field(
+        default=None, description="Related resource ID"
+    )
+    resource_type: str | None = Field(
+        default=None, description="Type of resource (connection, publication, etc.)"
+    )
+    actor: str | None = Field(default=None, description="User or system ID")
+    action: str = Field(description="Human-readable action description")
+    details: dict = Field(default_factory=dict, description="Additional event details")
+    success: bool = Field(default=True, description="Whether the action succeeded")
+    error_message: str | None = Field(default=None, description="Error details if any")
+
+
+class AuditFilters(BaseModel):
+    """Filters for querying audit logs."""
+
+    connection_id: str | None = Field(
+        default=None, description="Filter by connection ID"
+    )
+    event_type: AuditEventType | None = Field(
+        default=None, description="Filter by event type"
+    )
+    resource_type: str | None = Field(
+        default=None, description="Filter by resource type"
+    )
+    start_date: datetime | None = Field(
+        default=None, description="Filter events after this date"
+    )
+    end_date: datetime | None = Field(
+        default=None, description="Filter events before this date"
+    )
+    success: bool | None = Field(
+        default=None, description="Filter by success status"
+    )
+    limit: int = Field(default=50, ge=1, le=200, description="Maximum results")
+    offset: int = Field(default=0, ge=0, description="Result offset")
+
+
+class ListAuditLogsResponse(BaseModel):
+    """Response listing audit log entries."""
+
+    entries: list[AuditEvent] = Field(
+        default_factory=list, description="Audit log entries"
+    )
+    total: int = Field(description="Total entries matching filters")
+    has_more: bool = Field(description="Whether more entries exist")
