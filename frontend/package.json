@@ -10,7 +10,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "npm run test:unit",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "demo:magic-import": "playwright test e2e/magic-import-demo.spec.ts --headed"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
@@ -37,6 +38,7 @@
     "jsdom": "^24.0.0",
     "typescript": "^5.3.3",
     "vite": "^5.1.4",
-    "vitest": "^2.0.5"
+    "vitest": "^2.0.5",
+    "@playwright/test": "^1.46.0"
   }
 }
