@@ -1,0 +1,75 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: plc4x-bridge
+
+# PLC Connection Settings
+plc:
+  # Default connection string (can be overridden per connection)
+  # Supported protocols: modbus-tcp, s7, opcua, simulated
+  # Examples:
+  #   modbus-tcp://192.168.1.100:502
+  #   s7://192.168.1.100/0/1 (rack 0, slot 1)
+  #   opcua:tcp://192.168.1.100:4840
+  #   simulated://127.0.0.1
+  default-connection: ${PLC_CONNECTION_STRING:simulated://127.0.0.1}
+
+  # Connection timeout in milliseconds
+  connection-timeout: ${PLC_CONNECTION_TIMEOUT:5000}
+
+  # Read interval for continuous reading (milliseconds)
+  read-interval: ${PLC_READ_INTERVAL:1000}
+
+  # Retry configuration
+  retry:
+    max-attempts: ${PLC_RETRY_MAX_ATTEMPTS:3}
+    delay-ms: ${PLC_RETRY_DELAY_MS:1000}
+
+# BaSyx AAS Server Configuration
+basyx:
+  aas-server:
+    url: ${BASYX_AAS_SERVER_URL:http://basyx-aas-server:4001}
+
+  # Submodel endpoint template
+  # {shellId} and {submodelId} are placeholders
+  submodel-endpoint: ${BASYX_SUBMODEL_ENDPOINT:/shells/{shellId}/submodels/{submodelId}/submodel-elements}
+
+# Mapping Configuration
+mapping:
+  # Path to mapping configuration file (optional)
+  config-file: ${MAPPING_CONFIG_FILE:}
+
+  # Default update mode: IMMEDIATE, BATCH, ON_CHANGE
+  update-mode: ${MAPPING_UPDATE_MODE:ON_CHANGE}
+
+  # Batch size for BATCH mode
+  batch-size: ${MAPPING_BATCH_SIZE:10}
+
+  # Change threshold for ON_CHANGE mode (percentage)
+  change-threshold: ${MAPPING_CHANGE_THRESHOLD:0.01}
+
+# Logging
+logging:
+  level:
+    com.idta.plc4x: ${LOG_LEVEL:INFO}
+    org.apache.plc4x: ${PLC4X_LOG_LEVEL:WARN}
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# OpenAPI configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method

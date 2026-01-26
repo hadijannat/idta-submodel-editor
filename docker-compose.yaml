@@ -399,6 +399,48 @@ services:
     profiles:
       - dataspace
 
+  # ==========================================================================
+  # PLC4X Bridge - Industrial PLC to BaSyx AAS Bridge
+  # Start with: docker-compose --profile plc up
+  # Or with dataspace: docker-compose --profile dataspace --profile plc up
+  # ==========================================================================
+
+  plc4x-bridge:
+    build:
+      context: ./plc4x-bridge
+      dockerfile: Dockerfile
+    container_name: plc4x-bridge
+    ports:
+      - "8090:8090"
+    environment:
+      # PLC Connection
+      - PLC_CONNECTION_STRING=${PLC_CONNECTION_STRING:-simulated://127.0.0.1}
+      - PLC_CONNECTION_TIMEOUT=${PLC_CONNECTION_TIMEOUT:-5000}
+      - PLC_READ_INTERVAL=${PLC_READ_INTERVAL:-1000}
+      - PLC_RETRY_MAX_ATTEMPTS=${PLC_RETRY_MAX_ATTEMPTS:-3}
+      - PLC_RETRY_DELAY_MS=${PLC_RETRY_DELAY_MS:-1000}
+      # BaSyx AAS Server
+      - BASYX_AAS_SERVER_URL=http://basyx-aas-server:4001
+      # Mapping configuration
+      - MAPPING_UPDATE_MODE=${MAPPING_UPDATE_MODE:-ON_CHANGE}
+      - MAPPING_CHANGE_THRESHOLD=${MAPPING_CHANGE_THRESHOLD:-0.01}
+      # Logging
+      - LOG_LEVEL=${PLC4X_LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    depends_on:
+      basyx-aas-server:
+        condition: service_healthy
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+      - plc
+
 volumes:
   template_cache:
     driver: local
