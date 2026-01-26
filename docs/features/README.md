@@ -15,6 +15,6 @@ This directory contains detailed documentation for each major feature of the IDT
 
 ## Quick Links
 
-- [Back to README](../../README.md)
+- [Back to Home](../index.md)
 - [Configuration Reference](../reference/configuration.md)
 - [API Endpoints](../reference/api-endpoints.md)

@@ -1,0 +1,54 @@
+site_name: IDTA Submodel Editor
+site_description: Universal editor for IDTA submodel templates
+site_url: https://hadijannat.github.io/idta-submodel-editor/
+repo_url: https://github.com/hadijannat/idta-submodel-editor
+repo_name: hadijannat/idta-submodel-editor
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Features:
+      - Overview: features/README.md
+      - Semantic Lookup: features/semantic-lookup.md
+      - Smart Mapper: features/smart-mapper.md
+      - PCF Calculator: features/pcf-calculator.md
+      - Passport Mode: features/passport-mode.md
+      - Magic Import: features/magic-import.md
+      - Dataspace Publishing: features/dataspace-publishing.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - API Endpoints: reference/api-endpoints.md
+      - Element Types: reference/element-types.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - tables
+
+plugins:
+  - search

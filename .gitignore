@@ -11,6 +11,7 @@ yarn-error.log*
 dist/
 frontend/dist/
 .vite/
+site/
 
 # Python
 __pycache__/
