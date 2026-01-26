@@ -7,7 +7,7 @@
  * - Runtime tool discovery and status tracking
  */
 
-import { lazy, type LazyExoticComponent } from 'react';
+import { lazy, type LazyExoticComponent, createElement } from 'react';
 import type {
   ToolMetadata,
   ToolComponent,
@@ -38,6 +38,28 @@ const TOOL_COMPONENTS: Record<string, LazyExoticComponent<ToolComponent>> = {
     }))
   ),
 };
+
+const createPlaceholderComponent = (
+  toolId: string,
+  toolName: string
+): LazyExoticComponent<ToolComponent> =>
+  lazy(async () => ({
+    default: () =>
+      createElement(
+        'div',
+        { className: 'wizard-panel' },
+        createElement(
+          'div',
+          { className: 'app-welcome' },
+          createElement('h2', null, toolName),
+          createElement(
+            'p',
+            null,
+            `No UI component is registered for tool "${toolId}" in this build.`
+          )
+        )
+      ),
+  }));
 
 /**
  * Convert backend response to frontend ToolMetadata.
@@ -77,8 +99,8 @@ class ToolRegistryImpl {
    */
   private initializeStaticTools(): void {
     for (const [id, staticMeta] of Object.entries(STATIC_TOOLS)) {
-      if (!(id in TOOL_COMPONENTS)) continue;
-      const component = TOOL_COMPONENTS[id];
+      const component =
+        TOOL_COMPONENTS[id] ?? createPlaceholderComponent(id, staticMeta.name);
       this.tools.set(id, {
         metadata: {
           ...staticMeta,
@@ -127,9 +149,9 @@ class ToolRegistryImpl {
             ...existing,
             metadata,
           });
-        } else if (entry.id in TOOL_COMPONENTS) {
-          // New tool from server with available component
-          const component = TOOL_COMPONENTS[entry.id];
+        } else {
+          const component =
+            TOOL_COMPONENTS[entry.id] ?? createPlaceholderComponent(entry.id, metadata.name);
           this.tools.set(entry.id, {
             metadata,
             component,

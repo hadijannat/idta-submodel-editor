@@ -255,16 +255,49 @@ class ToolRegistry:
             for tool_id in list(pending):
                 tool = self._tools[tool_id]
 
-                # Check if dependencies are satisfied
-                deps = tool.metadata.dependencies
-                if not all(dep in initialized for dep in deps):
-                    continue
-
                 # Check if tool is enabled
                 if not tool.is_enabled():
                     logger.info("Skipping disabled tool: %s", tool_id)
                     pending.remove(tool_id)
                     results[tool_id] = True
+                    continue
+
+                # Check dependency availability and status
+                deps = tool.metadata.dependencies
+                missing_or_disabled = [
+                    dep_id
+                    for dep_id in deps
+                    if (self._tools.get(dep_id) is None)
+                    or not self._tools[dep_id].is_enabled()
+                ]
+                failed_deps = [
+                    dep_id for dep_id in deps if results.get(dep_id) is False
+                ]
+
+                if missing_or_disabled:
+                    logger.warning(
+                        "Skipping tool %s due to missing/disabled dependencies: %s",
+                        tool_id,
+                        missing_or_disabled,
+                    )
+                    pending.remove(tool_id)
+                    results[tool_id] = False
+                    made_progress = True
+                    continue
+
+                if failed_deps:
+                    logger.warning(
+                        "Skipping tool %s due to failed dependencies: %s",
+                        tool_id,
+                        failed_deps,
+                    )
+                    pending.remove(tool_id)
+                    results[tool_id] = False
+                    made_progress = True
+                    continue
+
+                # Check if dependencies are satisfied
+                if not all(dep in initialized for dep in deps):
                     continue
 
                 # Initialize the tool
@@ -408,6 +441,16 @@ async def initialize_registry() -> ToolRegistry:
 
     # Discover builtin tools
     _registry.discover_tools("app.services.tools.builtin")
+
+    # Validate dependency graph before initialization
+    try:
+        from app.services.tools.capabilities import validate_dependency_graph
+
+        errors = validate_dependency_graph(_registry)
+        if errors:
+            logger.error("Tool dependency graph validation errors: %s", errors)
+    except Exception as e:
+        logger.warning("Failed to validate tool dependency graph: %s", e)
 
     # Initialize all discovered tools
     await _registry.initialize_all()
