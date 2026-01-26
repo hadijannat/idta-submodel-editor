@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +33,7 @@ class PolicyStore:
         odrl: dict[str, Any],
         owner_id: str | None = None,
     ) -> dict[str, Any]:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         record = {
             "policy_id": policy_id,
             "owner_id": owner_id,
@@ -66,7 +66,7 @@ class PolicyStore:
             return None
         record["config"] = config
         record["odrl"] = odrl
-        record["updated_at"] = datetime.utcnow().isoformat()
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
         self._write(policy_id, record)
         return record
 

@@ -8,7 +8,7 @@ including mTLS client certificates for EDC connectors.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -83,7 +83,7 @@ class CertManager:
             "name": name,
             "cert_path": str(cert_path),
             "key_path": str(key_path) if key_path else None,
-            "loaded_at": datetime.utcnow().isoformat(),
+            "loaded_at": datetime.now(timezone.utc).isoformat(),
             "valid": True,
             "subject": cert.subject.rfc4514_string(),
             "issuer": cert.issuer.rfc4514_string(),
@@ -138,7 +138,7 @@ class CertManager:
         if cert_obj is None:
             return False, ["Certificate data not loaded"]
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if cert_obj.not_valid_before_utc > now:
             errors.append("Certificate not yet valid")
         if cert_obj.not_valid_after_utc < now:
@@ -184,7 +184,7 @@ class CertManager:
         if cert_obj is None:
             return True, None, f"Certificate '{name}' not loaded"
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         not_after = cert_obj.not_valid_after_utc
         delta = not_after - now
         days_left = max(delta.days, 0)
@@ -280,7 +280,7 @@ class CertManager:
         if organization:
             subject_parts.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization))
         subject = issuer = x509.Name(subject_parts)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         cert = (
             x509.CertificateBuilder()
@@ -312,7 +312,7 @@ class CertManager:
             "self_signed": True,
             "common_name": common_name,
             "organization": organization,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "valid": True,
             "subject": cert.subject.rfc4514_string(),
             "issuer": cert.issuer.rfc4514_string(),

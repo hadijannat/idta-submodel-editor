@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -90,7 +90,7 @@ class ConnectionManager:
             Created connection state
         """
         connection_id = uuid.uuid4().hex
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         connection = ConnectionState(
             connection_id=connection_id,
@@ -165,7 +165,7 @@ class ConnectionManager:
             if hasattr(connection, key):
                 setattr(connection, key, value)
 
-        connection.updated_at = datetime.utcnow()
+        connection.updated_at = datetime.now(timezone.utc)
         self._save_connection(connection)
 
         logger.info(
@@ -294,7 +294,7 @@ class ConnectionManager:
             Created registration
         """
         registration_id = uuid.uuid4().hex
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         registration = AssetRegistration(
             registration_id=registration_id,
@@ -346,7 +346,7 @@ class ConnectionManager:
         if error_message is not None:
             registration.error_message = error_message
 
-        registration.updated_at = datetime.utcnow()
+        registration.updated_at = datetime.now(timezone.utc)
         self._save_registration(registration)
 
         logger.info(
@@ -414,7 +414,7 @@ class ConnectionManager:
             Created negotiation
         """
         negotiation_id = uuid.uuid4().hex
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         negotiation = ContractNegotiation(
             negotiation_id=negotiation_id,
@@ -481,7 +481,7 @@ class ConnectionManager:
             Created transfer process
         """
         transfer_id = uuid.uuid4().hex
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         transfer = TransferProcess(
             transfer_id=transfer_id,
@@ -566,7 +566,7 @@ class ConnectionManager:
         if error_message is not None:
             transfer.error_message = error_message
 
-        transfer.updated_at = datetime.utcnow()
+        transfer.updated_at = datetime.now(timezone.utc)
         self._save_transfer(transfer)
 
         logger.info(

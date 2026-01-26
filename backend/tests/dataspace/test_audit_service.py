@@ -5,7 +5,7 @@ Tests audit log creation, retrieval, filtering, and persistence.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -73,7 +73,7 @@ class TestAuditServiceLogEvent:
         )
 
         # Check file was created (service uses cache_dir.parent / "dataspace" / "audit")
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         log_file = temp_dataspace_dir / "dataspace" / "audit" / f"{today}.jsonl"
         assert log_file.exists()
 
@@ -124,7 +124,7 @@ class TestAuditServiceGetEntry:
         """Test that get_entry searches across date-partitioned files."""
         # Create an entry for "yesterday" by writing directly
         # Service uses cache_dir.parent / "dataspace" / "audit"
-        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
         yesterday_file = temp_dataspace_dir / "dataspace" / "audit" / f"{yesterday}.jsonl"
         yesterday_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -132,7 +132,7 @@ class TestAuditServiceGetEntry:
             entry_id="old-entry-001",
             event_type=AuditEventType.CONNECTION_CREATED,
             action="Old action",
-            timestamp=datetime.utcnow() - timedelta(days=1),
+            timestamp=datetime.now(timezone.utc) - timedelta(days=1),
         )
 
         with open(yesterday_file, "w") as f:
@@ -270,7 +270,7 @@ class TestAuditServiceListEntries:
 
     def test_list_entries_filter_by_date_range(self, mock_audit_service, temp_dataspace_dir):
         """Test filtering by date range."""
-        today = datetime.utcnow()
+        today = datetime.now(timezone.utc)
         yesterday = today - timedelta(days=1)
 
         # Create yesterday's entry directly
@@ -338,7 +338,7 @@ class TestAuditServicePersistence:
             )
 
         # Service uses cache_dir.parent / "dataspace" / "audit"
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         log_file = temp_dataspace_dir / "dataspace" / "audit" / f"{today}.jsonl"
 
         with open(log_file, "r") as f:

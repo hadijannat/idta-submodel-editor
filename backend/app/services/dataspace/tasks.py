@@ -15,7 +15,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from celery import shared_task
@@ -186,7 +187,7 @@ def onboard_to_dataspace(self, connection_id: str) -> dict:
         manager.update_connection(
             connection_id,
             status=final_status,
-            last_health_check=datetime.utcnow(),
+            last_health_check=datetime.now(timezone.utc),
             error_message=None if all_healthy else "Some health checks failed",
         )
 
@@ -450,7 +451,7 @@ def unpublish_publication_task(
         else:
             updated_registration = registration
             updated_registration.status = RegistrationStatus.UNPUBLISHED
-            updated_registration.updated_at = datetime.utcnow()
+            updated_registration.updated_at = datetime.now(timezone.utc)
 
         manager.update_registration(
             registration_id,
@@ -542,7 +543,7 @@ def health_check_all() -> dict:
             manager.update_connection(
                 connection.connection_id,
                 status=new_status,
-                last_health_check=datetime.utcnow(),
+                last_health_check=datetime.now(timezone.utc),
                 error_message=error_msg,
             )
 
@@ -569,7 +570,7 @@ def health_check_all() -> dict:
             manager.update_connection(
                 connection.connection_id,
                 status=ConnectionStatus.DEGRADED,
-                last_health_check=datetime.utcnow(),
+                last_health_check=datetime.now(timezone.utc),
                 error_message=f"Health check error: {e}",
             )
 
@@ -639,7 +640,7 @@ def connect_dataspace_task(self, connection_id: str) -> dict:
             dtr_url=updated_connection.dtr_url,
             edc_url=updated_connection.edc_url,
             bpn=updated_connection.bpn,
-            last_health_check=datetime.utcnow(),
+            last_health_check=datetime.now(timezone.utc),
         )
 
         logger.info(
@@ -878,7 +879,7 @@ def health_check_task(connection_id: str | None = None) -> dict:
         manager.update_connection(
             connection.connection_id,
             status=ConnectionStatus.CONNECTED if all_healthy else ConnectionStatus.DEGRADED,
-            last_health_check=datetime.utcnow(),
+            last_health_check=datetime.now(timezone.utc),
             error_message=None if all_healthy else "Health check failed",
         )
 
@@ -1008,3 +1009,125 @@ def disconnect_dataspace_task(connection_id: str) -> dict:
             "error": str(e),
             "connection_id": connection_id,
         }
+
+
+@shared_task(bind=True, name="dataspace.initiate_transfer")
+def initiate_transfer_task(self, transfer_id: str, provider_address: str | None = None) -> dict:
+    """
+    Initiate a data transfer (stub implementation).
+
+    For sandbox connections, simulates transfer progression and provides a mock EDR.
+    For non-sandbox, marks the transfer as error to avoid implying real integration.
+    """
+    from app.services.dataspace.audit_service import AuditService
+    from app.services.dataspace.connection_manager import ConnectionManager
+    from app.services.dataspace.models import AuditEventType, DataspaceType, TransferState
+
+    manager = ConnectionManager()
+    audit = AuditService()
+
+    transfer = manager.get_transfer(transfer_id)
+    if transfer is None:
+        return {"error": "Transfer not found", "transfer_id": transfer_id}
+
+    connection = manager.get_connection(transfer.connection_id)
+    if connection is None:
+        return {"error": "Connection not found", "transfer_id": transfer_id}
+
+    if connection.dataspace_type != DataspaceType.SANDBOX:
+        manager.update_transfer(
+            transfer_id,
+            state=TransferState.ERROR,
+            error_message="Transfer simulation only available for sandbox connections.",
+            completed_at=datetime.now(timezone.utc),
+        )
+        audit.log_event(
+            event_type=AuditEventType.TRANSFER_FAILED,
+            action="Transfer failed (simulation only)",
+            connection_id=transfer.connection_id,
+            resource_id=transfer_id,
+            resource_type="transfer",
+            details={"reason": "simulation_only"},
+            success=False,
+        )
+        return {"transfer_id": transfer_id, "status": "error"}
+
+    # Simulate transfer lifecycle
+    manager.update_transfer(
+        transfer_id,
+        state=TransferState.PROVISIONING,
+    )
+    manager.update_transfer(
+        transfer_id,
+        state=TransferState.STARTED,
+        started_at=datetime.now(timezone.utc),
+    )
+
+    edr_endpoint = f"{provider_address or 'http://sandbox-provider'}/edr/{transfer_id}"
+    edr_token = f"sandbox-token-{uuid.uuid4().hex[:12]}"
+    edr_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    manager.update_transfer(
+        transfer_id,
+        state=TransferState.COMPLETED,
+        edr_endpoint=edr_endpoint,
+        edr_token=edr_token,
+        edr_expires_at=edr_expires_at,
+        completed_at=datetime.now(timezone.utc),
+    )
+
+    audit.log_event(
+        event_type=AuditEventType.TRANSFER_STARTED,
+        action="Transfer started",
+        connection_id=transfer.connection_id,
+        resource_id=transfer_id,
+        resource_type="transfer",
+        details={"provider_address": provider_address},
+    )
+    audit.log_event(
+        event_type=AuditEventType.TRANSFER_COMPLETED,
+        action="Transfer completed",
+        connection_id=transfer.connection_id,
+        resource_id=transfer_id,
+        resource_type="transfer",
+        details={"edr_endpoint": edr_endpoint},
+    )
+
+    return {
+        "transfer_id": transfer_id,
+        "status": "completed",
+        "edr_endpoint": edr_endpoint,
+    }
+
+
+@shared_task(bind=True, name="dataspace.terminate_transfer")
+def terminate_transfer_task(self, transfer_id: str) -> dict:
+    """
+    Terminate a transfer (stub implementation).
+    """
+    from app.services.dataspace.audit_service import AuditService
+    from app.services.dataspace.connection_manager import ConnectionManager
+    from app.services.dataspace.models import AuditEventType, TransferState
+
+    manager = ConnectionManager()
+    audit = AuditService()
+
+    transfer = manager.get_transfer(transfer_id)
+    if transfer is None:
+        return {"error": "Transfer not found", "transfer_id": transfer_id}
+
+    manager.update_transfer(
+        transfer_id,
+        state=TransferState.TERMINATED,
+        completed_at=datetime.now(timezone.utc),
+    )
+
+    audit.log_event(
+        event_type=AuditEventType.TRANSFER_TERMINATED,
+        action="Transfer terminated",
+        connection_id=transfer.connection_id,
+        resource_id=transfer_id,
+        resource_type="transfer",
+    )
+
+    return {"transfer_id": transfer_id, "status": "terminated"}

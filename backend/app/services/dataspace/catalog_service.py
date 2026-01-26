@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -411,14 +411,14 @@ class CatalogService:
         if existing:
             existing.protocol_address = protocol_address
             existing.name = name or existing.name
-            existing.last_seen = datetime.utcnow()
+            existing.last_seen = datetime.now(timezone.utc)
             provider = existing
         else:
             provider = ProviderInfo(
                 bpn=bpn,
                 protocol_address=protocol_address,
                 name=name,
-                last_seen=datetime.utcnow(),
+                last_seen=datetime.now(timezone.utc),
             )
             providers.append(provider)
 
@@ -573,7 +573,7 @@ class CatalogService:
                 negotiation.state = new_state
                 if agreement_id:
                     negotiation.agreement_id = agreement_id
-                negotiation.updated_at = datetime.utcnow()
+                negotiation.updated_at = datetime.now(timezone.utc)
 
                 self.conn_manager._save_negotiation(negotiation)
 

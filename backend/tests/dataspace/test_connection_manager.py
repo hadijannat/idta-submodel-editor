@@ -5,7 +5,7 @@ Tests state persistence, connection lifecycle, and registration management.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -44,7 +44,7 @@ class TestConnectionStateModel:
 
     def test_connection_state_full_creation(self):
         """Test creating a ConnectionState with all fields."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         conn = ConnectionState(
             connection_id="test-456",
             dataspace_type=DataspaceType.CATENA_X,

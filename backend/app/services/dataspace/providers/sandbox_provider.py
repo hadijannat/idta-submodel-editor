@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.services.dataspace.models import (
@@ -69,8 +69,8 @@ class SandboxProvider(DataspaceProvider):
 
         # Simulate connection delay
         connection.status = ConnectionStatus.CONNECTED
-        connection.updated_at = datetime.utcnow()
-        connection.last_health_check = datetime.utcnow()
+        connection.updated_at = datetime.now(timezone.utc)
+        connection.last_health_check = datetime.now(timezone.utc)
 
         # Set mock URLs if not provided
         if not connection.dtr_url:
@@ -96,7 +96,7 @@ class SandboxProvider(DataspaceProvider):
         logger.info("Sandbox: Disconnecting %s", connection.connection_id)
 
         connection.status = ConnectionStatus.DISCONNECTED
-        connection.updated_at = datetime.utcnow()
+        connection.updated_at = datetime.now(timezone.utc)
 
         return connection
 
@@ -110,7 +110,7 @@ class SandboxProvider(DataspaceProvider):
         Returns:
             List of health check results
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         return [
             HealthCheckResult(
@@ -163,7 +163,7 @@ class SandboxProvider(DataspaceProvider):
         registration.dtr_asset_id = f"sandbox-dtr-{uuid.uuid4().hex[:8]}"
         registration.edc_asset_id = f"sandbox-edc-{uuid.uuid4().hex[:8]}"
         registration.status = RegistrationStatus.REGISTERED
-        registration.updated_at = datetime.utcnow()
+        registration.updated_at = datetime.now(timezone.utc)
 
         logger.info(
             "Sandbox: Asset registered with DTR ID %s, EDC ID %s",
@@ -196,7 +196,7 @@ class SandboxProvider(DataspaceProvider):
         registration.status = RegistrationStatus.UNPUBLISHED
         registration.dtr_asset_id = None
         registration.edc_asset_id = None
-        registration.updated_at = datetime.utcnow()
+        registration.updated_at = datetime.now(timezone.utc)
 
         return registration
 
@@ -273,7 +273,7 @@ class SandboxProvider(DataspaceProvider):
         negotiation.offer_id = f"sandbox-offer-{uuid.uuid4().hex[:8]}"
         negotiation.agreement_id = f"sandbox-agreement-{uuid.uuid4().hex[:8]}"
         negotiation.policy_id = policy.get("@id", f"sandbox-policy-{uuid.uuid4().hex[:8]}")
-        negotiation.updated_at = datetime.utcnow()
+        negotiation.updated_at = datetime.now(timezone.utc)
 
         logger.info(
             "Sandbox: Negotiation %s agreed with agreement ID %s",

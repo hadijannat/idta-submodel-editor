@@ -4,7 +4,7 @@ Tests for the CatalogService.
 Tests catalog search, provider listing, and negotiation initiation.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -234,7 +234,7 @@ class TestCatalogServiceNegotiation:
             return_value={
                 "@type": "IdResponse",
                 "@id": "neg-12345",
-                "edc:createdAt": datetime.utcnow().isoformat(),
+                "edc:createdAt": datetime.now(timezone.utc).isoformat(),
             }
         )
         client.get_negotiation = AsyncMock(
@@ -270,8 +270,8 @@ class TestCatalogServiceNegotiation:
             provider_bpn="BPNL00000003TEST",
             consumer_bpn=sample_connection_state.bpn or "unknown",
             state=ContractState.INITIAL,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             metadata={"edc_negotiation_id": "neg-12345"},
         )
         mock_conn_manager.create_negotiation.return_value = mock_negotiation

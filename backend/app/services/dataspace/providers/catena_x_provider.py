@@ -8,7 +8,7 @@ using Tractus-X EDC and standard Digital Twin Registry implementations.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from app.services.dataspace.models import (
@@ -98,7 +98,7 @@ class CatenaXProvider(DataspaceProvider):
 
         try:
             connection.status = ConnectionStatus.AUTHENTICATING
-            connection.updated_at = datetime.utcnow()
+            connection.updated_at = datetime.now(timezone.utc)
 
             # Verify component health before marking connected
             from app.services.dataspace.health import DataspaceHealthChecker
@@ -113,8 +113,8 @@ class CatenaXProvider(DataspaceProvider):
                 )
 
             connection.status = ConnectionStatus.CONNECTED
-            connection.last_health_check = datetime.utcnow()
-            connection.updated_at = datetime.utcnow()
+            connection.last_health_check = datetime.now(timezone.utc)
+            connection.updated_at = datetime.now(timezone.utc)
 
             logger.info("Catena-X: Connection %s established", connection.connection_id)
             return connection
@@ -123,7 +123,7 @@ class CatenaXProvider(DataspaceProvider):
             logger.exception("Catena-X: Connection failed")
             connection.status = ConnectionStatus.ERROR
             connection.error_message = str(e)
-            connection.updated_at = datetime.utcnow()
+            connection.updated_at = datetime.now(timezone.utc)
             raise DataspaceConnectionError(f"Failed to connect to Catena-X: {e}") from e
 
     async def disconnect(self, connection: "ConnectionState") -> "ConnectionState":
@@ -139,7 +139,7 @@ class CatenaXProvider(DataspaceProvider):
         logger.info("Catena-X: Disconnecting %s", connection.connection_id)
 
         connection.status = ConnectionStatus.DISCONNECTED
-        connection.updated_at = datetime.utcnow()
+        connection.updated_at = datetime.now(timezone.utc)
 
         return connection
 
@@ -193,7 +193,7 @@ class CatenaXProvider(DataspaceProvider):
 
             # Placeholder implementation
             registration.status = RegistrationStatus.REGISTERED
-            registration.updated_at = datetime.utcnow()
+            registration.updated_at = datetime.now(timezone.utc)
 
             logger.info(
                 "Catena-X: Asset %s registered",
@@ -206,7 +206,7 @@ class CatenaXProvider(DataspaceProvider):
             logger.exception("Catena-X: Registration failed")
             registration.status = RegistrationStatus.FAILED
             registration.error_message = str(e)
-            registration.updated_at = datetime.utcnow()
+            registration.updated_at = datetime.now(timezone.utc)
             raise RegistrationError(f"Failed to register asset: {e}") from e
 
     async def unregister_asset(
@@ -237,7 +237,7 @@ class CatenaXProvider(DataspaceProvider):
         registration.status = RegistrationStatus.UNPUBLISHED
         registration.dtr_asset_id = None
         registration.edc_asset_id = None
-        registration.updated_at = datetime.utcnow()
+        registration.updated_at = datetime.now(timezone.utc)
 
         return registration
 
@@ -300,7 +300,7 @@ class CatenaXProvider(DataspaceProvider):
             # Step 4: Wait for agreement
 
             negotiation.state = ContractState.REQUESTING
-            negotiation.updated_at = datetime.utcnow()
+            negotiation.updated_at = datetime.now(timezone.utc)
 
             return negotiation
 
@@ -308,7 +308,7 @@ class CatenaXProvider(DataspaceProvider):
             logger.exception("Catena-X: Negotiation failed")
             negotiation.state = ContractState.ERROR
             negotiation.error_message = str(e)
-            negotiation.updated_at = datetime.utcnow()
+            negotiation.updated_at = datetime.now(timezone.utc)
             raise NegotiationError(f"Failed to negotiate contract: {e}") from e
 
     async def get_negotiation_state(

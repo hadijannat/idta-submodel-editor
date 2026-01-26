@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.services.dataspace.models import (
     ConnectionState,
@@ -90,7 +90,7 @@ class DataspaceHealthChecker:
                 healthy=healthy,
                 latency_ms=latency_ms,
                 message=message,
-                checked_at=datetime.utcnow(),
+                checked_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -102,7 +102,7 @@ class DataspaceHealthChecker:
                 healthy=False,
                 latency_ms=latency_ms,
                 message=str(e),
-                checked_at=datetime.utcnow(),
+                checked_at=datetime.now(timezone.utc),
             )
 
     def _check_edc(
@@ -136,7 +136,7 @@ class DataspaceHealthChecker:
                 healthy=healthy,
                 latency_ms=latency_ms,
                 message=message,
-                checked_at=datetime.utcnow(),
+                checked_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -148,7 +148,7 @@ class DataspaceHealthChecker:
                 healthy=False,
                 latency_ms=latency_ms,
                 message=str(e),
-                checked_at=datetime.utcnow(),
+                checked_at=datetime.now(timezone.utc),
             )
 
     def _check_provider(
@@ -182,7 +182,7 @@ class DataspaceHealthChecker:
                 healthy=healthy,
                 latency_ms=latency_ms,
                 message=message,
-                checked_at=datetime.utcnow(),
+                checked_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -194,7 +194,7 @@ class DataspaceHealthChecker:
                 healthy=False,
                 latency_ms=latency_ms,
                 message=str(e),
-                checked_at=datetime.utcnow(),
+                checked_at=datetime.now(timezone.utc),
             )
 
     def check_all(self, connections: list[ConnectionState]) -> dict[str, list[HealthCheckResult]]:
@@ -222,7 +222,7 @@ class DataspaceHealthChecker:
                         component="overall",
                         healthy=False,
                         message=f"Health check error: {e}",
-                        checked_at=datetime.utcnow(),
+                        checked_at=datetime.now(timezone.utc),
                     )
                 ]
 

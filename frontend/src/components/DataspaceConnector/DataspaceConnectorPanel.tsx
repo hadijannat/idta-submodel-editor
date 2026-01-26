@@ -306,8 +306,8 @@ export default function DataspaceConnectorPanel({
           {activeTab === 'catalog' && (
             <CatalogBrowser
               connectionId={activeConnection.connection_id}
-              onNegotiationComplete={(negotiationId) => {
-                console.log('Negotiation completed:', negotiationId);
+              onNegotiationComplete={(agreementId) => {
+                console.log('Negotiation completed:', agreementId);
                 // Switch to transfers tab to show the result
                 setActiveTab('transfers');
               }}

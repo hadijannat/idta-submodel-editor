@@ -9,7 +9,7 @@ Manufacturing-X / Catena-X dataspaces.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -246,6 +246,7 @@ def _connection_to_response(conn) -> DataspaceConnection:
 async def create_connection(
     request: CreateConnectionRequest,
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> CreateConnectionResponse:
     """
@@ -291,6 +292,17 @@ async def create_connection(
                 "progress": 0.0,
                 "progress_message": "Connection created, starting onboarding...",
             },
+        )
+
+        # Log audit event
+        audit_service.log_event(
+            event_type=InternalAuditEventType.CONNECTION_CREATED,
+            action=f"Created connection to {request.environment} environment",
+            connection_id=connection.connection_id,
+            resource_id=connection.connection_id,
+            resource_type="connection",
+            actor=_get_owner_id(user),
+            details={"environment": request.environment},
         )
 
         # Store credentials in Vault if provided
@@ -458,10 +470,11 @@ async def get_self_description(
 
     # Build endpoints list
     endpoints = []
-    if connection.provider_url:
+    basyx_url = connection.metadata.get("basyx_url")
+    if basyx_url:
         endpoints.append(ConnectorEndpoint(
             name="BaSyx AAS Server",
-            url=connection.provider_url,
+            url=basyx_url,
             protocol="HTTP/REST",
             healthy=None,
         ))
@@ -511,9 +524,11 @@ async def get_self_description(
         )
 
     # Determine environment display name
-    env = connection.dataspace_type.value
+    env = connection.metadata.get("environment", connection.dataspace_type.value)
     env_names = {
         "sandbox": "Local Sandbox",
+        "catena-x-test": "Catena-X Test",
+        "catena-x-prod": "Catena-X Production",
         "catena-x": "Catena-X Production",
         "manufacturing-x": "Manufacturing-X",
     }
@@ -541,6 +556,7 @@ async def disconnect(
     connection_id: str,
     request: DisconnectRequest | None = None,
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)] = None,
+    audit_service: Annotated[AuditService, Depends(get_audit_service)] = None,
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> DisconnectResponse:
     """
@@ -596,6 +612,16 @@ async def disconnect(
             code=ErrorCode.INTERNAL_ERROR,
             message="Failed to delete connection",
         )
+
+    audit_service.log_event(
+        event_type=InternalAuditEventType.CONNECTION_DISCONNECTED,
+        action="Disconnected from dataspace",
+        connection_id=connection_id,
+        resource_id=connection_id,
+        resource_type="connection",
+        actor=_get_owner_id(user),
+        details={"unpublished_count": unpublished_count},
+    )
 
     return DisconnectResponse(
         connection_id=connection_id,
@@ -662,6 +688,7 @@ async def reconnect(
 async def publish_submodel(
     request: PublishSubmodelRequest,
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> PublishSubmodelResponse:
     """
@@ -707,6 +734,16 @@ async def publish_submodel(
             "form_data": request.form_data,
             "policy": request.policy.model_dump() if request.policy else None,
         },
+    )
+
+    audit_service.log_event(
+        event_type=InternalAuditEventType.PUBLICATION_STARTED,
+        action=f"Started publishing {request.template_name} submodel",
+        connection_id=request.connection_id,
+        resource_id=registration.registration_id,
+        resource_type="publication",
+        actor=_get_owner_id(user),
+        details={"template_name": request.template_name},
     )
 
     # Queue background publication task
@@ -953,6 +990,7 @@ async def unpublish(
     publication_id: str,
     request: UnpublishRequest | None = None,
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)] = None,
+    audit_service: Annotated[AuditService, Depends(get_audit_service)] = None,
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> UnpublishResponse:
     """
@@ -1000,6 +1038,15 @@ async def unpublish(
         logger.info("Queued unpublish for publication %s", publication_id)
     except Exception as e:
         logger.warning("Celery unavailable: %s", e)
+
+    audit_service.log_event(
+        event_type=InternalAuditEventType.PUBLICATION_UNPUBLISHED,
+        action="Unpublish initiated for submodel",
+        connection_id=registration.connection_id,
+        resource_id=publication_id,
+        resource_type="publication",
+        actor=_get_owner_id(user),
+    )
 
     return UnpublishResponse(
         publication_id=publication_id,
@@ -1340,7 +1387,7 @@ async def check_health(
     _check_dataspace_enabled()
     settings = get_settings()
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if connection_id:
         connection = conn_manager.get_connection(connection_id)
@@ -1501,6 +1548,7 @@ async def search_catalog(
     request: SearchCatalogRequest,
     catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> SearchCatalogDetailedResponse:
     """
@@ -1556,7 +1604,7 @@ async def search_catalog(
             offset=request.offset,
         )
 
-        return SearchCatalogDetailedResponse(
+        response = SearchCatalogDetailedResponse(
             offers=[
                 CatalogOffer(
                     offer_id=o.offer_id,
@@ -1573,6 +1621,20 @@ async def search_catalog(
             total=total,
             has_more=total > request.offset + len(offers),
         )
+
+        audit_service.log_event(
+            event_type=InternalAuditEventType.CATALOG_SEARCHED,
+            action=f"Searched catalog from {request.provider_bpn}",
+            connection_id=request.connection_id,
+            resource_type="catalog",
+            actor=_get_owner_id(user),
+            details={
+                "provider_bpn": request.provider_bpn,
+                "results_count": total,
+            },
+        )
+
+        return response
 
     except CatalogServiceError as e:
         logger.exception("Catalog search failed")
@@ -1636,6 +1698,7 @@ async def add_catalog_provider(
     name: Annotated[str | None, Query(description="Provider display name")] = None,
     catalog_service: Annotated[CatalogService, Depends(get_catalog_service)] = None,
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)] = None,
+    audit_service: Annotated[AuditService, Depends(get_audit_service)] = None,
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> CatalogProviderInfo:
     """
@@ -1662,12 +1725,27 @@ async def add_catalog_provider(
         name=name,
     )
 
-    return CatalogProviderInfo(
+    response = CatalogProviderInfo(
         bpn=provider.bpn,
         name=provider.name,
         protocol_address=provider.protocol_address,
         last_seen=provider.last_seen,
     )
+
+    audit_service.log_event(
+        event_type=InternalAuditEventType.PROVIDER_ADDED,
+        action=f"Added catalog provider {provider.bpn}",
+        connection_id=connection_id,
+        resource_type="catalog",
+        actor=_get_owner_id(user),
+        details={
+            "provider_bpn": provider.bpn,
+            "protocol_address": provider.protocol_address,
+            "name": provider.name,
+        },
+    )
+
+    return response
 
 
 @router.post("/catalog/negotiate", response_model=NegotiationResponse, status_code=201)
@@ -1675,6 +1753,7 @@ async def initiate_catalog_negotiation(
     request: NegotiateContractRequest,
     catalog_service: Annotated[CatalogService, Depends(get_catalog_service)],
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> NegotiationResponse:
     """
@@ -1725,7 +1804,7 @@ async def initiate_catalog_negotiation(
             "error": NegotiationStatus.ERROR,
         }
 
-        return NegotiationResponse(
+        response = NegotiationResponse(
             negotiation_id=negotiation.negotiation_id,
             state=state_map.get(negotiation.state.value, NegotiationStatus.INITIAL),
             agreement_id=negotiation.agreement_id,
@@ -1733,6 +1812,21 @@ async def initiate_catalog_negotiation(
             created_at=negotiation.created_at,
             updated_at=negotiation.updated_at,
         )
+
+        audit_service.log_event(
+            event_type=InternalAuditEventType.NEGOTIATION_INITIATED,
+            action="Initiated contract negotiation",
+            connection_id=request.connection_id,
+            resource_type="negotiation",
+            actor=_get_owner_id(user),
+            details={
+                "asset_id": request.asset_id,
+                "offer_id": request.offer_id,
+                "provider_address": request.provider_address,
+            },
+        )
+
+        return response
 
     except CatalogServiceError as e:
         logger.exception("Failed to initiate negotiation")
@@ -1802,6 +1896,7 @@ async def get_negotiation_status(
 async def initiate_transfer(
     request: InitiateTransferRequest,
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> TransferResponse:
     """
@@ -1856,10 +1951,26 @@ async def initiate_transfer(
         except Exception as e:
             logger.warning("Celery unavailable for transfer: %s", e)
 
-        return TransferResponse(
+        response = TransferResponse(
             transfer=_transfer_to_response(transfer),
             message="Transfer initiated. Processing in background.",
         )
+
+        audit_service.log_event(
+            event_type=InternalAuditEventType.TRANSFER_INITIATED,
+            action="Initiated transfer",
+            connection_id=request.connection_id,
+            resource_id=transfer.transfer_id,
+            resource_type="transfer",
+            actor=_get_owner_id(user),
+            details={
+                "asset_id": request.asset_id,
+                "agreement_id": request.agreement_id,
+                "provider_bpn": request.provider_bpn,
+            },
+        )
+
+        return response
 
     except Exception as e:
         logger.exception("Failed to initiate transfer")
@@ -2014,8 +2125,11 @@ async def get_transfer_edr(
         )
 
     # Check if EDR is still valid
-    now = datetime.utcnow()
-    is_valid = transfer.edr_expires_at is None or transfer.edr_expires_at > now
+    now = datetime.now(timezone.utc)
+    expires_at = transfer.edr_expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    is_valid = expires_at is None or expires_at > now
 
     return TransferEDRResponse(
         edr=TransferEDR(
@@ -2033,6 +2147,7 @@ async def get_transfer_edr(
 async def terminate_transfer(
     transfer_id: str,
     conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> Transfer:
     """
@@ -2077,10 +2192,21 @@ async def terminate_transfer(
         transfer = conn_manager.update_transfer(
             transfer_id,
             state=InternalTransferState.TERMINATED,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
         )
 
-        return _transfer_to_response(transfer)
+        response = _transfer_to_response(transfer)
+
+        audit_service.log_event(
+            event_type=InternalAuditEventType.TRANSFER_TERMINATED,
+            action="Transfer terminated",
+            connection_id=transfer.connection_id,
+            resource_id=transfer.transfer_id,
+            resource_type="transfer",
+            actor=_get_owner_id(user),
+        )
+
+        return response
 
     except APIError:
         raise

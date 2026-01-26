@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -65,7 +65,7 @@ class AuditService:
             Created audit log entry
         """
         entry_id = uuid.uuid4().hex
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         entry = AuditLogEntry(
             entry_id=entry_id,
