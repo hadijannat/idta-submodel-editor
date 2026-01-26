@@ -234,7 +234,7 @@ class CatenaXProvider(DataspaceProvider):
         # Step 2: Remove EDC Asset
         # Step 3: Remove DTR Shell Descriptor
 
-        registration.status = RegistrationStatus.PENDING
+        registration.status = RegistrationStatus.UNPUBLISHED
         registration.dtr_asset_id = None
         registration.edc_asset_id = None
         registration.updated_at = datetime.utcnow()

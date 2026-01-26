@@ -22,6 +22,7 @@ from app.services.dataspace.policy.odrl_builder import (
     create_element_assets,
 )
 from app.services.dataspace.policy.templates import PolicyTemplates
+from app.services.dataspace.policy.store import PolicyStore
 
 __all__ = [
     # Engine
@@ -38,4 +39,6 @@ __all__ = [
     "create_element_assets",
     # Templates
     "PolicyTemplates",
+    # Storage
+    "PolicyStore",
 ]

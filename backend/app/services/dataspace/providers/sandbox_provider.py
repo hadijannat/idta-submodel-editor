@@ -193,7 +193,7 @@ class SandboxProvider(DataspaceProvider):
             registration.registration_id,
         )
 
-        registration.status = RegistrationStatus.PENDING
+        registration.status = RegistrationStatus.UNPUBLISHED
         registration.dtr_asset_id = None
         registration.edc_asset_id = None
         registration.updated_at = datetime.utcnow()

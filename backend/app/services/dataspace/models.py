@@ -31,6 +31,8 @@ class RegistrationStatus(str, Enum):
     REGISTERED = "registered"
     FAILED = "failed"
     UPDATING = "updating"
+    UNPUBLISHING = "unpublishing"
+    UNPUBLISHED = "unpublished"
 
 
 class ContractState(str, Enum):

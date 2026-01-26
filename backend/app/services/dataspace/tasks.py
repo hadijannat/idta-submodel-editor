@@ -381,6 +381,78 @@ def publish_submodel(
         }
 
 
+@shared_task(bind=True, name="dataspace.unpublish_publication")
+def unpublish_publication_task(
+    self,
+    registration_id: str,
+    remove_from_registry: bool = True,
+    remove_from_edc: bool = True,
+) -> dict:
+    """
+    Unpublish a submodel from the dataspace.
+
+    Args:
+        registration_id: Registration to unpublish
+        remove_from_registry: Remove from DTR if True
+        remove_from_edc: Remove from EDC if True
+
+    Returns:
+        Result summary
+    """
+    from app.services.dataspace.connection_manager import ConnectionManager
+    from app.services.dataspace.models import RegistrationStatus
+
+    manager = ConnectionManager()
+
+    registration = manager.get_registration(registration_id)
+    if registration is None:
+        return {"error": "Publication not found", "registration_id": registration_id}
+
+    connection = manager.get_connection(registration.connection_id)
+    if connection is None:
+        return {"error": "Connection not found", "registration_id": registration_id}
+
+    manager.update_registration(
+        registration_id,
+        status=RegistrationStatus.UNPUBLISHING,
+    )
+
+    try:
+        provider = get_provider_for_connection(connection)
+
+        # If both flags are false, skip provider call and mark as unpublished
+        if remove_from_registry or remove_from_edc:
+            updated_registration = run_async(provider.unregister_asset(connection, registration))
+        else:
+            updated_registration = registration
+            updated_registration.status = RegistrationStatus.UNPUBLISHED
+            updated_registration.updated_at = datetime.utcnow()
+
+        manager.update_registration(
+            registration_id,
+            status=updated_registration.status,
+            dtr_asset_id=updated_registration.dtr_asset_id,
+            edc_asset_id=updated_registration.edc_asset_id,
+            error_message=updated_registration.error_message,
+        )
+
+        return {
+            "registration_id": registration_id,
+            "status": updated_registration.status.value,
+            "dtr_asset_id": updated_registration.dtr_asset_id,
+            "edc_asset_id": updated_registration.edc_asset_id,
+        }
+
+    except Exception as e:
+        logger.exception("Unpublish failed for registration %s", registration_id)
+        manager.update_registration(
+            registration_id,
+            status=RegistrationStatus.FAILED,
+            error_message=str(e),
+        )
+        return {"error": str(e), "registration_id": registration_id}
+
+
 @shared_task(name="dataspace.health_check_all")
 def health_check_all() -> dict:
     """

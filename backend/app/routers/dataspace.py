@@ -51,6 +51,7 @@ from app.services.dataspace.models import (
     DataspaceType,
 )
 from app.services.dataspace.policy.engine import PolicyEngine
+from app.services.dataspace.policy.store import PolicyStore
 from app.services.dataspace.policy.odrl_builder import ODRLBuilder
 from app.services.dataspace.policy.templates import PolicyTemplates
 
@@ -77,6 +78,11 @@ def get_health_checker() -> DataspaceHealthChecker:
 def get_policy_engine() -> PolicyEngine:
     """Get policy engine instance."""
     return PolicyEngine()
+
+
+def get_policy_store() -> PolicyStore:
+    """Get policy store instance."""
+    return PolicyStore()
 
 
 def _check_dataspace_enabled() -> None:
@@ -594,6 +600,8 @@ def _map_registration_status(status) -> PublicationStatus:
         RegistrationStatus.REGISTERED: PublicationStatus.PUBLISHED,
         RegistrationStatus.FAILED: PublicationStatus.FAILED,
         RegistrationStatus.UPDATING: PublicationStatus.UPDATING,
+        RegistrationStatus.UNPUBLISHING: PublicationStatus.UNPUBLISHING,
+        RegistrationStatus.UNPUBLISHED: PublicationStatus.UNPUBLISHED,
     }
     return status_map.get(status, PublicationStatus.PENDING)
 
@@ -720,19 +728,29 @@ async def unpublish(
     _assert_owner(connection, user)
 
     # TODO: Implement actual unpublishing via EDC/DTR clients
-    # For now, just update status
     from app.services.dataspace.models import RegistrationStatus
 
     conn_manager.update_registration(
         publication_id,
-        status=RegistrationStatus.FAILED,  # Mark as removed (no UNPUBLISHED status in internal model)
-        error_message="Unpublished by user request",
+        status=RegistrationStatus.UNPUBLISHING,
     )
+
+    try:
+        from app.services.dataspace.tasks import unpublish_publication_task
+
+        unpublish_publication_task.delay(
+            publication_id,
+            remove_from_registry=request.remove_from_registry if request else True,
+            remove_from_edc=request.remove_from_edc if request else True,
+        )
+        logger.info("Queued unpublish for publication %s", publication_id)
+    except Exception as e:
+        logger.warning("Celery unavailable: %s", e)
 
     return UnpublishResponse(
         publication_id=publication_id,
-        status=PublicationStatus.UNPUBLISHED,
-        message="Publication unpublished successfully.",
+        status=PublicationStatus.UNPUBLISHING,
+        message="Publication unpublish initiated.",
     )
 
 
@@ -858,6 +876,7 @@ async def preview_policy(
 async def create_policy(
     policy_config: PolicyConfig,
     policy_engine: Annotated[PolicyEngine, Depends(get_policy_engine)],
+    policy_store: Annotated[PolicyStore, Depends(get_policy_store)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> dict:
     """
@@ -891,15 +910,14 @@ async def create_policy(
                 detail={"message": "Invalid policy configuration", "errors": errors},
             )
 
-        # TODO: Store policy in persistent storage
-        # For now, return the generated policy
+        record = policy_store.create(
+            policy_id=policy_id,
+            config=policy_config.model_dump(),
+            odrl=odrl,
+            owner_id=_get_owner_id(user),
+        )
 
-        return {
-            "policy_id": policy_id,
-            "odrl": odrl,
-            "config": policy_config.model_dump(),
-            "created_at": datetime.utcnow().isoformat(),
-        }
+        return record
 
     except HTTPException:
         raise
@@ -911,6 +929,7 @@ async def create_policy(
 @router.get("/policies/{policy_id}")
 async def get_policy(
     policy_id: str,
+    policy_store: Annotated[PolicyStore, Depends(get_policy_store)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> dict:
     """
@@ -920,18 +939,20 @@ async def get_policy(
     """
     _check_dataspace_enabled()
 
-    # TODO: Implement policy storage and retrieval
-    # For now, return a placeholder
-    raise HTTPException(
-        status_code=501,
-        detail="Policy storage not yet implemented. Use /policies/preview to generate policies.",
-    )
+    record = policy_store.get(policy_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    owner_id = _get_owner_id(user)
+    if owner_id and record.get("owner_id") and record.get("owner_id") != owner_id:
+        raise HTTPException(status_code=403, detail="Access denied for this policy.")
+    return record
 
 
 @router.put("/policies/{policy_id}")
 async def update_policy(
     policy_id: str,
     policy_config: PolicyConfig,
+    policy_store: Annotated[PolicyStore, Depends(get_policy_store)],
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> dict:
     """
@@ -941,16 +962,39 @@ async def update_policy(
     """
     _check_dataspace_enabled()
 
-    # TODO: Implement policy storage and update
-    raise HTTPException(
-        status_code=501,
-        detail="Policy storage not yet implemented.",
+    record = policy_store.get(policy_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    owner_id = _get_owner_id(user)
+    if owner_id and record.get("owner_id") and record.get("owner_id") != owner_id:
+        raise HTTPException(status_code=403, detail="Access denied for this policy.")
+
+    # Rebuild ODRL based on access type
+    if policy_config.access_type == AccessType.PUBLIC:
+        odrl = PolicyTemplates.unrestricted_use(policy_id=policy_id)
+    elif policy_config.access_type == AccessType.RESTRICTED and policy_config.allowed_partners:
+        odrl = PolicyTemplates.bpn_restricted(
+            policy_config.allowed_partners,
+            policy_id=policy_id,
+        )
+    else:
+        odrl = PolicyTemplates.membership_required(policy_id=policy_id)
+
+    updated = policy_store.update(
+        policy_id=policy_id,
+        config=policy_config.model_dump(),
+        odrl=odrl,
     )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return updated
 
 
 @router.delete("/policies/{policy_id}")
 async def delete_policy(
     policy_id: str,
+    conn_manager: Annotated[ConnectionManager, Depends(get_connection_manager)] = None,
+    policy_store: Annotated[PolicyStore, Depends(get_policy_store)] = None,
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> dict:
     """
@@ -960,11 +1004,25 @@ async def delete_policy(
     """
     _check_dataspace_enabled()
 
-    # TODO: Implement policy deletion
-    raise HTTPException(
-        status_code=501,
-        detail="Policy storage not yet implemented.",
-    )
+    record = policy_store.get(policy_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    owner_id = _get_owner_id(user)
+    if owner_id and record.get("owner_id") and record.get("owner_id") != owner_id:
+        raise HTTPException(status_code=403, detail="Access denied for this policy.")
+
+    registrations = conn_manager.list_registrations(limit=200)
+    for reg in registrations:
+        if reg.metadata.get("policy_id") == policy_id and reg.status.value not in ("failed", "unpublished"):
+            raise HTTPException(
+                status_code=409,
+                detail="Policy is in use by active publications.",
+            )
+
+    deleted = policy_store.delete(policy_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return {"policy_id": policy_id, "deleted": True}
 
 
 # ---------------------------------------------------------------------------

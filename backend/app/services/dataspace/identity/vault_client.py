@@ -315,9 +315,17 @@ class VaultClient:
         if not self.is_configured:
             return False
 
-        # TODO: Implement actual health check
+        import httpx
 
-        return True
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{self.vault_url.rstrip('/')}/v1/sys/health",
+                    headers=self._headers(),
+                )
+                return response.status_code in {200, 429, 472, 473}
+        except httpx.HTTPError:
+            return False
 
     async def close(self) -> None:
         """Close the Vault client."""
