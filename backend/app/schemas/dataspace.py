@@ -153,15 +153,6 @@ class PolicyConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class DataspaceConnectionEndpoints(BaseModel):
-    """Endpoint URLs for a dataspace connection."""
-
-    basyx_url: str | None = Field(default=None, description="BaSyx AAS Server URL")
-    dtr_url: str | None = Field(default=None, description="Digital Twin Registry URL")
-    edc_control_url: str | None = Field(default=None, description="EDC Control Plane URL")
-    edc_data_url: str | None = Field(default=None, description="EDC Data Plane URL")
-
-
 class DataspaceConnection(BaseModel):
     """A dataspace connection with full status and endpoints."""
 
@@ -174,10 +165,12 @@ class DataspaceConnection(BaseModel):
         description="EDC connector mode"
     )
     bpn: str | None = Field(default=None, description="Business Partner Number")
-    endpoints: DataspaceConnectionEndpoints = Field(
-        default_factory=DataspaceConnectionEndpoints,
-        description="Service endpoint URLs",
-    )
+    # Component endpoints (flat fields per spec)
+    basyx_url: str | None = Field(default=None, description="BaSyx AAS Server URL")
+    dtr_url: str | None = Field(default=None, description="Digital Twin Registry URL")
+    edc_control_url: str | None = Field(default=None, description="EDC Control Plane URL")
+    edc_data_url: str | None = Field(default=None, description="EDC Data Plane URL")
+    # Progress tracking
     progress: Annotated[float, Field(ge=0.0, le=1.0)] = Field(
         default=0.0, description="Connection progress (0.0-1.0)"
     )
@@ -207,23 +200,6 @@ class DataspaceConnection(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SubmodelPublicationEndpoints(BaseModel):
-    """Endpoints for accessing a published submodel."""
-
-    aas_repository_url: str | None = Field(
-        default=None, description="AAS Repository endpoint for this submodel"
-    )
-    submodel_repository_url: str | None = Field(
-        default=None, description="Submodel Repository endpoint"
-    )
-    dtr_asset_id: str | None = Field(
-        default=None, description="Asset ID in Digital Twin Registry"
-    )
-    edc_asset_id: str | None = Field(
-        default=None, description="Asset ID in EDC Catalog"
-    )
-
-
 class SubmodelPublication(BaseModel):
     """A published submodel in a dataspace."""
 
@@ -231,17 +207,19 @@ class SubmodelPublication(BaseModel):
     connection_id: str = Field(description="Associated dataspace connection ID")
     template_name: str = Field(description="Source template name")
     submodel_id: str = Field(description="Submodel identifier (IRI)")
-    aas_id: str | None = Field(default=None, description="AAS identifier (IRI)")
     status: PublicationStatus = Field(description="Publication status")
-    endpoints: SubmodelPublicationEndpoints = Field(
-        default_factory=SubmodelPublicationEndpoints,
-        description="Access endpoints",
+    # Endpoint fields (flat per spec)
+    aas_endpoint: str | None = Field(
+        default=None, description="AAS Repository endpoint for this submodel"
+    )
+    dtr_asset_id: str | None = Field(
+        default=None, description="Asset ID in Digital Twin Registry"
+    )
+    edc_offer_id: str | None = Field(
+        default=None, description="Offer ID in EDC Catalog"
     )
     policy_id: str | None = Field(
         default=None, description="Associated policy configuration ID"
-    )
-    error_message: str | None = Field(
-        default=None, description="Error details if status is FAILED"
     )
     created_at: datetime = Field(description="Publication creation timestamp")
     updated_at: datetime = Field(description="Last update timestamp")

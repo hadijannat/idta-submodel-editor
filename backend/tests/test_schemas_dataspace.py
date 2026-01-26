@@ -12,7 +12,6 @@ from app.schemas.dataspace import (
     ConstraintOperator,
     CreateConnectionRequest,
     DataspaceConnection,
-    DataspaceConnectionEndpoints,
     DataspaceConnectionStatus,
     DisconnectRequest,
     HealthCheckResult,
@@ -22,7 +21,6 @@ from app.schemas.dataspace import (
     PublicationStatus,
     PublishSubmodelRequest,
     SubmodelPublication,
-    SubmodelPublicationEndpoints,
 )
 
 
@@ -101,24 +99,21 @@ class TestDataspaceConnection:
         assert conn.edc_mode == "tractus-x"
         assert conn.progress == 0.0
         assert conn.bpn is None
-        assert conn.endpoints.basyx_url is None
+        assert conn.basyx_url is None
 
     def test_full_connection(self):
         """Test creating a connection with all fields."""
         now = datetime.now(timezone.utc)
-        endpoints = DataspaceConnectionEndpoints(
-            basyx_url="https://basyx.example.com",
-            dtr_url="https://dtr.example.com",
-            edc_control_url="https://edc-control.example.com",
-            edc_data_url="https://edc-data.example.com",
-        )
         conn = DataspaceConnection(
             connection_id="conn-456",
             status=DataspaceConnectionStatus.CONNECTED,
             environment="catena-x-test",
             edc_mode="aas-extension",
             bpn="BPNL000000001234",
-            endpoints=endpoints,
+            basyx_url="https://basyx.example.com",
+            dtr_url="https://dtr.example.com",
+            edc_control_url="https://edc-control.example.com",
+            edc_data_url="https://edc-data.example.com",
             progress=1.0,
             progress_message="Fully connected",
             last_health_check=now,
@@ -126,7 +121,7 @@ class TestDataspaceConnection:
             updated_at=now,
         )
         assert conn.bpn == "BPNL000000001234"
-        assert conn.endpoints.basyx_url == "https://basyx.example.com"
+        assert conn.basyx_url == "https://basyx.example.com"
         assert conn.progress == 1.0
 
     def test_invalid_bpn_format(self):
@@ -357,30 +352,25 @@ class TestSubmodelPublication:
         )
         assert pub.publication_id == "pub-123"
         assert pub.status == PublicationStatus.PENDING
-        assert pub.aas_id is None
+        assert pub.aas_endpoint is None
 
     def test_full_publication(self):
         """Test creating a publication with all fields."""
         now = datetime.now(timezone.utc)
-        endpoints = SubmodelPublicationEndpoints(
-            aas_repository_url="https://basyx.example.com/aas",
-            submodel_repository_url="https://basyx.example.com/submodel",
-            dtr_asset_id="dtr-asset-123",
-            edc_asset_id="edc-asset-456",
-        )
         pub = SubmodelPublication(
             publication_id="pub-789",
             connection_id="conn-456",
             template_name="CarbonFootprint",
             submodel_id="urn:example:submodel:2",
-            aas_id="urn:example:aas:1",
             status=PublicationStatus.PUBLISHED,
-            endpoints=endpoints,
+            aas_endpoint="https://basyx.example.com/aas",
+            dtr_asset_id="dtr-asset-123",
+            edc_offer_id="edc-offer-456",
             policy_id="policy-abc",
             created_at=now,
             updated_at=now,
         )
-        assert pub.endpoints.dtr_asset_id == "dtr-asset-123"
+        assert pub.dtr_asset_id == "dtr-asset-123"
         assert pub.policy_id == "policy-abc"
 
 
