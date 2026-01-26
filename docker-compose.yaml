@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Backend API service
   backend:
@@ -151,6 +149,256 @@ services:
     profiles:
       - auth  # Only start with: docker-compose --profile auth up
 
+  # ==========================================================================
+  # Dataspace Profile Services
+  # Start with: docker-compose --profile dataspace up
+  # ==========================================================================
+
+  # BaSyx AAS Server - Hosts Asset Administration Shell instances
+  basyx-aas-server:
+    image: eclipsebasyx/aas-server:2.0.0-SNAPSHOT
+    container_name: basyx-aas-server
+    ports:
+      - "4001:4001"
+    environment:
+      - SERVER_PORT=4001
+      - BASYX_AASSERVER_BACKEND=InMemory
+      - BASYX_AASSERVER_AASXUPLOAD_ENABLED=true
+      - BASYX_AASSERVER_REGISTRY_PATH=http://basyx-registry:4002/api/v1/registry
+    volumes:
+      - basyx_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/shells"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      basyx-registry:
+        condition: service_healthy
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
+  # BaSyx AAS Registry - Service discovery for AAS instances
+  basyx-registry:
+    image: eclipsebasyx/aas-registry:2.0.0-SNAPSHOT
+    container_name: basyx-registry
+    ports:
+      - "4002:4002"
+    environment:
+      - SERVER_PORT=4002
+      - BASYX_REGISTRY_BACKEND=InMemory
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4002/api/v1/registry"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
+  # Digital Twin Registry (DTR) - Catena-X compliant twin registry
+  dtr:
+    image: tractusx/sldt-digital-twin-registry:0.4.3
+    container_name: dtr
+    ports:
+      - "4003:4003"
+    environment:
+      - SERVER_PORT=4003
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-dataspace:5432/dtr
+      - SPRING_DATASOURCE_USERNAME=dtr
+      - SPRING_DATASOURCE_PASSWORD=dtr_password
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - REGISTRY_IDTYPE_URL=false
+      - REGISTRY_ALLOW_ALL_TENANTS=true
+    depends_on:
+      postgres-dataspace:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4003/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
+  # HashiCorp Vault - Secrets management for EDC
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: vault
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=dev-root-token
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - VAULT_ADDR=http://0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault_data:/vault/data
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
+  # PostgreSQL for EDC and DTR persistence
+  postgres-dataspace:
+    image: postgres:15-alpine
+    container_name: postgres-dataspace
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_password
+      - POSTGRES_MULTIPLE_DATABASES=edc,dtr
+    volumes:
+      - postgres_dataspace_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
+  # EDC Control Plane - Policy management and catalog
+  edc-control-plane:
+    image: ghcr.io/eclipse-tractusx/edc-controlplane-postgresql-hashicorp-vault:0.7.3
+    container_name: edc-control-plane
+    ports:
+      - "19192:19192"  # Management API
+      - "19193:19193"  # Protocol API
+      - "19194:19194"  # Public API
+    environment:
+      # EDC Identity
+      - EDC_PARTICIPANT_ID=${EDC_PARTICIPANT_ID:-BPNL000000000001}
+      - EDC_IDS_ID=urn:connector:edc-control-plane
+      # API ports
+      - WEB_HTTP_PORT=19191
+      - WEB_HTTP_PATH=/api
+      - WEB_HTTP_MANAGEMENT_PORT=19192
+      - WEB_HTTP_MANAGEMENT_PATH=/management
+      - WEB_HTTP_PROTOCOL_PORT=19193
+      - WEB_HTTP_PROTOCOL_PATH=/protocol
+      - WEB_HTTP_PUBLIC_PORT=19194
+      - WEB_HTTP_PUBLIC_PATH=/public
+      - WEB_HTTP_CONTROL_PORT=19195
+      - WEB_HTTP_CONTROL_PATH=/control
+      # DSP Protocol
+      - EDC_DSP_CALLBACK_ADDRESS=http://edc-control-plane:19193/protocol
+      # Data plane
+      - EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_URL=http://edc-data-plane:19291/api/dataplane/control
+      - EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_SOURCETYPES=HttpData
+      - EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_DESTINATIONTYPES=HttpProxy,HttpData
+      - EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_PROPERTIES_PUBLICAPIURL=http://edc-data-plane:19291/public
+      # Vault
+      - EDC_VAULT_HASHICORP_URL=http://vault:8200
+      - EDC_VAULT_HASHICORP_TOKEN=dev-root-token
+      - EDC_VAULT_HASHICORP_HEALTH_CHECK_ENABLED=false
+      # PostgreSQL
+      - EDC_DATASOURCE_DEFAULT_URL=jdbc:postgresql://postgres-dataspace:5432/edc
+      - EDC_DATASOURCE_DEFAULT_USER=edc
+      - EDC_DATASOURCE_DEFAULT_PASSWORD=edc_password
+      # API Key
+      - EDC_API_AUTH_KEY=${EDC_API_KEY:-edc-api-key}
+    depends_on:
+      vault:
+        condition: service_healthy
+      postgres-dataspace:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19192/management/v2/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
+  # EDC Data Plane - Actual data transfer
+  edc-data-plane:
+    image: ghcr.io/eclipse-tractusx/edc-dataplane-hashicorp-vault:0.7.3
+    container_name: edc-data-plane
+    ports:
+      - "19291:19291"  # Public API
+      - "19292:19292"  # Control API
+    environment:
+      # Data plane ports
+      - WEB_HTTP_PORT=19290
+      - WEB_HTTP_PATH=/api
+      - WEB_HTTP_PUBLIC_PORT=19291
+      - WEB_HTTP_PUBLIC_PATH=/public
+      - WEB_HTTP_CONTROL_PORT=19292
+      - WEB_HTTP_CONTROL_PATH=/control
+      # Control plane
+      - EDC_CONTROLPLANE_VALIDATION_ENDPOINT=http://edc-control-plane:19195/control/token
+      # Vault
+      - EDC_VAULT_HASHICORP_URL=http://vault:8200
+      - EDC_VAULT_HASHICORP_TOKEN=dev-root-token
+      - EDC_VAULT_HASHICORP_HEALTH_CHECK_ENABLED=false
+    depends_on:
+      edc-control-plane:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19291/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
+  # Mnestix AAS Browser - Web UI for browsing AAS
+  mnestix:
+    image: mnestix/mnestix-browser:3.2.1
+    container_name: mnestix
+    ports:
+      - "3001:3000"
+    environment:
+      - AAS_REPO_API_URL=http://basyx-aas-server:4001
+      - REGISTRY_API_URL=http://basyx-registry:4002
+      - SUBMODEL_REGISTRY_API_URL=http://basyx-registry:4002
+      - DISCOVERY_API_URL=
+      - AAS_LIST_FEATURE_FLAG=true
+      - COMPARISON_FEATURE_FLAG=true
+      - AUTHENTICATION_FEATURE_FLAG=false
+      - LOCK_TIMESERIES_PERIOD_FEATURE_FLAG=true
+    depends_on:
+      basyx-aas-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - idta-network
+    profiles:
+      - dataspace
+
 volumes:
   template_cache:
     driver: local
@@ -161,6 +409,15 @@ volumes:
   keycloak_data:
     driver: local
   magic_import_cache:
+    driver: local
+  # Dataspace volumes
+  dataspace_cache:
+    driver: local
+  vault_data:
+    driver: local
+  postgres_dataspace_data:
+    driver: local
+  basyx_data:
     driver: local
 
 networks:
