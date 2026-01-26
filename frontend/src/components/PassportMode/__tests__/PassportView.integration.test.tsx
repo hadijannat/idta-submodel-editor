@@ -59,7 +59,9 @@ describe('PassportView integration', () => {
     await user.click(screen.getByRole('button', { name: /passport view/i }));
 
     expect(editor).toBeInTheDocument();
-    expect(editor).not.toBeVisible();
+    await waitFor(() => {
+      expect(editor).not.toBeVisible();
+    }, { timeout: 500 });
 
     // Wait for skeleton to disappear and content to show (150ms delay + useTransition)
     await waitFor(() => {
