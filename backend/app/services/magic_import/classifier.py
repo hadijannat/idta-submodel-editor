@@ -231,4 +231,6 @@ class DocumentClassifier:
         if not ocr_words:
             return None
 
-        return sum(w.confidence for w in ocr_words) / len(ocr_words)
+        avg_confidence = sum(w.confidence for w in ocr_words) / len(ocr_words)
+        # Round to avoid floating-point artifacts in tests and UI.
+        return round(avg_confidence, 3)
