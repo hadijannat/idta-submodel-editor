@@ -6,7 +6,7 @@ A metamodel-driven application for editing any IDTA submodel template without co
   <a href="https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml"><img src="https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"/></a>
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose"/></a>
-  <a href="https://github.com/hadijannat/idta-submodel-editor/tags"><img src="https://img.shields.io/github/v/tag/hadijannat/idta-submodel-editor?label=version" alt="Version"/></a>
+  <a href="https://github.com/hadijannat/idta-submodel-editor/tags"><img src="https://img.shields.io/badge/version-1.0.0-2F80ED" alt="Version"/></a>
 </p>
 
 ---
