@@ -2,9 +2,11 @@
 Celery application configuration for background task processing.
 
 This module sets up Celery with Redis as the message broker and result backend.
+Supports both Magic Import and Dataspace connectivity background tasks.
 """
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.config import get_settings
 
@@ -12,7 +14,7 @@ settings = get_settings()
 
 # Create Celery app
 celery_app = Celery(
-    "magic_import",
+    "idta_submodel_editor",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
 )
@@ -40,11 +42,42 @@ celery_app.conf.update(
     task_max_retries=3,
 )
 
-# Auto-discover tasks from the magic_import module
-celery_app.autodiscover_tasks(["app.services.magic_import"])
+# Auto-discover tasks from both magic_import and dataspace modules
+celery_app.autodiscover_tasks([
+    "app.services.magic_import",
+    "app.services.dataspace",
+])
+
+# Celery Beat schedule for periodic tasks
+celery_app.conf.beat_schedule = {
+    # Periodic health check for all dataspace connections
+    # Runs every 5 minutes to monitor connection health
+    "dataspace-health-check-all": {
+        "task": "dataspace.health_check_all",
+        "schedule": crontab(minute="*/5"),
+        "options": {
+            "expires": 240,  # Task expires after 4 minutes if not started
+        },
+    },
+    # Cleanup expired Magic Import jobs
+    # Runs daily at 3 AM UTC
+    "magic-import-cleanup-expired": {
+        "task": "magic_import.cleanup_expired",
+        "schedule": crontab(hour=3, minute=0),
+        "options": {
+            "expires": 3600,  # Task expires after 1 hour
+        },
+    },
+}
+
+
+@celery_app.task(bind=True, name="celery.health_check")
+def health_check(self):
+    """Health check task for monitoring Celery workers."""
+    return {"status": "healthy", "worker_id": self.request.id}
 
 
 @celery_app.task(bind=True, name="magic_import.health_check")
-def health_check(self):
-    """Health check task for monitoring."""
+def magic_import_health_check(self):
+    """Health check task for Magic Import workers (backward compatibility)."""
     return {"status": "healthy", "worker_id": self.request.id}
