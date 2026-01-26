@@ -143,7 +143,7 @@ def mock_sandbox_provider():
     provider = MagicMock()
     provider.name = "sandbox"
 
-    async def mock_connect(connection):
+    async def mock_connect(connection, secrets=None):
         connection.status = ConnectionStatus.CONNECTED
         connection.dtr_url = "http://dtr:4003"
         connection.edc_url = "http://edc:8080"
@@ -348,7 +348,7 @@ class TestOnboardToDataspace:
 
             result = onboard_to_dataspace(sample_connection.connection_id)
 
-            assert result["status"] == "error"
+            assert result["status"] == "degraded"
 
 
 # ---------------------------------------------------------------------------

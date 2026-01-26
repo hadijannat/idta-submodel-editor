@@ -55,7 +55,8 @@ class VaultClient:
 
     def _headers(self) -> dict[str, str]:
         """Build Vault request headers."""
-        headers = {"X-Vault-Token": self.token or ""}
+        token = self.token if isinstance(self.token, (str, bytes)) else ""
+        headers = {"X-Vault-Token": token or ""}
         if self.namespace:
             headers["X-Vault-Namespace"] = self.namespace
         return headers

@@ -292,10 +292,10 @@ describe('PublicationManager', () => {
     });
 
     // Find the published publication row and click unpublish
-    const publishedRow = screen.getByText('DigitalNameplate').closest('.dataspace-publication');
+    const publishedRow = screen.getByText('DigitalNameplate').closest('.dataspace-publication') as HTMLElement;
     expect(publishedRow).not.toBeNull();
 
-    const unpublishButton = within(publishedRow!).getByTitle('Unpublish');
+    const unpublishButton = within(publishedRow).getByTitle('Unpublish');
     await user.click(unpublishButton);
 
     expect(window.confirm).toHaveBeenCalledWith(
@@ -317,8 +317,8 @@ describe('PublicationManager', () => {
       expect(screen.getByText('DigitalNameplate')).toBeInTheDocument();
     });
 
-    const publishedRow = screen.getByText('DigitalNameplate').closest('.dataspace-publication');
-    const unpublishButton = within(publishedRow!).getByTitle('Unpublish');
+    const publishedRow = screen.getByText('DigitalNameplate').closest('.dataspace-publication') as HTMLElement;
+    const unpublishButton = within(publishedRow).getByTitle('Unpublish');
     await user.click(unpublishButton);
 
     expect(dataspaceApi.deletePublication).not.toHaveBeenCalled();
@@ -338,8 +338,8 @@ describe('PublicationManager', () => {
       expect(screen.getByText('DigitalNameplate')).toBeInTheDocument();
     });
 
-    const publishedRow = screen.getByText('DigitalNameplate').closest('.dataspace-publication');
-    const refreshButton = within(publishedRow!).getByTitle('Refresh status');
+    const publishedRow = screen.getByText('DigitalNameplate').closest('.dataspace-publication') as HTMLElement;
+    const refreshButton = within(publishedRow).getByTitle('Refresh status');
     await user.click(refreshButton);
 
     await waitFor(() => {
@@ -421,12 +421,12 @@ describe('PublicationManager', () => {
     });
 
     // PCF is pending, should not have unpublish button
-    const pendingRow = screen.getByText('PCF').closest('.dataspace-publication');
-    expect(within(pendingRow!).queryByTitle('Unpublish')).not.toBeInTheDocument();
+    const pendingRow = screen.getByText('PCF').closest('.dataspace-publication') as HTMLElement;
+    expect(within(pendingRow).queryByTitle('Unpublish')).not.toBeInTheDocument();
 
     // Failed item should not have unpublish button
-    const failedRow = screen.getByText('ContactInfo').closest('.dataspace-publication');
-    expect(within(failedRow!).queryByTitle('Unpublish')).not.toBeInTheDocument();
+    const failedRow = screen.getByText('ContactInfo').closest('.dataspace-publication') as HTMLElement;
+    expect(within(failedRow).queryByTitle('Unpublish')).not.toBeInTheDocument();
   });
 
   it('should show empty state publish button when no publications', async () => {

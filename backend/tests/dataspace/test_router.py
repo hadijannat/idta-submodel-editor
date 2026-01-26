@@ -37,6 +37,8 @@ def mock_settings():
     settings.edc_control_plane_url = "http://edc:8080"
     settings.edc_data_plane_url = "http://edc:8081"
     settings.basyx_aas_server_url = "http://basyx:4001"
+    settings.vault_url = None
+    settings.vault_token = None
     return settings
 
 
@@ -559,7 +561,8 @@ class TestConfigurationEndpoints:
 
             assert response.status_code == 200
             data = response.json()
-            assert len(data) == 3
+            assert len(data) == 4
+            assert any(env["id"] == "manufacturing-x" for env in data)
             assert any(e["id"] == "sandbox" for e in data)
             assert any(e["id"] == "catena-x-test" for e in data)
             assert any(e["id"] == "catena-x-prod" for e in data)
