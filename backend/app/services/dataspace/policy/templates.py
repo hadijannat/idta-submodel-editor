@@ -328,3 +328,136 @@ class PolicyTemplates:
             perm_builder.with_framework_agreement_constraint(framework)
 
         return perm_builder.done().build()
+
+    @staticmethod
+    def time_limited_access(
+        valid_from: str | None = None,
+        valid_until: str | None = None,
+        require_membership: bool = True,
+        allowed_bpns: list[str] | None = None,
+        policy_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Create a time-limited access policy.
+
+        Restricts access to a specific time window, useful for:
+        - Trial periods
+        - Temporary data sharing agreements
+        - Seasonal or event-based access
+
+        Args:
+            valid_from: ISO8601 timestamp for access start (e.g., "2024-01-01T00:00:00Z")
+            valid_until: ISO8601 timestamp for access end (e.g., "2024-12-31T23:59:59Z")
+            require_membership: Whether to also require membership
+            allowed_bpns: Optional list of allowed BPNs
+            policy_id: Optional policy ID
+
+        Returns:
+            ODRL policy document
+
+        Example:
+            >>> policy = PolicyTemplates.time_limited_access(
+            ...     valid_until="2024-12-31T23:59:59Z",
+            ...     require_membership=True
+            ... )
+        """
+        builder = ODRLBuilder().as_offer().with_catena_x_profile()
+
+        if policy_id:
+            builder.set_id(policy_id)
+
+        perm_builder = builder.add_permission("use")
+
+        if require_membership:
+            perm_builder.with_membership_constraint("active")
+
+        if allowed_bpns:
+            perm_builder.with_bpn_constraint(allowed_bpns)
+
+        # Add time constraints
+        if valid_from:
+            perm_builder.with_constraint("dateTime", "gteq", valid_from)
+
+        if valid_until:
+            perm_builder.with_constraint("dateTime", "lteq", valid_until)
+
+        return perm_builder.done().build()
+
+    @staticmethod
+    def bpn_allowlist(
+        allowed_bpns: list[str],
+        require_membership: bool = False,
+        policy_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Create a BPN (Business Partner Number) allowlist policy.
+
+        A simple access policy that restricts access to specific business
+        partners. This is the most common access restriction in Catena-X.
+
+        Args:
+            allowed_bpns: List of BPNs allowed to access
+            require_membership: Whether to also require membership (default False
+                               since BPN check implies membership)
+            policy_id: Optional policy ID
+
+        Returns:
+            ODRL policy document
+
+        Example:
+            >>> policy = PolicyTemplates.bpn_allowlist(
+            ...     allowed_bpns=["BPNL00000001AAAA", "BPNL00000001BBBB"]
+            ... )
+        """
+        builder = ODRLBuilder().as_offer().with_catena_x_profile()
+
+        if policy_id:
+            builder.set_id(policy_id)
+
+        perm_builder = builder.add_permission("use")
+
+        if require_membership:
+            perm_builder.with_membership_constraint("active")
+
+        perm_builder.with_bpn_constraint(allowed_bpns)
+
+        return perm_builder.done().build()
+
+    @staticmethod
+    def membership_credential(
+        credential_type: str = "MembershipCredential",
+        issuer: str | None = None,
+        policy_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Create a membership credential verification policy.
+
+        Requires a verifiable credential of the specified type,
+        optionally from a specific issuer.
+
+        Args:
+            credential_type: Type of credential required (default: MembershipCredential)
+            issuer: Optional required credential issuer
+            policy_id: Optional policy ID
+
+        Returns:
+            ODRL policy document
+
+        Example:
+            >>> policy = PolicyTemplates.membership_credential(
+            ...     credential_type="MembershipCredential",
+            ...     issuer="did:web:catena-x.net"
+            ... )
+        """
+        builder = ODRLBuilder().as_offer().with_catena_x_profile()
+
+        if policy_id:
+            builder.set_id(policy_id)
+
+        perm_builder = builder.add_permission("use")
+        perm_builder.with_constraint("VerifiableCredential.type", "eq", credential_type)
+
+        if issuer:
+            perm_builder.with_constraint("VerifiableCredential.issuer", "eq", issuer)
+
+        return perm_builder.done().build()

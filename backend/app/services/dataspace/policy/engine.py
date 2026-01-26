@@ -9,12 +9,65 @@ for Manufacturing-X / Catena-X use cases.
 from __future__ import annotations
 
 import logging
+import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from app.services.dataspace.providers.provider_base import PolicyError
 
+if TYPE_CHECKING:
+    from app.schemas.dataspace import PolicyConfig
+
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TranslatedPolicy:
+    """
+    Result of translating a UI PolicyConfig to ODRL artifacts.
+
+    Contains all the EDC-ready artifacts needed to publish an asset
+    with access control: assets, access policy, contract policy,
+    and contract definitions.
+    """
+
+    assets: list[dict[str, Any]] = field(default_factory=list)
+    """List of EDC asset entries to register."""
+
+    access_policy: dict[str, Any] = field(default_factory=dict)
+    """ODRL access policy (who can see the asset in catalog)."""
+
+    access_policy_id: str = ""
+    """ID of the access policy."""
+
+    contract_policy: dict[str, Any] = field(default_factory=dict)
+    """ODRL contract policy (usage terms/constraints)."""
+
+    contract_policy_id: str = ""
+    """ID of the contract policy."""
+
+    contract_definitions: list[dict[str, Any]] = field(default_factory=list)
+    """Contract definitions linking assets to policies."""
+
+    element_level: bool = False
+    """Whether this uses element-level granular access control."""
+
+    target_paths: list[str] = field(default_factory=list)
+    """idShortPaths targeted by this policy (empty = entire submodel)."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "assets": self.assets,
+            "access_policy": self.access_policy,
+            "access_policy_id": self.access_policy_id,
+            "contract_policy": self.contract_policy,
+            "contract_policy_id": self.contract_policy_id,
+            "contract_definitions": self.contract_definitions,
+            "element_level": self.element_level,
+            "target_paths": self.target_paths,
+        }
 
 
 class PolicyEngine:
@@ -304,3 +357,203 @@ class PolicyEngine:
         # This would compare constraints and ensure they can be satisfied together
 
         return True, "Compatibility check not yet implemented"
+
+    def translate(
+        self,
+        ui_policy: "PolicyConfig",
+        base_asset_id: str,
+        submodel_endpoint: str,
+        semantic_id: str | None = None,
+    ) -> TranslatedPolicy:
+        """
+        Translate a UI PolicyConfig to ODRL artifacts for EDC.
+
+        This is the main entry point for converting user-facing policy
+        configuration into the EDC-ready ODRL policies and contract definitions.
+
+        Args:
+            ui_policy: User-facing policy configuration from the UI
+            base_asset_id: Base asset ID for the submodel
+            submodel_endpoint: URL endpoint for the submodel data
+            semantic_id: Optional semantic identifier
+
+        Returns:
+            TranslatedPolicy containing all EDC artifacts
+
+        Raises:
+            PolicyError: If translation fails
+
+        Example:
+            >>> from app.schemas.dataspace import PolicyConfig, AccessType
+            >>> engine = PolicyEngine()
+            >>> config = PolicyConfig(
+            ...     access_type=AccessType.RESTRICTED,
+            ...     allowed_partners=["BPNL00000001AAAA"]
+            ... )
+            >>> result = engine.translate(config, "urn:asset:1", "https://basyx/sm/1")
+        """
+        from app.schemas.dataspace import AccessType
+        from app.services.dataspace.policy.odrl_builder import (
+            build_asset_entry,
+            build_bpn_access_policy,
+            build_contract_definition,
+            build_contract_policy,
+            create_element_assets,
+        )
+        from app.services.dataspace.policy.templates import PolicyTemplates
+
+        result = TranslatedPolicy()
+        result.target_paths = ui_policy.target_paths.copy()
+
+        # Generate policy IDs
+        access_policy_id = f"urn:uuid:{uuid.uuid4()}"
+        contract_policy_id = f"urn:uuid:{uuid.uuid4()}"
+
+        result.access_policy_id = access_policy_id
+        result.contract_policy_id = contract_policy_id
+
+        # Determine if this is element-level or submodel-level
+        if ui_policy.target_paths:
+            # Element-level access control
+            result.element_level = True
+            result.assets = create_element_assets(
+                base_asset_id=base_asset_id,
+                submodel_endpoint=submodel_endpoint,
+                element_paths=ui_policy.target_paths,
+                semantic_id=semantic_id,
+            )
+        else:
+            # Submodel-level access control
+            result.element_level = False
+            asset = build_asset_entry(
+                asset_id=base_asset_id,
+                submodel_endpoint=submodel_endpoint,
+                semantic_id=semantic_id,
+            )
+            result.assets = [asset]
+
+        # Build access policy based on access type
+        if ui_policy.access_type == AccessType.PUBLIC:
+            # Public access - no BPN restriction
+            result.access_policy = PolicyTemplates.unrestricted_use(
+                policy_id=access_policy_id
+            )
+        elif ui_policy.access_type == AccessType.MEMBERSHIP:
+            # Membership required - any member can access
+            result.access_policy = PolicyTemplates.membership_required(
+                policy_id=access_policy_id
+            )
+        elif ui_policy.access_type == AccessType.RESTRICTED:
+            # BPN-restricted access
+            if ui_policy.allowed_partners:
+                result.access_policy = build_bpn_access_policy(
+                    allowed_bpns=ui_policy.allowed_partners,
+                    policy_id=access_policy_id,
+                )
+            else:
+                # No partners specified - default to membership only
+                result.access_policy = PolicyTemplates.membership_required(
+                    policy_id=access_policy_id
+                )
+        else:
+            raise PolicyError(f"Unknown access type: {ui_policy.access_type}")
+
+        # Build contract policy with constraints
+        additional_constraints = []
+
+        # Convert UI constraints to ODRL format
+        for constraint in ui_policy.constraints:
+            additional_constraints.append({
+                "left_operand": constraint.left_operand,
+                "operator": constraint.operator.value,
+                "right_operand": constraint.right_operand,
+            })
+
+        # Build contract policy with time constraints
+        valid_from_str = (
+            ui_policy.valid_from.isoformat()
+            if ui_policy.valid_from
+            else None
+        )
+        valid_until_str = (
+            ui_policy.valid_until.isoformat()
+            if ui_policy.valid_until
+            else None
+        )
+
+        result.contract_policy = build_contract_policy(
+            constraints=additional_constraints,
+            require_membership=(ui_policy.access_type != AccessType.PUBLIC),
+            valid_from=valid_from_str,
+            valid_until=valid_until_str,
+            policy_id=contract_policy_id,
+        )
+
+        # Build contract definitions for each asset
+        for asset in result.assets:
+            asset_id = asset["@id"]
+            definition_id = f"urn:uuid:{uuid.uuid4()}"
+
+            contract_def = build_contract_definition(
+                asset_id=asset_id,
+                access_policy_id=access_policy_id,
+                contract_policy_id=contract_policy_id,
+                definition_id=definition_id,
+            )
+            result.contract_definitions.append(contract_def)
+
+        return result
+
+    def validate_translated_policy(
+        self,
+        translated: TranslatedPolicy,
+    ) -> tuple[bool, list[str]]:
+        """
+        Validate a translated policy bundle.
+
+        Checks that all artifacts are valid and consistent.
+
+        Args:
+            translated: TranslatedPolicy to validate
+
+        Returns:
+            Tuple of (is_valid, list_of_errors)
+        """
+        errors = []
+
+        # Validate access policy
+        if translated.access_policy:
+            valid, policy_errors = self.validate_policy(translated.access_policy)
+            if not valid:
+                errors.extend([f"Access policy: {e}" for e in policy_errors])
+
+        # Validate contract policy
+        if translated.contract_policy:
+            valid, policy_errors = self.validate_policy(translated.contract_policy)
+            if not valid:
+                errors.extend([f"Contract policy: {e}" for e in policy_errors])
+
+        # Validate assets
+        for i, asset in enumerate(translated.assets):
+            if "@id" not in asset:
+                errors.append(f"Asset {i}: missing @id")
+            if "properties" not in asset:
+                errors.append(f"Asset {i}: missing properties")
+
+        # Validate contract definitions
+        for i, contract_def in enumerate(translated.contract_definitions):
+            if "@id" not in contract_def:
+                errors.append(f"Contract definition {i}: missing @id")
+            if "accessPolicyId" not in contract_def:
+                errors.append(f"Contract definition {i}: missing accessPolicyId")
+            if "contractPolicyId" not in contract_def:
+                errors.append(f"Contract definition {i}: missing contractPolicyId")
+
+        # Cross-check references
+        if translated.access_policy_id != translated.access_policy.get("@id", ""):
+            errors.append("Access policy ID mismatch")
+
+        if translated.contract_policy_id != translated.contract_policy.get("@id", ""):
+            errors.append("Contract policy ID mismatch")
+
+        return len(errors) == 0, errors

@@ -383,3 +383,262 @@ class RuleBuilder:
 
         self._parent._add_rule(self._rule_type, rule)
         return self._parent
+
+
+# ---------------------------------------------------------------------------
+# Convenience Functions for Common ODRL Structures
+# ---------------------------------------------------------------------------
+
+
+def build_bpn_access_policy(
+    allowed_bpns: list[str],
+    policy_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Build a BPN (Business Partner Number) allowlist access policy.
+
+    This creates an ODRL policy that restricts access to a specific
+    list of business partners identified by their BPN.
+
+    Args:
+        allowed_bpns: List of BPNs allowed to access the asset
+        policy_id: Optional policy ID (auto-generated if not provided)
+
+    Returns:
+        ODRL policy document as dictionary
+
+    Example:
+        >>> policy = build_bpn_access_policy(["BPNL00000001AAAA", "BPNL00000001BBBB"])
+        >>> policy["permission"][0]["constraint"][0]["leftOperand"]
+        'BusinessPartnerNumber'
+    """
+    builder = ODRLBuilder().as_offer().with_catena_x_profile()
+
+    if policy_id:
+        builder.set_id(policy_id)
+
+    if len(allowed_bpns) == 1:
+        builder.add_permission("use").with_constraint(
+            "BusinessPartnerNumber", "eq", allowed_bpns[0]
+        ).done()
+    else:
+        builder.add_permission("use").with_constraint(
+            "BusinessPartnerNumber", "isAnyOf", allowed_bpns
+        ).done()
+
+    return builder.build()
+
+
+def build_contract_policy(
+    constraints: list[dict[str, Any]],
+    require_membership: bool = True,
+    valid_from: str | None = None,
+    valid_until: str | None = None,
+    policy_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Build a contract policy with membership and/or time constraints.
+
+    This creates an ODRL policy that defines usage constraints for
+    data contracts, including membership requirements and time limits.
+
+    Args:
+        constraints: List of additional constraint dicts with keys:
+                    - left_operand: Constraint left operand
+                    - operator: Constraint operator (eq, isAnyOf, etc.)
+                    - right_operand: Constraint value(s)
+        require_membership: Whether to require active Catena-X membership
+        valid_from: Optional ISO8601 timestamp for validity start
+        valid_until: Optional ISO8601 timestamp for validity end
+        policy_id: Optional policy ID (auto-generated if not provided)
+
+    Returns:
+        ODRL policy document as dictionary
+
+    Example:
+        >>> policy = build_contract_policy(
+        ...     constraints=[{"left_operand": "Purpose", "operator": "eq", "right_operand": "cx.pcf:1"}],
+        ...     require_membership=True,
+        ...     valid_until="2025-12-31T23:59:59Z"
+        ... )
+    """
+    builder = ODRLBuilder().as_offer().with_catena_x_profile()
+
+    if policy_id:
+        builder.set_id(policy_id)
+
+    perm_builder = builder.add_permission("use")
+
+    # Add membership constraint
+    if require_membership:
+        perm_builder.with_membership_constraint("active")
+
+    # Add time constraints if provided
+    if valid_from:
+        perm_builder.with_constraint("dateTime", "gteq", valid_from)
+
+    if valid_until:
+        perm_builder.with_constraint("dateTime", "lteq", valid_until)
+
+    # Add additional constraints
+    for constraint in constraints:
+        left = constraint.get("left_operand", constraint.get("leftOperand"))
+        op = constraint.get("operator")
+        right = constraint.get("right_operand", constraint.get("rightOperand"))
+        if left and op and right is not None:
+            perm_builder.with_constraint(left, op, right)
+
+    return perm_builder.done().build()
+
+
+def build_contract_definition(
+    asset_id: str,
+    access_policy_id: str,
+    contract_policy_id: str,
+    definition_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Build a contract definition linking an asset to policies.
+
+    A contract definition is the EDC entity that links an asset to
+    its access policy (who can see) and contract policy (usage terms).
+
+    Args:
+        asset_id: ID of the asset being offered
+        access_policy_id: ID of the access policy (BPN allowlist)
+        contract_policy_id: ID of the contract policy (usage constraints)
+        definition_id: Optional definition ID (auto-generated if not provided)
+
+    Returns:
+        Contract definition document as dictionary
+
+    Example:
+        >>> definition = build_contract_definition(
+        ...     asset_id="asset-123",
+        ...     access_policy_id="access-policy-456",
+        ...     contract_policy_id="contract-policy-789"
+        ... )
+    """
+    if definition_id is None:
+        definition_id = f"urn:uuid:{uuid.uuid4()}"
+
+    return {
+        "@context": {
+            "@vocab": "https://w3id.org/edc/v0.0.1/ns/",
+            "odrl": "http://www.w3.org/ns/odrl/2/",
+        },
+        "@type": "ContractDefinition",
+        "@id": definition_id,
+        "accessPolicyId": access_policy_id,
+        "contractPolicyId": contract_policy_id,
+        "assetsSelector": {
+            "@type": "CriterionDto",
+            "operandLeft": "https://w3id.org/edc/v0.0.1/ns/id",
+            "operator": "=",
+            "operandRight": asset_id,
+        },
+    }
+
+
+def build_asset_entry(
+    asset_id: str,
+    submodel_endpoint: str,
+    semantic_id: str | None = None,
+    description: str | None = None,
+    properties: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Build an EDC asset entry for a submodel or element.
+
+    This creates the EDC asset registration payload that describes
+    a Digital Twin asset for catalog publishing.
+
+    Args:
+        asset_id: Unique asset identifier
+        submodel_endpoint: URL endpoint for the submodel data
+        semantic_id: Optional semantic identifier for the submodel
+        description: Optional human-readable description
+        properties: Optional additional properties
+
+    Returns:
+        EDC asset entry as dictionary
+    """
+    asset_entry: dict[str, Any] = {
+        "@context": {
+            "@vocab": "https://w3id.org/edc/v0.0.1/ns/",
+            "aas": "https://admin-shell.io/aas/3/0/",
+            "cx": "https://w3id.org/catena-x/ontology#",
+        },
+        "@type": "Asset",
+        "@id": asset_id,
+        "properties": {
+            "aas:submodelEndpoint": submodel_endpoint,
+        },
+    }
+
+    if semantic_id:
+        asset_entry["properties"]["aas:semanticId"] = semantic_id
+
+    if description:
+        asset_entry["properties"]["description"] = description
+
+    if properties:
+        asset_entry["properties"].update(properties)
+
+    return asset_entry
+
+
+def create_element_assets(
+    base_asset_id: str,
+    submodel_endpoint: str,
+    element_paths: list[str],
+    semantic_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Create assets for granular element-level access control.
+
+    This generates separate EDC assets for specific submodel elements,
+    enabling fine-grained access policies per element path.
+
+    Args:
+        base_asset_id: Base asset ID prefix for the submodel
+        submodel_endpoint: URL endpoint for the submodel
+        element_paths: List of idShortPath values for elements to expose
+        semantic_id: Optional semantic ID for the submodel
+
+    Returns:
+        List of EDC asset entries, one per element path
+
+    Example:
+        >>> assets = create_element_assets(
+        ...     base_asset_id="urn:asset:nameplate",
+        ...     submodel_endpoint="https://basyx.example.com/submodel/1",
+        ...     element_paths=["SerialNumber", "ProductType/ManufacturerName"]
+        ... )
+        >>> len(assets)
+        2
+        >>> assets[0]["@id"]
+        'urn:asset:nameplate:SerialNumber'
+    """
+    assets = []
+
+    for path in element_paths:
+        # Create a sanitized suffix from the path
+        path_suffix = path.replace("/", ":")
+
+        asset_id = f"{base_asset_id}:{path_suffix}"
+        element_endpoint = f"{submodel_endpoint}/submodel-elements/{path}"
+
+        asset = build_asset_entry(
+            asset_id=asset_id,
+            submodel_endpoint=element_endpoint,
+            semantic_id=semantic_id,
+            description=f"Element: {path}",
+            properties={
+                "aas:idShortPath": path,
+                "cx:elementLevel": True,
+            },
+        )
+        assets.append(asset)
+
+    return assets
