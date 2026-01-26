@@ -33,6 +33,34 @@ docker-compose up
 | Backend API | http://localhost:8000 |
 | API Docs (Swagger) | http://localhost:8000/api/docs |
 
+### Minimal Reproducible Demo
+
+The core template editing functionality works **without external API keys**:
+
+```bash
+# 1. Start the application
+docker-compose up
+
+# 2. Open the editor
+open http://localhost:8080
+
+# 3. Complete a sample workflow:
+#    - Select "Digital Nameplate" template
+#    - Fill in manufacturer name and product designation
+#    - Click "Export" → Download AASX file
+#    - Validate: the downloaded .aasx contains your data
+```
+
+**Optional features requiring setup:**
+- **Magic Import** (PDF extraction): Requires `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
+- **Dataspace Publishing**: Requires Manufacturing-X infrastructure
+- **Online Semantic Lookup**: Requires ECLASS webservice credentials
+
+To disable optional features explicitly:
+```bash
+MAGIC_IMPORT_ENABLED=false docker-compose up
+```
+
 ---
 
 ## Features
