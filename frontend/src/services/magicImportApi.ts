@@ -19,6 +19,11 @@ export type JobStatus =
   | 'failed';
 
 /**
+ * Extraction status enum matching backend.
+ */
+export type ExtractionStatus = 'filled' | 'empty' | 'needs_review' | 'conflict';
+
+/**
  * Bounding box with normalized coordinates.
  */
 export interface BBox {
@@ -37,6 +42,9 @@ export interface EvidenceRef {
   boxes: BBox[];
   method: 'TEXT' | 'OCR';
   locator_score: number;
+  snippet_hash?: string | null;
+  char_start?: number | null;
+  char_end?: number | null;
 }
 
 /**
@@ -80,6 +88,7 @@ export interface FieldExtraction {
   value_type?: string | null;
   value_raw: string;
   value_normalized: string | number | boolean | null;
+  status: ExtractionStatus;
   confidence: number;
   confidence_breakdown: ConfidenceBreakdown | null;
   confidence_reasons: ConfidenceReason[];
@@ -133,6 +142,18 @@ export interface MagicImportJob {
 }
 
 /**
+ * Unmapped finding - value found in document that doesn't map to template.
+ */
+export interface UnmappedFinding {
+  value: string;
+  evidence: EvidenceRef;
+  suggested_paths: string[];
+  confidence: number;
+  source: 'table' | 'text' | 'key_value';
+  context?: string | null;
+}
+
+/**
  * Validation error for a specific field.
  */
 export interface ValidationError {
@@ -165,6 +186,7 @@ export interface MagicImportResult {
   processing_time_seconds: number;
   validation_result: ValidationResult | null;
   template_version_used: string | null;
+  unmapped_findings: UnmappedFinding[];
 }
 
 /**

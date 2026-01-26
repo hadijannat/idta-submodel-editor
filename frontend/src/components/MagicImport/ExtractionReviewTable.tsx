@@ -5,12 +5,17 @@
  */
 
 import { useState, useCallback } from 'react';
-import type { FieldExtraction } from '../../services/magicImportApi';
+import type {
+  FieldExtraction,
+  UnmappedFinding,
+  ExtractionStatus,
+} from '../../services/magicImportApi';
 import ConfidenceBadge from './ConfidenceBadge';
 import './MagicImport.css';
 
 interface ExtractionReviewTableProps {
   extractions: FieldExtraction[];
+  unmappedFindings?: UnmappedFinding[];
   selectedPath: string | null;
   onSelect: (path: string | null) => void;
   onUpdate: (path: string, value: string) => void;
@@ -21,6 +26,7 @@ interface ExtractionReviewTableProps {
 
 export default function ExtractionReviewTable({
   extractions,
+  unmappedFindings = [],
   selectedPath,
   onSelect,
   onUpdate,
@@ -344,6 +350,7 @@ export default function ExtractionReviewTable({
                 />
               </th>
               <th>Field</th>
+              <th>Status</th>
               <th>Value</th>
               <th>Confidence</th>
               <th>Actions</th>
@@ -380,6 +387,9 @@ export default function ExtractionReviewTable({
                       Type: {extraction.value_type}
                     </span>
                   )}
+                </td>
+                <td className="extraction-table__status">
+                  <StatusBadge status={extraction.status} />
                 </td>
                 <td className="extraction-table__value">
                   {editingPath === extraction.path ? (
@@ -498,6 +508,60 @@ export default function ExtractionReviewTable({
             : 'No extractions available'}
         </div>
       )}
+
+      {/* Unmapped Findings Section */}
+      {unmappedFindings.length > 0 && (
+        <div className="unmapped-findings">
+          <h4 className="unmapped-findings__header">
+            Unmapped Values ({unmappedFindings.length})
+            <span className="unmapped-findings__subtitle">
+              Values found in document that don't match template fields
+            </span>
+          </h4>
+          <div className="unmapped-findings__list">
+            {unmappedFindings.map((finding, index) => (
+              <div key={index} className="unmapped-findings__item">
+                <div className="unmapped-findings__value">
+                  <span className="unmapped-findings__source-badge">
+                    {finding.source}
+                  </span>
+                  <span className="unmapped-findings__text">{finding.value}</span>
+                </div>
+                {finding.evidence?.quote && (
+                  <div className="unmapped-findings__evidence">
+                    <span className="unmapped-findings__page">
+                      Page {finding.evidence.page + 1}
+                    </span>
+                    "{finding.evidence.quote.slice(0, 100)}
+                    {finding.evidence.quote.length > 100 ? '…' : ''}"
+                  </div>
+                )}
+                {finding.suggested_paths.length > 0 && (
+                  <div className="unmapped-findings__suggestions">
+                    <span className="unmapped-findings__suggestions-label">
+                      Suggested fields:
+                    </span>
+                    {finding.suggested_paths.slice(0, 3).map((path) => (
+                      <span key={path} className="unmapped-findings__suggestion">
+                        {formatPath(path)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="unmapped-findings__confidence">
+                  <ConfidenceBadge
+                    confidence={finding.confidence}
+                    needsReview={false}
+                    userApproved={false}
+                    userEdited={false}
+                    size="sm"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -518,4 +582,40 @@ function formatPath(path: string): string {
       return segment.replace(/([A-Z])/g, ' $1').trim();
     })
     .join(' > ');
+}
+
+/**
+ * Status badge showing extraction status.
+ */
+function StatusBadge({ status }: { status: ExtractionStatus }) {
+  const config: Record<ExtractionStatus, { label: string; className: string; title: string }> = {
+    filled: {
+      label: 'Filled',
+      className: 'status-badge--filled',
+      title: 'Value extracted with document evidence',
+    },
+    empty: {
+      label: 'Empty',
+      className: 'status-badge--empty',
+      title: 'Value not found in document',
+    },
+    needs_review: {
+      label: 'Review',
+      className: 'status-badge--review',
+      title: 'Low confidence or missing evidence - needs manual review',
+    },
+    conflict: {
+      label: 'Conflict',
+      className: 'status-badge--conflict',
+      title: 'Multiple conflicting values found in document',
+    },
+  };
+
+  const { label, className, title } = config[status] || config.needs_review;
+
+  return (
+    <span className={`status-badge ${className}`} title={title}>
+      {label}
+    </span>
+  );
 }

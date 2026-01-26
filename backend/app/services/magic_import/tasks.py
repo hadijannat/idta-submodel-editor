@@ -1,13 +1,19 @@
 """
 Celery tasks for Magic Import background processing.
 
-Task flow:
-1. process_magic_import_job - Main orchestrator task
-2. index_pdf_task - PDF text extraction
-3. ocr_task - OCR for scanned pages
-4. extract_fields_task - LLM extraction
-5. localize_evidence_task - Map quotes to bounding boxes
-6. score_confidence_task - Calculate confidence scores
+Enhanced Pipeline (Two-Pass Extraction):
+1. PDF Indexing - Extract text with word positions
+2. OCR (if needed) - Process scanned pages
+3. Document Classification - Detect doc type, language, tables
+4. Table Extraction - Extract structured tables
+5. Schema Resolution - Get extraction hints from template
+6. Snippet Retrieval - Find relevant document sections
+7. Candidate Generation (Pass A) - LLM generates 1-3 candidates per field
+8. Candidate Verification (Pass B) - Deterministic grounding check
+9. Evidence Localization - Map quotes to bounding boxes
+10. Confidence Scoring - Calculate scores, enforce evidence rule
+11. Cross-Field Consistency - Check coupled fields, plausibility
+12. Validation - Validate against template schema
 """
 
 from __future__ import annotations
@@ -34,15 +40,16 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, name="magic_import.process_job")
-def process_magic_import_job(self, job_id: str) -> dict:
+def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> dict:
     """
     Main orchestrator task for Magic Import processing.
 
-    Executes the full pipeline:
-    PDF Indexing → OCR (if needed) → Field Extraction → Localization → Scoring
+    Executes the enhanced pipeline with two-pass extraction:
+    PDF Indexing → OCR → Tables → Candidates → Verification → Scoring → Validation
 
     Args:
         job_id: The job ID to process
+        use_two_pass: Whether to use two-pass extraction (default: True)
 
     Returns:
         Result summary dictionary
@@ -55,6 +62,8 @@ def process_magic_import_job(self, job_id: str) -> dict:
     from app.services.magic_import.extractor import Extractor
     from app.services.magic_import.localizer import EvidenceLocalizer
     from app.services.magic_import.scorer import ConfidenceScorer
+    from app.services.magic_import.table_extractor import TableExtractor
+    from app.services.magic_import.rules_engine import RulesEngine
 
     settings = get_settings()
     job_manager = JobManager()
@@ -74,51 +83,77 @@ def process_magic_import_job(self, job_id: str) -> dict:
         return {"error": "PDF file not found", "job_id": job_id}
 
     try:
-        # Step 1: Index PDF
+        # ================================================================
+        # Step 1: Index PDF (with artifact persistence)
+        # ================================================================
         job_manager.update_job_status(
             job_id,
             JobStatus.INDEXING,
-            progress=0.1,
+            progress=0.05,
             progress_message="Extracting text from PDF...",
         )
+        job_manager.append_to_audit_log(job_id, "indexing_start")
 
-        indexer = PDFIndexer()
-        index = indexer.index_pdf(pdf_path, job_id)
-        job_manager.save_index(index)
+        # Check for existing index artifact (resume support)
+        cached_index = job_manager.load_artifact(job_id, "pdf_index")
+        if cached_index:
+            from app.schemas.magic_import import PDFIndex
+            index = PDFIndex(**cached_index)
+            logger.info("Loaded cached index for job %s", job_id)
+        else:
+            indexer = PDFIndexer()
+            index = indexer.index_pdf(pdf_path, job_id)
+            job_manager.save_index(index)
+            job_manager.save_artifact(job_id, "pdf_index", index)
 
         job_manager.update_job_status(
             job_id,
             JobStatus.INDEXING,
-            progress=0.2,
+            progress=0.15,
             progress_message=f"Indexed {index.info.total_words} words from {index.info.total_pages} pages",
             pdf_info=index.info,
         )
+        job_manager.append_to_audit_log(
+            job_id, "indexing_complete",
+            {"total_words": index.info.total_words, "total_pages": index.info.total_pages}
+        )
 
+        # ================================================================
         # Step 2: OCR if needed
+        # ================================================================
         if index.info.pages_needing_ocr > 0 and settings.magic_import_ocr_enabled:
             job_manager.update_job_status(
                 job_id,
                 JobStatus.OCR,
-                progress=0.25,
+                progress=0.20,
                 progress_message=f"Running OCR on {index.info.pages_needing_ocr} scanned pages...",
+            )
+            job_manager.append_to_audit_log(
+                job_id, "ocr_start",
+                {"pages_needing_ocr": index.info.pages_needing_ocr}
             )
 
             ocr_processor = OCRProcessor()
             if ocr_processor.is_available:
                 index = ocr_processor.process_scanned_pages(pdf_path, index)
                 job_manager.save_index(index)
+                job_manager.save_artifact(job_id, "pdf_index", index)
 
                 job_manager.update_job_status(
                     job_id,
                     JobStatus.OCR,
-                    progress=0.35,
+                    progress=0.28,
                     progress_message=f"OCR complete: {index.info.total_words} total words",
                     pdf_info=index.info,
                 )
+                job_manager.append_to_audit_log(job_id, "ocr_complete")
             else:
                 logger.warning("OCR needed but Tesseract not available")
+                job_manager.append_to_audit_log(job_id, "ocr_skipped", {"reason": "tesseract_unavailable"})
 
+        # ================================================================
         # Step 2.5: Classify document
+        # ================================================================
         from app.services.magic_import.classifier import DocumentClassifier
 
         classifier = DocumentClassifier()
@@ -127,7 +162,7 @@ def process_magic_import_job(self, job_id: str) -> dict:
         job_manager.update_job_status(
             job_id,
             JobStatus.INDEXING,
-            progress=0.38,
+            progress=0.30,
             progress_message=f"Document classified: {doc_classification.doc_type}, quality={doc_classification.quality_score:.0%}",
             pdf_info=index.info,
             doc_classification=doc_classification,
@@ -142,11 +177,41 @@ def process_magic_import_job(self, job_id: str) -> dict:
             doc_classification.quality_score,
         )
 
+        # ================================================================
+        # Step 2.6: Extract tables (NEW)
+        # ================================================================
+        job_manager.update_job_status(
+            job_id,
+            JobStatus.INDEXING,
+            progress=0.32,
+            progress_message="Extracting tables from document...",
+        )
+        job_manager.append_to_audit_log(job_id, "table_extraction_start")
+
+        # Check for cached tables
+        cached_tables = job_manager.load_artifact(job_id, "tables")
+        if cached_tables:
+            from app.services.magic_import.table_extractor import TableExtractionResult
+            table_result = TableExtractionResult(**cached_tables)
+            logger.info("Loaded cached tables for job %s", job_id)
+        else:
+            table_extractor = TableExtractor()
+            table_result = table_extractor.extract_tables(pdf_path)
+            job_manager.save_artifact(job_id, "tables", table_result)
+
+        job_manager.append_to_audit_log(
+            job_id, "table_extraction_complete",
+            {"tables_found": table_result.total_tables}
+        )
+        logger.info("Extracted %d tables from document", table_result.total_tables)
+
+        # ================================================================
         # Step 3: Resolve schema and get extraction hints
+        # ================================================================
         job_manager.update_job_status(
             job_id,
             JobStatus.EXTRACTING,
-            progress=0.4,
+            progress=0.35,
             progress_message="Resolving template schema...",
         )
 
@@ -156,67 +221,194 @@ def process_magic_import_job(self, job_id: str) -> dict:
             job.template_status,
             job.template_version,
         )
+        job_manager.save_artifact(job_id, "hints", hints)
 
         logger.info("Resolved %d extraction hints for template %s", len(hints), job.template_name)
 
-        # Step 4: Retrieve relevant snippets
+        # ================================================================
+        # Step 4: Retrieve relevant snippets (enhanced with table snippets)
+        # ================================================================
         job_manager.update_job_status(
             job_id,
             JobStatus.EXTRACTING,
-            progress=0.45,
+            progress=0.40,
             progress_message="Finding relevant document sections...",
         )
 
         retriever = SnippetRetriever()
         snippets = retriever.retrieve_snippets(index, hints)
 
-        logger.info("Retrieved %d snippets for extraction", len(snippets))
+        # Add table-derived snippets for better coverage
+        table_extractor = TableExtractor()
+        for table in table_result.tables:
+            table_snippets = table_extractor.table_to_snippets(table, max_rows=15)
+            for snippet_text in table_snippets:
+                from app.schemas.magic_import import Snippet
+                snippets.append(
+                    Snippet(
+                        text=snippet_text,
+                        page=table.page,
+                        start_word_idx=0,
+                        end_word_idx=0,
+                        score=0.8,  # High score for table data
+                        context_before="[TABLE]",
+                        context_after="",
+                    )
+                )
 
-        # Step 5: LLM extraction
-        job_manager.update_job_status(
-            job_id,
-            JobStatus.EXTRACTING,
-            progress=0.5,
-            progress_message="Extracting field values with AI...",
-        )
+        job_manager.save_artifact(job_id, "snippets", snippets)
+        logger.info("Retrieved %d snippets for extraction (including tables)", len(snippets))
 
+        # ================================================================
+        # Step 5: Field Extraction (Two-Pass or Legacy)
+        # ================================================================
         extractor = Extractor()
-        llm_extractions = extractor.extract_fields(hints, snippets)
+        hints_by_path = {hint.path: hint for hint in hints}
 
-        logger.info("LLM extracted %d fields", len(llm_extractions.extractions))
+        if use_two_pass:
+            # ============================================================
+            # Two-Pass Extraction: Generate Candidates → Verify
+            # ============================================================
+            job_manager.update_job_status(
+                job_id,
+                JobStatus.EXTRACTING,
+                progress=0.45,
+                progress_message="Generating extraction candidates with AI...",
+            )
+            job_manager.append_to_audit_log(job_id, "candidate_generation_start")
 
-        # Step 6: Localize evidence (map quotes to bounding boxes)
+            # Pass A: Generate candidates
+            candidate_response = extractor.generate_candidates(hints, snippets)
+            job_manager.save_artifact(job_id, "candidates", candidate_response)
+
+            logger.info(
+                "Generated %d candidate sets (%d tokens)",
+                len(candidate_response.candidate_sets),
+                candidate_response.tokens_used,
+            )
+            job_manager.append_to_audit_log(
+                job_id, "candidate_generation_complete",
+                {"candidate_sets": len(candidate_response.candidate_sets), "tokens": candidate_response.tokens_used}
+            )
+
+            # Pass B: Verify candidates
+            job_manager.update_job_status(
+                job_id,
+                JobStatus.EXTRACTING,
+                progress=0.55,
+                progress_message="Verifying candidates against document...",
+            )
+            job_manager.append_to_audit_log(job_id, "verification_start")
+
+            extractions_with_evidence = extractor.verify_candidates(
+                candidate_response.candidate_sets,
+                index,
+                hints_by_path,
+            )
+
+            verified_count = sum(1 for e in extractions_with_evidence if e.evidence is not None)
+            logger.info(
+                "Verified %d/%d candidates with document evidence",
+                verified_count,
+                len(extractions_with_evidence),
+            )
+            job_manager.append_to_audit_log(
+                job_id, "verification_complete",
+                {"total": len(extractions_with_evidence), "verified": verified_count}
+            )
+
+        else:
+            # ============================================================
+            # Legacy: Single-pass extraction
+            # ============================================================
+            job_manager.update_job_status(
+                job_id,
+                JobStatus.EXTRACTING,
+                progress=0.50,
+                progress_message="Extracting field values with AI...",
+            )
+
+            llm_extractions = extractor.extract_fields(hints, snippets)
+            logger.info("LLM extracted %d fields", len(llm_extractions.extractions))
+
+            # Localize evidence
+            job_manager.update_job_status(
+                job_id,
+                JobStatus.LOCALIZING,
+                progress=0.65,
+                progress_message="Locating evidence in document...",
+            )
+
+            localizer = EvidenceLocalizer()
+            extractions_with_evidence = localizer.localize_all(
+                llm_extractions.extractions,
+                index,
+                hints_by_path=hints_by_path,
+            )
+
+        # ================================================================
+        # Step 6: Additional Evidence Localization (for bbox refinement)
+        # ================================================================
         job_manager.update_job_status(
             job_id,
             JobStatus.LOCALIZING,
-            progress=0.7,
-            progress_message="Locating evidence in document...",
+            progress=0.65,
+            progress_message="Refining evidence bounding boxes...",
         )
 
         localizer = EvidenceLocalizer()
-        hints_by_path = {hint.path: hint for hint in hints}
-        extractions_with_evidence = localizer.localize_all(
-            llm_extractions.extractions,
+        extractions_with_evidence = localizer.refine_bboxes(
+            extractions_with_evidence,
             index,
-            hints_by_path=hints_by_path,
         )
 
-        # Step 7: Score confidence
+        # ================================================================
+        # Step 7: Score confidence (with evidence rule enforcement)
+        # ================================================================
         job_manager.update_job_status(
             job_id,
             JobStatus.SCORING,
-            progress=0.80,
+            progress=0.75,
             progress_message="Calculating confidence scores...",
         )
+        job_manager.append_to_audit_log(job_id, "scoring_start")
 
         scorer = ConfidenceScorer()
-        final_extractions = scorer.score_all(
+        scored_extractions = scorer.score_all(
             extractions_with_evidence,
             index,
             settings.magic_import_confidence_threshold,
         )
 
+        # ================================================================
+        # Step 7.5: Cross-field consistency checks (NEW)
+        # ================================================================
+        job_manager.update_job_status(
+            job_id,
+            JobStatus.SCORING,
+            progress=0.80,
+            progress_message="Checking cross-field consistency...",
+        )
+
+        rules_engine = RulesEngine()
+        consistency_warnings = rules_engine.check_consistency(scored_extractions, hints)
+
+        if consistency_warnings:
+            logger.info("Found %d consistency warnings", len(consistency_warnings))
+            scored_extractions = rules_engine.apply_warnings_to_extractions(
+                scored_extractions, consistency_warnings
+            )
+
+        job_manager.append_to_audit_log(
+            job_id, "scoring_complete",
+            {"consistency_warnings": len(consistency_warnings)}
+        )
+
+        final_extractions = scored_extractions
+
+        # ================================================================
         # Step 8: Validate against template schema
+        # ================================================================
         job_manager.update_job_status(
             job_id,
             JobStatus.VALIDATING,
@@ -242,7 +434,9 @@ def process_magic_import_job(self, job_id: str) -> dict:
             len(validation_result.warnings),
         )
 
-        # Calculate summary statistics
+        # ================================================================
+        # Step 9: Calculate statistics and save result
+        # ================================================================
         fields_needing_review = sum(1 for e in final_extractions if e.needs_review)
         avg_confidence = (
             sum(e.confidence for e in final_extractions) / len(final_extractions)
@@ -251,6 +445,9 @@ def process_magic_import_job(self, job_id: str) -> dict:
         )
 
         processing_time = time.time() - start_time
+
+        # Save final extractions artifact
+        job_manager.save_artifact(job_id, "extractions", final_extractions)
 
         # Save result
         result = MagicImportResult(
@@ -265,6 +462,7 @@ def process_magic_import_job(self, job_id: str) -> dict:
             processing_time_seconds=processing_time,
             validation_result=validation_result,
             template_version_used=job.template_version,
+            unmapped_findings=[],  # TODO: Populate with table findings not matching template
         )
         job_manager.save_result(result)
 
@@ -274,6 +472,15 @@ def process_magic_import_job(self, job_id: str) -> dict:
             JobStatus.DONE,
             progress=1.0,
             progress_message=f"Extracted {len(final_extractions)} fields ({fields_needing_review} need review)",
+        )
+        job_manager.append_to_audit_log(
+            job_id, "job_complete",
+            {
+                "fields_extracted": len(final_extractions),
+                "fields_needing_review": fields_needing_review,
+                "avg_confidence": round(avg_confidence, 3),
+                "processing_time_seconds": round(processing_time, 2),
+            }
         )
 
         logger.info(
@@ -297,6 +504,9 @@ def process_magic_import_job(self, job_id: str) -> dict:
             "fields_needing_review": fields_needing_review,
             "average_confidence": avg_confidence,
             "processing_time_seconds": processing_time,
+            "tables_found": table_result.total_tables,
+            "consistency_warnings": len(consistency_warnings),
+            "two_pass_mode": use_two_pass,
         }
 
     except Exception as e:
@@ -306,6 +516,7 @@ def process_magic_import_job(self, job_id: str) -> dict:
             JobStatus.FAILED,
             error_message=str(e),
         )
+        job_manager.append_to_audit_log(job_id, "job_failed", {"error": str(e)})
 
         # Record failure metrics
         processing_time = time.time() - start_time

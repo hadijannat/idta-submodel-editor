@@ -13,6 +13,7 @@ from app.schemas.magic_import import (
     ConfidenceBreakdown,
     ConfidenceReason,
     ConfidenceReasonCode,
+    ExtractionStatus,
     FieldExtraction,
     PDFIndex,
 )
@@ -420,6 +421,36 @@ class ConfidenceScorer:
             }
         )
 
+    def _determine_extraction_status(
+        self,
+        extraction: FieldExtraction,
+        overall_confidence: float,
+        confidence_threshold: float,
+    ) -> ExtractionStatus:
+        """
+        Determine the extraction status based on evidence and confidence.
+
+        Core invariant: no evidence → NEEDS_REVIEW (never FILLED).
+        """
+        # Empty value means not found
+        if not extraction.value_raw or extraction.value_raw.strip() == "":
+            return ExtractionStatus.EMPTY
+
+        # No evidence means needs review - enforce "no evidence → no value" invariant
+        if extraction.evidence is None:
+            return ExtractionStatus.NEEDS_REVIEW
+
+        # Check for conflicting signals (value not in evidence)
+        if not self._value_in_evidence(extraction.value_raw, extraction.evidence.quote):
+            return ExtractionStatus.NEEDS_REVIEW
+
+        # Low confidence means needs review
+        if overall_confidence < confidence_threshold:
+            return ExtractionStatus.NEEDS_REVIEW
+
+        # High confidence with grounded evidence
+        return ExtractionStatus.FILLED
+
     def score_all(
         self,
         extractions: list[FieldExtraction],
@@ -487,13 +518,35 @@ class ConfidenceScorer:
             )
 
             # Generate actionable reasons for confidence score
-            reasons = self._generate_reasons(
+            reasons = list(self._generate_reasons(
                 extraction,
                 llm_score,
                 localizer_score,
                 ocr_score,
                 rules_score,
                 ocr_quality,
+            ))
+
+            # Enforce evidence rule: value populated without evidence → NEEDS_REVIEW
+            # Also cap confidence to prevent false sense of certainty
+            if extraction.value_raw and extraction.evidence is None:
+                overall = min(overall, 0.5)
+                # Add reason if not already present
+                has_no_evidence_reason = any(
+                    r.code == ConfidenceReasonCode.NO_EVIDENCE_FOUND for r in reasons
+                )
+                if not has_no_evidence_reason:
+                    reasons.append(
+                        ConfidenceReason(
+                            code=ConfidenceReasonCode.NO_EVIDENCE_FOUND,
+                            message="Value populated without document evidence",
+                            severity="error",
+                        )
+                    )
+
+            # Determine extraction status based on evidence grounding
+            status = self._determine_extraction_status(
+                extraction, overall, confidence_threshold
             )
 
             scored.append(
@@ -502,7 +555,8 @@ class ConfidenceScorer:
                         "confidence": round(overall, 3),
                         "confidence_breakdown": breakdown,
                         "confidence_reasons": reasons,
-                        "needs_review": overall < confidence_threshold,
+                        "status": status,
+                        "needs_review": status != ExtractionStatus.FILLED,
                         "value_normalized": normalized_value,
                     }
                 )

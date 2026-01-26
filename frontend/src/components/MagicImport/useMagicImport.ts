@@ -16,6 +16,7 @@ import {
   type MagicImportJob,
   type MagicImportResult,
   type FieldExtraction,
+  type UnmappedFinding,
 } from '../../services/magicImportApi';
 
 interface UseMagicImportOptions {
@@ -31,6 +32,7 @@ interface UseMagicImportReturn {
   job: MagicImportJob | null;
   result: MagicImportResult | null;
   extractions: FieldExtraction[];
+  unmappedFindings: UnmappedFinding[];
   selectedExtractionPath: string | null;
   isUploading: boolean;
   isProcessing: boolean;
@@ -62,6 +64,7 @@ export function useMagicImport({
   const [job, setJob] = useState<MagicImportJob | null>(null);
   const [result, setResult] = useState<MagicImportResult | null>(null);
   const [extractions, setExtractions] = useState<FieldExtraction[]>([]);
+  const [unmappedFindings, setUnmappedFindings] = useState<UnmappedFinding[]>([]);
   const [selectedExtractionPath, setSelectedExtractionPath] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -96,6 +99,7 @@ export function useMagicImport({
             const jobResult = await getMagicImportResult(jobId);
             setResult(jobResult);
             setExtractions(jobResult.extractions);
+            setUnmappedFindings(jobResult.unmapped_findings || []);
           } else if (updatedJob.status === 'failed') {
             stopPolling();
             setIsProcessing(false);
@@ -155,6 +159,7 @@ export function useMagicImport({
     setJob(null);
     setResult(null);
     setExtractions([]);
+    setUnmappedFindings([]);
     setIsProcessing(false);
     setError(null);
   }, [job, stopPolling]);
@@ -235,8 +240,11 @@ export function useMagicImport({
 
   // Apply extractions to form
   const applyToForm = useCallback(() => {
+    // Only apply extractions that are approved/ready AND have valid status
     const approvedExtractions = extractions.filter(
-      (e) => e.user_approved || !e.needs_review
+      (e) =>
+        (e.user_approved || !e.needs_review) &&
+        (e.status === 'filled' || e.user_edited)
     );
     const listIndexCache = new Map<string, number>();
 
@@ -296,6 +304,7 @@ export function useMagicImport({
     setJob(null);
     setResult(null);
     setExtractions([]);
+    setUnmappedFindings([]);
     setSelectedExtractionPath(null);
     setIsUploading(false);
     setIsProcessing(false);
@@ -309,6 +318,7 @@ export function useMagicImport({
     job,
     result,
     extractions,
+    unmappedFindings,
     selectedExtractionPath,
     isUploading,
     isProcessing,

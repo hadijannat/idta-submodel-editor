@@ -47,6 +47,15 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class ExtractionStatus(str, Enum):
+    """Status of a field extraction."""
+
+    FILLED = "filled"  # Value extracted with evidence
+    EMPTY = "empty"  # Not found in document
+    NEEDS_REVIEW = "needs_review"  # Low confidence or missing evidence
+    CONFLICT = "conflict"  # Multiple conflicting values found
+
+
 class BBox(BaseModel):
     """Bounding box with normalized coordinates (0..1)."""
 
@@ -75,6 +84,16 @@ class EvidenceRef(BaseModel):
     locator_score: float = Field(
         ge=0.0, le=1.0, default=1.0, description="Quality of quote-to-bbox match"
     )
+    # New fields for reproducibility and precise localization
+    snippet_hash: str | None = Field(
+        default=None, description="SHA256 hash of underlying text span for reproducibility"
+    )
+    char_start: int | None = Field(
+        default=None, ge=0, description="Character offset start in page text"
+    )
+    char_end: int | None = Field(
+        default=None, ge=0, description="Character offset end in page text"
+    )
 
 
 class ConfidenceBreakdown(BaseModel):
@@ -96,6 +115,10 @@ class FieldExtraction(BaseModel):
     value_raw: str = Field(description="Raw extracted value")
     value_normalized: str | int | float | bool | None = Field(
         default=None, description="Normalized/parsed value"
+    )
+    status: ExtractionStatus = Field(
+        default=ExtractionStatus.NEEDS_REVIEW,
+        description="Extraction status indicating document grounding",
     )
     confidence: float = Field(ge=0.0, le=1.0, description="Overall confidence score")
     confidence_breakdown: ConfidenceBreakdown | None = None
@@ -179,6 +202,10 @@ class MagicImportJob(BaseModel):
     doc_classification: DocumentClassification | None = Field(
         default=None, description="Document classification results"
     )
+    idempotency_key: str | None = Field(
+        default=None,
+        description="Hash of (pdf_bytes + template_id + extractor_version) for reproducibility",
+    )
 
 
 class ValidationError(BaseModel):
@@ -215,6 +242,10 @@ class MagicImportResult(BaseModel):
     template_version_used: str | None = Field(
         default=None, description="Version of template used for extraction"
     )
+    unmapped_findings: list["UnmappedFinding"] = Field(
+        default_factory=list,
+        description="Values found in document that don't map to template fields",
+    )
 
 
 class MagicImportApplyRequest(BaseModel):
@@ -246,6 +277,57 @@ class ExtractionHint(BaseModel):
     required: bool = False
     user_hint: str | None = Field(
         default=None, description="Optional user-provided hint for re-extraction"
+    )
+
+
+class ExtractionSpec(BaseModel):
+    """
+    Template-derived extraction specification.
+
+    Defines exactly what can be extracted - prevents inventing fields.
+    Generated from template schema, never from document content.
+    """
+
+    path: str = Field(description="Stable internal path (idShortPath)")
+    id_short: str = Field(description="Element idShort")
+    semantic_id: str | None = Field(default=None, description="Semantic ID reference")
+    element_type: Literal[
+        "Property", "SMC", "SML", "MLP", "Range", "File", "Blob", "Entity"
+    ] = Field(description="AAS submodel element type")
+    value_type: str | None = Field(default=None, description="XSD value type for Property")
+    cardinality: str = Field(
+        default="[0..1]",
+        description="Cardinality constraint (e.g., '[0..1]', '[1]', '[1..*]')",
+    )
+    known_labels: list[str] = Field(
+        default_factory=list,
+        description="Known labels from template and synonyms from semantic dictionary",
+    )
+    required: bool = Field(default=False, description="Whether this field is required")
+
+
+class UnmappedFinding(BaseModel):
+    """
+    A value found in the document that doesn't map to any template field.
+
+    Used to surface potentially important data that wasn't extracted
+    because no matching template field exists.
+    """
+
+    value: str = Field(description="The extracted value")
+    evidence: EvidenceRef = Field(description="Source evidence in PDF")
+    suggested_paths: list[str] = Field(
+        default_factory=list,
+        description="Possible template fields this might belong to",
+    )
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Confidence that this is a meaningful value"
+    )
+    source: Literal["table", "text", "key_value"] = Field(
+        default="text", description="Where this finding came from"
+    )
+    context: str | None = Field(
+        default=None, description="Surrounding context from document"
     )
 
 
@@ -305,3 +387,49 @@ class LLMExtractionResponse(BaseModel):
     extractions: list[LLMFieldExtraction]
     tokens_used: int = 0
     model: str
+
+
+class ExtractionCandidate(BaseModel):
+    """A candidate extraction from the LLM (Pass A: high-recall generation)."""
+
+    path: str = Field(description="idShortPath of target field")
+    value: str = Field(description="Candidate value (or 'NOT_FOUND')")
+    evidence_quote: str | None = Field(
+        default=None, description="Exact quote from document supporting this value"
+    )
+    llm_confidence: float = Field(
+        ge=0.0, le=1.0, description="LLM's self-reported confidence"
+    )
+    source: Literal["llm", "regex", "table"] = Field(
+        default="llm", description="Source of this candidate"
+    )
+    reasoning: str | None = Field(
+        default=None, description="LLM reasoning for this extraction"
+    )
+
+
+class CandidateSet(BaseModel):
+    """Set of candidates for a single field (for verification phase)."""
+
+    path: str = Field(description="idShortPath of target field")
+    candidates: list[ExtractionCandidate] = Field(
+        default_factory=list, description="Ranked candidates (1-3 per field)"
+    )
+    selected_index: int | None = Field(
+        default=None, description="Index of verified candidate after Pass B"
+    )
+    verification_notes: str | None = Field(
+        default=None, description="Notes from verification phase"
+    )
+
+
+class LLMCandidateResponse(BaseModel):
+    """Response from LLM candidate generation (Pass A)."""
+
+    candidate_sets: list[CandidateSet]
+    tokens_used: int = 0
+    model: str
+
+
+# Rebuild models with forward references
+MagicImportResult.model_rebuild()
