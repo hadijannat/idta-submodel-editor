@@ -12,6 +12,7 @@ Main components:
 - DataspaceProvider (abstract): Interface for dataspace implementations
 - SandboxProvider: Local testing environment
 - CatenaXProvider: Production Catena-X connectivity
+- AASPublisher: Publishes submodels to BaSyx and DTR
 
 Submodules:
 - providers/: Dataspace provider implementations
@@ -23,8 +24,16 @@ Submodules:
 
 from app.services.dataspace.connection_manager import ConnectionManager
 from app.services.dataspace.health import DataspaceHealthChecker
+from app.services.dataspace.publisher import (
+    AASPublisher,
+    AASPublisherError,
+    PublicationResult,
+)
 
 __all__ = [
     "ConnectionManager",
     "DataspaceHealthChecker",
+    "AASPublisher",
+    "AASPublisherError",
+    "PublicationResult",
 ]
