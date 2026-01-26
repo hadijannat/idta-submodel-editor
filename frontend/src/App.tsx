@@ -15,6 +15,7 @@ import { MagicImportPanel } from './components/MagicImport';
 import PCFPanel from './components/PCFPanel';
 import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
 import { PassportView } from './components/PassportMode';
+import { DataspaceConnectorPanel } from './components/DataspaceConnector';
 import { getTemplateVersions } from './services/api';
 import { computeCompletion } from './utils/completion';
 import './App.css';
@@ -95,6 +96,11 @@ function App() {
       id: 6,
       title: 'Review & Export',
       description: 'Validate and export',
+    },
+    {
+      id: 7,
+      title: 'Dataspace Publishing',
+      description: 'Publish to Manufacturing-X/Catena-X',
     },
   ];
 
@@ -551,6 +557,40 @@ function App() {
               onClick={() => handleStepChange(5)}
             >
               Back to fields
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => handleStepChange(7)}
+            >
+              Continue to Dataspace Publishing
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (wizardStep === 7) {
+      return (
+        <div className="wizard-panel">
+          <DataspaceConnectorPanel
+            templateName={selectedTemplate.name}
+            templateStatus={templateStatus}
+            templateVersion={selectedVersion}
+            form={form}
+            schema={schema}
+            onPublished={() => {
+              // Optionally show success message or navigate
+            }}
+          />
+
+          <div className="wizard-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleStepChange(6)}
+            >
+              Back to Review & Export
             </button>
           </div>
         </div>
