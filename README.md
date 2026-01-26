@@ -3,6 +3,12 @@
 A metamodel-driven application for editing any IDTA submodel template without code modifications. Built with Eclipse BaSyx Python SDK 2.0.0, FastAPI, and React 18+ with TypeScript.
 
 <p align="center">
+  <a href="https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml"><img src="https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="#license"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"/></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose"/></a>
+  <a href="https://github.com/hadijannat/idta-submodel-editor/tags"><img src="https://img.shields.io/github/v/tag/hadijannat/idta-submodel-editor?label=version" alt="Version"/></a>
+</p>
+<p align="center">
   <a href="#features"><img src="https://img.shields.io/badge/Features-blue?style=for-the-badge" alt="Features"/></a>
   <a href="#semantic-lookup"><img src="https://img.shields.io/badge/Semantic_Lookup-teal?style=for-the-badge" alt="Semantic Lookup"/></a>
   <a href="#smart-mapper"><img src="https://img.shields.io/badge/Smart_Mapper-green?style=for-the-badge" alt="Smart Mapper"/></a>
@@ -33,6 +39,43 @@ A metamodel-driven application for editing any IDTA submodel template without co
 - **PCF Calculator & Validator**: Calculate Product Carbon Footprint (CO₂e) from emission activities and validate against IDTA 02023 rules
 - **Passport Mode**: WYSIWYG visualization of submodel data as Digital Product Passport cards (Nameplate, Carbon Footprint)
 - **Magic Import (PDF-to-AAS)**: LLM-powered extraction from PDF datasheets with source highlighting, confidence scoring, OCR support, and multi-provider LLM backend
+
+---
+
+## <a name="dataspace-publishing"></a>Dataspace Publishing (Manufacturing-X / Catena-X)
+
+Connect your submodels to a dataspace with a guided wizard, Vault-backed credential storage, and real health checks. The connector supports sandbox mode for local testing and Catena-X / Manufacturing-X environments for production-aligned deployments.
+
+![Dataspace Publishing](docs/dataspace/dataspace-section.png)
+
+### Highlights
+
+- **Wizard-based onboarding** with environment selection and EDC mode
+- **Vault-backed secrets** (required for non-sandbox environments)
+- **Health-driven status** (Connected / Degraded / Failed) based on real endpoint checks
+- **Granular policy control** using ODRL policy templates
+
+### Dataspace Quick Start (Local)
+
+```bash
+# Start core stack
+docker-compose up -d
+
+# Enable dataspace in backend + configure Vault token
+DATASPACE_ENABLED=true VAULT_TOKEN=dev-root-token docker-compose up -d backend
+
+# Start Vault (dataspace profile)
+docker-compose --profile dataspace up -d vault
+```
+
+### Full Dataspace Stack (EDC + DTR + BaSyx)
+
+The full dataspace profile pulls EDC images from GHCR. You must authenticate first:
+
+```bash
+docker login ghcr.io
+docker-compose --profile dataspace up -d
+```
 
 ---
 
@@ -462,6 +505,21 @@ npm run type-check
 | `IEC_CDD_INDEX_PATH` | Offline index path (JSON/CSV/SQLite) | ./cache/semantic/iec_cdd.json |
 | `SEMANTIC_EMBED_CONCEPT_DESCRIPTIONS` | Embed ConceptDescriptions on export | false |
 
+#### Dataspace
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATASPACE_ENABLED` | Enable dataspace features | false |
+| `DATASPACE_DEFAULT_ENVIRONMENT` | Default dataspace environment | sandbox |
+| `DATASPACE_DEFAULT_EDC_MODE` | Default EDC mode | tractus-x |
+| `BASYX_AAS_SERVER_URL` | BaSyx AAS server URL | http://basyx-aas-server:4001 |
+| `BASYX_REGISTRY_URL` | BaSyx registry URL | http://basyx-registry:4002 |
+| `EDC_CONTROL_PLANE_URL` | EDC control plane URL | http://edc-control-plane:19192 |
+| `EDC_DATA_PLANE_URL` | EDC data plane URL | http://edc-data-plane:19291 |
+| `DTR_URL` | Digital Twin Registry URL | http://dtr:4003 |
+| `VAULT_URL` | Vault URL | http://vault:8200 |
+| `VAULT_TOKEN` | Vault token | - |
+
 #### Frontend
 
 | Variable | Description | Default |
@@ -492,6 +550,14 @@ npm run type-check
 - `POST /api/export/{name}?format=aasx|json|pdf` - Export filled submodel (validates server-side)
 - `GET /api/export/{name}/preview` - Get template preview (`status=published|deprecated`, `version=...`)
 - `POST /api/export/batch` - Batch export as ZIP
+
+### Dataspace
+
+- `POST /api/dataspace/connections` - Create a dataspace connection (onboarding)
+- `GET /api/dataspace/connections` - List dataspace connections
+- `GET /api/dataspace/connections/{connection_id}` - Connection status + health checks
+- `POST /api/dataspace/publications` - Publish a submodel to the dataspace
+- `GET /api/dataspace/health` - Dataspace health status
 
 ### Semantic
 
