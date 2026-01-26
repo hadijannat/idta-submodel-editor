@@ -8,13 +8,14 @@
  * - Apply to form
  */
 
-import { useCallback, useMemo, useRef, useId } from 'react';
+import { useCallback, useMemo, useRef, useId, useState } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelFormData } from '../../types/aas-elements';
 import type { SubmodelUISchema } from '../../types/ui-schema';
 import { useMagicImport } from './useMagicImport';
 import PdfViewer from './PdfViewer';
 import ExtractionReviewTable from './ExtractionReviewTable';
+import ProvenancePanel from './ProvenancePanel';
 import './MagicImport.css';
 
 interface MagicImportPanelProps {
@@ -41,6 +42,7 @@ export default function MagicImportPanel({
     selectedExtractionPath,
     isUploading,
     isProcessing,
+    isReextracting,
     error,
     uploadPdf,
     cancelJob,
@@ -48,6 +50,7 @@ export default function MagicImportPanel({
     updateExtraction,
     approveExtraction,
     approveAll,
+    reextractPaths,
     applyToForm,
     reset,
     pdfUrl,
@@ -61,6 +64,7 @@ export default function MagicImportPanel({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
+  const [focusToken, setFocusToken] = useState(0);
 
   // Handle file selection
   const handleFileSelect = useCallback(
@@ -111,6 +115,23 @@ export default function MagicImportPanel({
 
   // Count ready extractions
   const readyCount = extractions.filter((e) => e.user_approved || !e.needs_review).length;
+  const fieldsExtracted = extractions.length;
+  const fieldsNeedingReview = extractions.filter((e) => e.needs_review).length;
+  const avgConfidence =
+    extractions.length > 0
+      ? Math.round(
+          (extractions.reduce((sum, e) => sum + e.confidence, 0) / extractions.length) *
+            100
+        )
+      : 0;
+  const validationErrors = result?.validation_result?.errors ?? [];
+  const validationWarnings = result?.validation_result?.warnings ?? [];
+  const hasValidationErrors = validationErrors.length > 0;
+  const canApply = readyCount > 0 && !hasValidationErrors;
+
+  const handleFocusEvidence = useCallback(() => {
+    setFocusToken((token) => token + 1);
+  }, []);
 
   // Render upload state
   if (!job) {
@@ -258,15 +279,15 @@ export default function MagicImportPanel({
         <h3>Magic Import - Review Extractions</h3>
         {result && (
           <div className="magic-import-panel__summary">
-            <span>{result.fields_extracted} fields extracted</span>
+            <span>{fieldsExtracted} fields extracted</span>
             <span className="magic-import-panel__separator">|</span>
             <span>
-              {result.fields_needing_review > 0
-                ? `${result.fields_needing_review} need review`
+              {fieldsNeedingReview > 0
+                ? `${fieldsNeedingReview} need review`
                 : 'All ready'}
             </span>
             <span className="magic-import-panel__separator">|</span>
-            <span>Avg confidence: {Math.round(result.average_confidence * 100)}%</span>
+            <span>Avg confidence: {avgConfidence}%</span>
           </div>
         )}
         {onClose && (
@@ -279,27 +300,89 @@ export default function MagicImportPanel({
           </button>
         )}
       </div>
+      {error && <div className="magic-import-panel__error">{error}</div>}
 
       <div className="magic-import-panel__content">
         {/* PDF Viewer (left side) */}
         <div className="magic-import-panel__viewer">
-          <PdfViewer url={pdfUrl} evidence={selectedExtraction?.evidence ?? null} />
+          <PdfViewer
+            url={pdfUrl}
+            evidence={selectedExtraction?.evidence ?? null}
+            confidence={selectedExtraction?.confidence}
+            focusToken={focusToken}
+          />
         </div>
 
         {/* Review Table (right side) */}
         <div className="magic-import-panel__review">
-          <ExtractionReviewTable
-            extractions={extractions}
-            selectedPath={selectedExtractionPath}
-            onSelect={selectExtraction}
-            onUpdate={updateExtraction}
-            onApprove={approveExtraction}
-            onApproveAll={approveAll}
-          />
+          <div className="magic-import-panel__review-content">
+            <ExtractionReviewTable
+              extractions={extractions}
+              selectedPath={selectedExtractionPath}
+              onSelect={selectExtraction}
+              onUpdate={updateExtraction}
+              onApprove={approveExtraction}
+              onApproveAll={approveAll}
+            />
+            <ProvenancePanel
+              extraction={selectedExtraction ?? null}
+              onGoToPdf={selectedExtraction?.evidence ? handleFocusEvidence : undefined}
+              onApprove={
+                selectedExtraction?.path ? () => approveExtraction(selectedExtraction.path) : undefined
+              }
+              onReExtract={
+                selectedExtraction?.path
+                  ? () => reextractPaths([selectedExtraction.path])
+                  : undefined
+              }
+              onClose={() => selectExtraction(null)}
+              isReExtracting={isReextracting}
+            />
+          </div>
         </div>
       </div>
 
       <div className="magic-import-panel__footer">
+        <div className="magic-import-panel__validation">
+          {result?.validation_result ? (
+            <>
+              <div
+                className={`magic-import-panel__validation-status ${
+                  hasValidationErrors ? 'error' : validationWarnings.length > 0 ? 'warning' : 'ok'
+                }`}
+              >
+                {hasValidationErrors
+                  ? `Validation failed (${validationErrors.length} errors)`
+                  : validationWarnings.length > 0
+                  ? `Validation warnings (${validationWarnings.length})`
+                  : 'Validation passed'}
+              </div>
+              {(validationErrors.length > 0 || validationWarnings.length > 0) && (
+                <div className="magic-import-panel__validation-details">
+                  {validationErrors.slice(0, 3).map((err) => (
+                    <div key={`err-${err.path}-${err.code}`} className="magic-import-panel__validation-item">
+                      <strong>{err.path || 'General'}:</strong> {err.message}
+                    </div>
+                  ))}
+                  {validationWarnings.slice(0, 2).map((warn) => (
+                    <div key={`warn-${warn.path}-${warn.code}`} className="magic-import-panel__validation-item">
+                      <strong>{warn.path || 'General'}:</strong> {warn.message}
+                    </div>
+                  ))}
+                  {(validationErrors.length > 3 || validationWarnings.length > 2) && (
+                    <div className="magic-import-panel__validation-more">
+                      See validation report for full details
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="magic-import-panel__validation-status info">
+              Validation not available
+            </div>
+          )}
+        </div>
         <button
           type="button"
           className="magic-import-panel__btn--secondary"
@@ -311,7 +394,7 @@ export default function MagicImportPanel({
           type="button"
           className="magic-import-panel__btn--primary"
           onClick={applyToForm}
-          disabled={readyCount === 0}
+          disabled={!canApply}
         >
           Apply {readyCount} Fields to Form
         </button>

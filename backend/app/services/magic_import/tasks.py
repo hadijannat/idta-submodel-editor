@@ -232,7 +232,7 @@ def process_magic_import_job(self, job_id: str) -> dict:
             job.template_name,
             job.template_status,
             job.template_version,
-            mode="warn",  # Use warn mode for Magic Import
+            mode="strict",
         )
 
         logger.info(

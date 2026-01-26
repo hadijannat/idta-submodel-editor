@@ -264,6 +264,18 @@ async def reextract_fields(
             e for e in result.extractions if e.path not in new_paths
         ] + new_extractions
 
+        # Re-validate merged result
+        from app.services.magic_import.validator import ExtractionValidator
+
+        validator = ExtractionValidator()
+        validation_result = validator.validate_extractions(
+            merged_extractions,
+            job.template_name,
+            job.template_status,
+            job.template_version,
+            mode="strict",
+        )
+
         # Update statistics
         fields_needing_review = sum(1 for e in merged_extractions if e.needs_review)
         avg_confidence = (
@@ -283,7 +295,7 @@ async def reextract_fields(
             llm_provider=result.llm_provider,
             llm_model=result.llm_model,
             processing_time_seconds=result.processing_time_seconds,
-            validation_result=result.validation_result,
+            validation_result=validation_result,
             template_version_used=result.template_version_used,
         )
 

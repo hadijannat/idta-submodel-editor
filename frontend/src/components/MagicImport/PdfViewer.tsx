@@ -38,9 +38,16 @@ interface PdfViewerProps {
   evidence: EvidenceRef | null;
   confidence?: number;
   onPageChange?: (page: number) => void;
+  focusToken?: number;
 }
 
-export default function PdfViewer({ url, evidence, confidence, onPageChange }: PdfViewerProps) {
+export default function PdfViewer({
+  url,
+  evidence,
+  confidence,
+  onPageChange,
+  focusToken,
+}: PdfViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingFocusRef = useRef<{ page: number; box: EvidenceRef['boxes'][0] } | null>(
@@ -282,6 +289,13 @@ export default function PdfViewer({ url, evidence, confidence, onPageChange }: P
       setScale(nextScale);
     }
   }, [evidence, pageViewport, scale, currentPage]);
+
+  // Trigger focus when requested
+  useEffect(() => {
+    if (focusToken === undefined) return;
+    if (!evidence) return;
+    focusEvidence();
+  }, [focusToken, evidence, focusEvidence]);
 
   // Zoom controls
   const zoomIn = () => setScale((s) => Math.min(s + 0.25, 3.0));

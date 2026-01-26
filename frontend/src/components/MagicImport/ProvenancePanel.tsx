@@ -10,11 +10,12 @@ import './MagicImport.css';
 
 interface ProvenancePanelProps {
   extraction: FieldExtraction | null;
-  onGoToPdf: () => void;
-  onEdit: () => void;
-  onApprove: () => void;
+  onGoToPdf?: () => void;
+  onEdit?: () => void;
+  onApprove?: () => void;
   onReExtract?: () => void;
-  onClose: () => void;
+  onClose?: () => void;
+  isReExtracting?: boolean;
 }
 
 /**
@@ -47,6 +48,7 @@ export default function ProvenancePanel({
   onApprove,
   onReExtract,
   onClose,
+  isReExtracting = false,
 }: ProvenancePanelProps) {
   const [expanded, setExpanded] = useState(true);
 
@@ -72,14 +74,16 @@ export default function ProvenancePanel({
         >
           {expanded ? '▼' : '▶'} Field Provenance
         </button>
-        <button
-          type="button"
-          className="provenance-panel__close"
-          onClick={onClose}
-          title="Close panel"
-        >
-          ×
-        </button>
+        {onClose && (
+          <button
+            type="button"
+            className="provenance-panel__close"
+            onClick={onClose}
+            title="Close panel"
+          >
+            ×
+          </button>
+        )}
       </div>
 
       {expanded && (
@@ -198,7 +202,7 @@ export default function ProvenancePanel({
 
           {/* Actions */}
           <div className="provenance-panel__actions">
-            {evidence && (
+            {evidence && onGoToPdf && (
               <button
                 type="button"
                 className="provenance-panel__btn provenance-panel__btn--secondary"
@@ -207,23 +211,26 @@ export default function ProvenancePanel({
                 Go to PDF
               </button>
             )}
-            <button
-              type="button"
-              className="provenance-panel__btn provenance-panel__btn--secondary"
-              onClick={onEdit}
-            >
-              Edit
-            </button>
+            {onEdit && (
+              <button
+                type="button"
+                className="provenance-panel__btn provenance-panel__btn--secondary"
+                onClick={onEdit}
+              >
+                Edit
+              </button>
+            )}
             {onReExtract && (
               <button
                 type="button"
                 className="provenance-panel__btn provenance-panel__btn--secondary"
                 onClick={onReExtract}
+                disabled={isReExtracting}
               >
-                Re-extract
+                {isReExtracting ? 'Re-extracting…' : 'Re-extract'}
               </button>
             )}
-            {extraction.needs_review && !extraction.user_approved && (
+            {onApprove && extraction.needs_review && !extraction.user_approved && (
               <button
                 type="button"
                 className="provenance-panel__btn provenance-panel__btn--primary"

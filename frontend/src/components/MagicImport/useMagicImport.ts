@@ -12,6 +12,7 @@ import {
   getMagicImportResult,
   deleteMagicImportJob,
   getMagicImportPdfUrl,
+  reExtractFields,
   type MagicImportJob,
   type MagicImportResult,
   type FieldExtraction,
@@ -33,6 +34,7 @@ interface UseMagicImportReturn {
   selectedExtractionPath: string | null;
   isUploading: boolean;
   isProcessing: boolean;
+  isReextracting: boolean;
   error: string | null;
 
   // Actions
@@ -42,6 +44,7 @@ interface UseMagicImportReturn {
   updateExtraction: (path: string, value: string) => void;
   approveExtraction: (path: string) => void;
   approveAll: () => void;
+  reextractPaths: (paths: string[], hint?: string) => Promise<void>;
   applyToForm: () => void;
   reset: () => void;
 
@@ -62,6 +65,7 @@ export function useMagicImport({
   const [selectedExtractionPath, setSelectedExtractionPath] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isReextracting, setIsReextracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -204,6 +208,31 @@ export function useMagicImport({
     );
   }, []);
 
+  // Re-extract specific fields
+  const reextractPaths = useCallback(
+    async (paths: string[], hint?: string) => {
+      if (!job || paths.length === 0) {
+        return;
+      }
+
+      setIsReextracting(true);
+      setError(null);
+
+      try {
+        const updated = await reExtractFields(job.job_id, paths, hint);
+        const updatedPaths = new Set(paths);
+
+        setResult(updated);
+        setExtractions((prev) => mergeReextractResults(prev, updated.extractions, updatedPaths));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Re-extraction failed');
+      } finally {
+        setIsReextracting(false);
+      }
+    },
+    [job]
+  );
+
   // Apply extractions to form
   const applyToForm = useCallback(() => {
     const approvedExtractions = extractions.filter(
@@ -283,6 +312,7 @@ export function useMagicImport({
     selectedExtractionPath,
     isUploading,
     isProcessing,
+    isReextracting,
     error,
     uploadPdf,
     cancelJob,
@@ -290,6 +320,7 @@ export function useMagicImport({
     updateExtraction,
     approveExtraction,
     approveAll,
+    reextractPaths,
     applyToForm,
     reset,
     pdfUrl,
@@ -323,6 +354,37 @@ function pathToFormPath(idShortPath: string): string {
 
   return formSegments.join('.');
 }
+
+const mergeReextractResults = (
+  previous: FieldExtraction[],
+  updated: FieldExtraction[],
+  reextractPaths: Set<string>
+): FieldExtraction[] => {
+  const prevByPath = new Map(previous.map((item) => [item.path, item]));
+  const updatedPaths = new Set(updated.map((item) => item.path));
+
+  const merged = updated.map((item) => {
+    if (reextractPaths.has(item.path)) {
+      return item;
+    }
+
+    const existing = prevByPath.get(item.path);
+    if (existing && (existing.user_edited || existing.user_approved)) {
+      return existing;
+    }
+
+    return item;
+  });
+
+  // Preserve any extractions that exist only client-side
+  for (const item of previous) {
+    if (!updatedPaths.has(item.path)) {
+      merged.push(item);
+    }
+  }
+
+  return merged;
+};
 
 type PathSegment = { name: string; isList: boolean };
 
