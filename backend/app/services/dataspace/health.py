@@ -12,15 +12,11 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from app.services.dataspace.models import (
     ConnectionState,
     HealthCheckResult,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

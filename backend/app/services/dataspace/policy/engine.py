@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 from app.services.dataspace.providers.provider_base import PolicyError
 
@@ -47,7 +47,7 @@ class PolicyEngine:
 
     def __init__(self) -> None:
         """Initialize the policy engine."""
-        self._custom_evaluators: dict[str, callable] = {}
+        self._custom_evaluators: dict[str, Callable[..., bool]] = {}
 
     def validate_policy(self, policy: dict[str, Any]) -> tuple[bool, list[str]]:
         """
