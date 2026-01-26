@@ -4,21 +4,32 @@ FastAPI application entry point.
 This module configures the FastAPI application with:
 - CORS middleware
 - Security headers middleware
+- Correlation ID middleware
 - Rate limiting
 - Health check endpoints
 - API routers
+- Standardized error handling
 """
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
 from app.config import get_settings
+from app.errors import APIError, ErrorCode, ErrorResponse
+from app.metrics import set_app_info
+from app.middleware.correlation import CorrelationIdMiddleware, get_correlation_id
 from app.routers import editor, export, templates, semantic, mapper, pcf, magic_import, dataspace
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -44,6 +55,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown."""
     settings = get_settings()
+
+    # Set application info for Prometheus metrics
+    set_app_info(version="1.0.0", environment=settings.env)
 
     # Create cache directory
     settings.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -87,11 +101,14 @@ def create_application() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["Content-Disposition"],
+        expose_headers=["Content-Disposition", "X-Correlation-ID"],
     )
 
     # Security headers
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # Correlation ID middleware (must be added after security headers to run first)
+    app.add_middleware(CorrelationIdMiddleware)
 
     # Include routers
     app.include_router(templates.router)
@@ -143,19 +160,103 @@ def create_application() -> FastAPI:
             "dataspace_enabled": settings.dataspace_enabled,
         }
 
-    # Global exception handler
+    # Exception handler for APIError (structured errors)
+    @app.exception_handler(APIError)
+    async def api_error_handler(request: Request, exc: APIError):
+        """Handle structured API errors."""
+        correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or "unknown"
+        response = exc.to_response(correlation_id)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=response.model_dump(mode="json"),
+            headers={"X-Correlation-ID": correlation_id},
+        )
+
+    # Exception handler for RequestValidationError (Pydantic validation)
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Convert Pydantic validation errors to standardized error response."""
+        correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or "unknown"
+        response = ErrorResponse(
+            code=ErrorCode.VALIDATION_FAILED,
+            message="Request validation failed",
+            detail={"errors": exc.errors()},
+            correlation_id=correlation_id,
+        )
+        return JSONResponse(
+            status_code=422,
+            content=response.model_dump(mode="json"),
+            headers={"X-Correlation-ID": correlation_id},
+        )
+
+    # Exception handler for HTTPException (convert to ErrorResponse format)
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        """Convert HTTPException to standardized error response."""
+        correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or "unknown"
+
+        # Map HTTP status codes to error codes
+        code_map = {
+            400: ErrorCode.BAD_REQUEST,
+            404: ErrorCode.RESOURCE_NOT_FOUND,
+            409: ErrorCode.RESOURCE_CONFLICT,
+            413: ErrorCode.FILE_TOO_LARGE,
+            422: ErrorCode.VALIDATION_FAILED,
+            429: ErrorCode.UPSTREAM_RATE_LIMITED,
+            502: ErrorCode.UPSTREAM_ERROR,
+            503: ErrorCode.UPSTREAM_UNAVAILABLE,
+        }
+        error_code = code_map.get(exc.status_code, ErrorCode.INTERNAL_ERROR)
+
+        response = ErrorResponse(
+            code=error_code,
+            message=exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+            detail=exc.detail if isinstance(exc.detail, dict) else None,
+            correlation_id=correlation_id,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=response.model_dump(mode="json"),
+            headers={"X-Correlation-ID": correlation_id},
+        )
+
+    # Global exception handler for uncaught exceptions
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
-        """Handle uncaught exceptions."""
+        """Handle uncaught exceptions with standardized error response."""
+        correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or "unknown"
+
+        # Log the full exception for debugging
+        logger.exception(
+            "Unhandled exception [correlation_id=%s]: %s",
+            correlation_id,
+            str(exc),
+        )
+
+        # Build error response
         if settings.debug:
-            return JSONResponse(
-                status_code=500,
-                content={"detail": str(exc), "type": type(exc).__name__},
+            response = ErrorResponse(
+                code=ErrorCode.INTERNAL_ERROR,
+                message=str(exc),
+                detail={"type": type(exc).__name__},
+                correlation_id=correlation_id,
             )
+        else:
+            response = ErrorResponse(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Internal server error",
+                correlation_id=correlation_id,
+            )
+
         return JSONResponse(
             status_code=500,
-            content={"detail": "Internal server error"},
+            content=response.model_dump(mode="json"),
+            headers={"X-Correlation-ID": correlation_id},
         )
+
+    # Add Prometheus instrumentation
+    # Exposes /metrics endpoint for scraping
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", tags=["metrics"])
 
     return app
 

@@ -4,8 +4,9 @@ PCF (Product Carbon Footprint) Calculator & Validator API endpoints.
 IDTA 02023 compliant CO2e calculation and validation.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
+from app.errors import APIError, ErrorCode
 from app.schemas.pcf import (
     EmissionFactor,
     PCFCalculateRequest,
@@ -102,9 +103,13 @@ def get_factor(factor_id: str) -> EmissionFactor:
         EmissionFactor if found
 
     Raises:
-        HTTPException: 404 if factor not found
+        APIError: 404 if factor not found
     """
     factor = get_emission_factor_by_id(factor_id)
     if factor is None:
-        raise HTTPException(status_code=404, detail=f"Factor not found: {factor_id}")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Emission factor not found",
+            detail={"factor_id": factor_id},
+        )
     return factor

@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.dependencies import get_semantic_service
+from app.errors import APIError, ErrorCode
 from app.schemas.semantic import (
     SemanticApplyPreviewRequest,
     SemanticApplyPreviewResponse,
@@ -20,6 +21,15 @@ from app.services.semantic.service import SemanticService
 from app.services.semantic.errors import SemanticRateLimitError
 
 router = APIRouter(prefix="/api/semantic", tags=["semantic"])
+
+
+def _handle_rate_limit(exc: SemanticRateLimitError) -> APIError:
+    """Convert rate limit error to APIError with Retry-After header info."""
+    return APIError(
+        code=ErrorCode.UPSTREAM_RATE_LIMITED,
+        message=str(exc),
+        detail={"retry_after": exc.retry_after if exc.retry_after is not None else 60},
+    )
 
 
 @router.get("/providers", response_model=list[SemanticProviderInfo])
@@ -52,15 +62,7 @@ async def search_semantics(
         )
         return SemanticSearchResponse(query=q, results=results, total=total)
     except SemanticRateLimitError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail=str(exc),
-            headers={
-                "Retry-After": str(exc.retry_after)
-                if exc.retry_after is not None
-                else "60"
-            },
-        )
+        raise _handle_rate_limit(exc)
 
 
 @router.get("/resolve", response_model=SemanticResolveResponse)
@@ -74,17 +76,13 @@ async def resolve_semantic(
     try:
         entry = await service.resolve(identifier, provider, lang)
     except SemanticRateLimitError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail=str(exc),
-            headers={
-                "Retry-After": str(exc.retry_after)
-                if exc.retry_after is not None
-                else "60"
-            },
-        )
+        raise _handle_rate_limit(exc)
     if not entry:
-        raise HTTPException(status_code=404, detail="Semantic entry not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Semantic entry not found",
+            detail={"identifier": identifier},
+        )
     return SemanticResolveResponse(entry=entry)
 
 
@@ -104,17 +102,13 @@ async def apply_preview(
             prefer_iri=payload.preferIri,
         )
     except SemanticRateLimitError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail=str(exc),
-            headers={
-                "Retry-After": str(exc.retry_after)
-                if exc.retry_after is not None
-                else "60"
-            },
-        )
+        raise _handle_rate_limit(exc)
     if result is None:
-        raise HTTPException(status_code=404, detail="Semantic entry not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Semantic entry not found",
+            detail={"identifier": payload.identifier},
+        )
     return result
 
 

@@ -12,10 +12,11 @@ import logging
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.config import get_settings
 from app.dependencies import get_current_user
+from app.errors import APIError, ErrorCode
 from app.schemas.dataspace import (
     # Enums
     AccessType,
@@ -86,12 +87,13 @@ def get_policy_store() -> PolicyStore:
 
 
 def _check_dataspace_enabled() -> None:
-    """Check if dataspace feature is enabled, raise 503 if not."""
+    """Check if dataspace feature is enabled, raise error if not."""
     settings = get_settings()
     if not settings.dataspace_enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="Dataspace integration is disabled. Set DATASPACE_ENABLED=true to enable.",
+        raise APIError(
+            code=ErrorCode.FEATURE_DISABLED,
+            message="Dataspace integration is disabled",
+            detail={"hint": "Set DATASPACE_ENABLED=true to enable"},
         )
 
 
@@ -106,7 +108,11 @@ def _assert_owner(connection, user: dict | None) -> None:
     """Ensure the current user owns the connection if auth is enabled."""
     owner_id = _get_owner_id(user)
     if owner_id and connection.owner_id and connection.owner_id != owner_id:
-        raise HTTPException(status_code=403, detail="Access denied for this connection.")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Access denied for this connection",
+            status_code=403,
+        )
 
 
 def _map_internal_status(status: InternalConnectionStatus) -> DataspaceConnectionStatus:
@@ -181,14 +187,15 @@ async def create_connection(
     try:
         if request.environment != "sandbox":
             if not request.credentials:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Credentials are required for non-sandbox environments.",
+                raise APIError(
+                    code=ErrorCode.BAD_REQUEST,
+                    message="Credentials are required for non-sandbox environments",
                 )
             if not settings.vault_token or not settings.vault_url:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Vault is required for non-sandbox environments. Configure VAULT_URL and VAULT_TOKEN.",
+                raise APIError(
+                    code=ErrorCode.UPSTREAM_UNAVAILABLE,
+                    message="Vault is required for non-sandbox environments",
+                    detail={"hint": "Configure VAULT_URL and VAULT_TOKEN"},
                 )
 
         owner_id = _get_owner_id(user)
@@ -219,9 +226,9 @@ async def create_connection(
             stored = await vault.store_credentials(connection.connection_id, request.credentials)
             if not stored:
                 conn_manager.delete_connection(connection.connection_id)
-                raise HTTPException(
-                    status_code=502,
-                    detail="Failed to store credentials in Vault.",
+                raise APIError(
+                    code=ErrorCode.UPSTREAM_ERROR,
+                    message="Failed to store credentials in Vault",
                 )
             conn_manager.update_connection(
                 connection.connection_id,
@@ -251,11 +258,14 @@ async def create_connection(
             message="Connection created. Onboarding in progress.",
         )
 
-    except HTTPException:
+    except APIError:
         raise
     except Exception as e:
         logger.exception("Failed to create dataspace connection")
-        raise HTTPException(status_code=500, detail="Failed to create dataspace connection.")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to create dataspace connection",
+        )
 
 
 @router.get("/connections", response_model=ListConnectionsResponse)
@@ -280,7 +290,10 @@ async def list_connections(
         )
     except Exception as e:
         logger.exception("Failed to list connections")
-        raise HTTPException(status_code=500, detail="Failed to list connections.")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to list connections",
+        )
 
 
 @router.get("/connections/{connection_id}", response_model=ConnectionStatusResponse)
@@ -299,7 +312,11 @@ async def get_connection(
 
     connection = conn_manager.get_connection(connection_id)
     if connection is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
     _assert_owner(connection, user)
     _assert_owner(connection, user)
 
@@ -358,7 +375,11 @@ async def disconnect(
 
     connection = conn_manager.get_connection(connection_id)
     if connection is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
     _assert_owner(connection, user)
 
     # Check for active publications
@@ -366,10 +387,10 @@ async def disconnect(
     active_registrations = [r for r in registrations if r.status.value != "failed"]
 
     if active_registrations and not request.force and not request.unpublish_all:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Connection has {len(active_registrations)} active publications. "
-                   "Use force=true or unpublish_all=true to proceed.",
+        raise APIError(
+            code=ErrorCode.RESOURCE_CONFLICT,
+            message=f"Connection has {len(active_registrations)} active publications",
+            detail={"hint": "Use force=true or unpublish_all=true to proceed"},
         )
 
     unpublished_count = 0
@@ -391,7 +412,10 @@ async def disconnect(
     # Delete the connection
     deleted = conn_manager.delete_connection(connection_id)
     if not deleted:
-        raise HTTPException(status_code=500, detail="Failed to delete connection")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to delete connection",
+        )
 
     return DisconnectResponse(
         connection_id=connection_id,
@@ -416,7 +440,11 @@ async def reconnect(
 
     connection = conn_manager.get_connection(connection_id)
     if connection is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
 
     # Reset status and re-queue onboarding
     conn_manager.update_connection(
@@ -467,13 +495,18 @@ async def publish_submodel(
     # Verify connection exists and is connected
     connection = conn_manager.get_connection(request.connection_id)
     if connection is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
     _assert_owner(connection, user)
 
     if connection.status != InternalConnectionStatus.CONNECTED:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Connection is not active. Current status: {connection.status.value}",
+        raise APIError(
+            code=ErrorCode.RESOURCE_CONFLICT,
+            message="Connection is not active",
+            detail={"current_status": connection.status.value},
         )
 
     import uuid
@@ -549,7 +582,11 @@ async def list_publications(
 
         if connection_id and allowed_connection_ids is not None:
             if connection_id not in allowed_connection_ids:
-                raise HTTPException(status_code=403, detail="Access denied for this connection.")
+                raise APIError(
+                    code=ErrorCode.RESOURCE_NOT_FOUND,
+                    message="Access denied for this connection",
+                    status_code=403,
+                )
 
         registrations = conn_manager.list_registrations(
             connection_id=connection_id,
@@ -598,7 +635,10 @@ async def list_publications(
 
     except Exception as e:
         logger.exception("Failed to list publications")
-        raise HTTPException(status_code=500, detail="Failed to list publications.")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to list publications",
+        )
 
 
 def _map_registration_status(status) -> PublicationStatus:
@@ -629,10 +669,18 @@ async def get_publication(
 
     registration = conn_manager.get_registration(publication_id)
     if registration is None:
-        raise HTTPException(status_code=404, detail="Publication not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Publication not found",
+            detail={"publication_id": publication_id},
+        )
     connection = conn_manager.get_connection(registration.connection_id)
     if connection is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
     _assert_owner(connection, user)
 
     return SubmodelPublication(
@@ -666,10 +714,18 @@ async def update_publication(
 
     registration = conn_manager.get_registration(publication_id)
     if registration is None:
-        raise HTTPException(status_code=404, detail="Publication not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Publication not found",
+            detail={"publication_id": publication_id},
+        )
     connection = conn_manager.get_connection(registration.connection_id)
     if connection is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
     _assert_owner(connection, user)
 
     # Update metadata
@@ -731,10 +787,18 @@ async def unpublish(
 
     registration = conn_manager.get_registration(publication_id)
     if registration is None:
-        raise HTTPException(status_code=404, detail="Publication not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Publication not found",
+            detail={"publication_id": publication_id},
+        )
     connection = conn_manager.get_connection(registration.connection_id)
     if connection is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
     _assert_owner(connection, user)
 
     # TODO: Implement actual unpublishing via EDC/DTR clients
@@ -879,7 +943,10 @@ async def preview_policy(
 
     except Exception as e:
         logger.exception("Failed to preview policy")
-        raise HTTPException(status_code=500, detail="Failed to preview policy.")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to preview policy",
+        )
 
 
 @router.post("/policies", status_code=201)
@@ -915,9 +982,10 @@ async def create_policy(
         # Validate
         is_valid, errors = policy_engine.validate_policy(odrl)
         if not is_valid:
-            raise HTTPException(
-                status_code=422,
-                detail={"message": "Invalid policy configuration", "errors": errors},
+            raise APIError(
+                code=ErrorCode.VALIDATION_FAILED,
+                message="Invalid policy configuration",
+                detail={"errors": errors},
             )
 
         record = policy_store.create(
@@ -929,11 +997,14 @@ async def create_policy(
 
         return record
 
-    except HTTPException:
+    except APIError:
         raise
     except Exception as e:
         logger.exception("Failed to create policy")
-        raise HTTPException(status_code=500, detail="Failed to create policy.")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to create policy",
+        )
 
 
 @router.get("/policies/{policy_id}")
@@ -951,10 +1022,18 @@ async def get_policy(
 
     record = policy_store.get(policy_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="Policy not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Policy not found",
+            detail={"policy_id": policy_id},
+        )
     owner_id = _get_owner_id(user)
     if owner_id and record.get("owner_id") and record.get("owner_id") != owner_id:
-        raise HTTPException(status_code=403, detail="Access denied for this policy.")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Access denied for this policy",
+            status_code=403,
+        )
     return record
 
 
@@ -974,10 +1053,18 @@ async def update_policy(
 
     record = policy_store.get(policy_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="Policy not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Policy not found",
+            detail={"policy_id": policy_id},
+        )
     owner_id = _get_owner_id(user)
     if owner_id and record.get("owner_id") and record.get("owner_id") != owner_id:
-        raise HTTPException(status_code=403, detail="Access denied for this policy.")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Access denied for this policy",
+            status_code=403,
+        )
 
     # Rebuild ODRL based on access type
     if policy_config.access_type == AccessType.PUBLIC:
@@ -996,7 +1083,11 @@ async def update_policy(
         odrl=odrl,
     )
     if updated is None:
-        raise HTTPException(status_code=404, detail="Policy not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Policy not found",
+            detail={"policy_id": policy_id},
+        )
     return updated
 
 
@@ -1016,22 +1107,35 @@ async def delete_policy(
 
     record = policy_store.get(policy_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="Policy not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Policy not found",
+            detail={"policy_id": policy_id},
+        )
     owner_id = _get_owner_id(user)
     if owner_id and record.get("owner_id") and record.get("owner_id") != owner_id:
-        raise HTTPException(status_code=403, detail="Access denied for this policy.")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Access denied for this policy",
+            status_code=403,
+        )
 
     registrations = conn_manager.list_registrations(limit=200)
     for reg in registrations:
         if reg.metadata.get("policy_id") == policy_id and reg.status.value not in ("failed", "unpublished"):
-            raise HTTPException(
-                status_code=409,
-                detail="Policy is in use by active publications.",
+            raise APIError(
+                code=ErrorCode.RESOURCE_CONFLICT,
+                message="Policy is in use by active publications",
+                detail={"policy_id": policy_id},
             )
 
     deleted = policy_store.delete(policy_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail="Policy not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Policy not found",
+            detail={"policy_id": policy_id},
+        )
     return {"policy_id": policy_id, "deleted": True}
 
 
@@ -1061,7 +1165,11 @@ async def check_health(
     if connection_id:
         connection = conn_manager.get_connection(connection_id)
         if connection is None:
-            raise HTTPException(status_code=404, detail="Connection not found")
+            raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Connection not found",
+            detail={"connection_id": connection_id},
+        )
         _assert_owner(connection, user)
 
         secrets = {}

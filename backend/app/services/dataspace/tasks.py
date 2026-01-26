@@ -21,6 +21,10 @@ from typing import Any
 from celery import shared_task
 
 from app.config import get_settings
+from app.metrics import (
+    dataspace_publication_duration_seconds,
+    record_dataspace_publication,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -364,6 +368,15 @@ def publish_submodel(
             processing_time,
         )
 
+        # Record metrics
+        record_dataspace_publication(
+            status="success",
+            environment=connection.dataspace_type.value,
+        )
+        dataspace_publication_duration_seconds.labels(
+            environment=connection.dataspace_type.value
+        ).observe(processing_time)
+
         return {
             "connection_id": connection_id,
             "registration_id": registration.registration_id,
@@ -375,6 +388,17 @@ def publish_submodel(
 
     except Exception as e:
         logger.exception("Publication failed for connection %s", connection_id)
+
+        # Record failure metrics
+        processing_time = time.time() - start_time
+        record_dataspace_publication(
+            status="failed",
+            environment=connection.dataspace_type.value,
+        )
+        dataspace_publication_duration_seconds.labels(
+            environment=connection.dataspace_type.value
+        ).observe(processing_time)
+
         return {
             "error": str(e),
             "connection_id": connection_id,

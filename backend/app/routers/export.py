@@ -7,11 +7,12 @@ Supports AASX, JSON, and PDF export formats.
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from app.config import get_settings
 from app.dependencies import get_fetcher, get_hydrator, get_parser, get_pdf_service
+from app.errors import APIError, ErrorCode
 from app.schemas.form_data import ExportRequest, SubmodelFormData
 from app.schemas.pcf import PCFValidateRequest
 from app.services.fetcher import TemplateFetcherService
@@ -63,10 +64,10 @@ async def export_submodel(
         schema = parser.parse_aasx_to_ui_schema(template_bytes)
         errors, warnings = validate_form_data(schema, form_data.model_dump())
         if errors:
-            raise HTTPException(
-                status_code=422,
+            raise APIError(
+                code=ErrorCode.VALIDATION_FAILED,
+                message="Validation failed",
                 detail={
-                    "message": "Validation failed",
                     "errors": [e.model_dump() for e in errors],
                     "warnings": [w.model_dump() for w in warnings],
                 },
@@ -81,10 +82,10 @@ async def export_submodel(
                 )
             )
             if not pcf_result.valid:
-                raise HTTPException(
-                    status_code=422,
+                raise APIError(
+                    code=ErrorCode.VALIDATION_FAILED,
+                    message="PCF validation failed",
                     detail={
-                        "message": "PCF validation failed",
                         "errors": [e.model_dump() for e in pcf_result.errors],
                         "warnings": [w.model_dump() for w in pcf_result.warnings],
                         "completeness_score": pcf_result.completeness_score,
@@ -114,9 +115,9 @@ async def export_submodel(
         elif format == "pdf":
             settings = get_settings()
             if not settings.pdf_enabled or pdf_service is None:
-                raise HTTPException(
-                    status_code=501,
-                    detail="PDF export is not enabled",
+                raise APIError(
+                    code=ErrorCode.FEATURE_DISABLED,
+                    message="PDF export is not enabled",
                 )
 
             content = pdf_service.generate_pdf_from_form(
@@ -136,13 +137,21 @@ async def export_submodel(
             )
 
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message=f"Unsupported format: {format}",
+                detail={"format": format, "supported": ["aasx", "json", "pdf"]},
+            )
 
-    except HTTPException:
+    except APIError:
         raise
     except Exception as e:
         logger.exception(f"Failed to export {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to export submodel",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 @router.get("/{template_name}/preview")
@@ -177,9 +186,15 @@ async def preview_submodel(
             "elementCount": len(schema.get("elements", [])),
             "elements": _summarize_elements(schema.get("elements", [])),
         }
+    except APIError:
+        raise
     except Exception as e:
         logger.exception(f"Failed to preview {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to preview template",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 def _summarize_elements(elements: list[dict], depth: int = 0, max_depth: int = 2) -> list[dict]:
@@ -245,10 +260,11 @@ async def batch_export(
                     schema, req.form_data.model_dump()
                 )
                 if errors:
-                    raise HTTPException(
-                        status_code=422,
+                    raise APIError(
+                        code=ErrorCode.VALIDATION_FAILED,
+                        message="Validation failed",
                         detail={
-                            "message": "Validation failed",
+                            "template_name": req.template_name,
                             "errors": [e.model_dump() for e in errors],
                             "warnings": [w.model_dump() for w in warnings],
                         },
@@ -263,10 +279,11 @@ async def batch_export(
                         )
                     )
                     if not pcf_result.valid:
-                        raise HTTPException(
-                            status_code=422,
+                        raise APIError(
+                            code=ErrorCode.VALIDATION_FAILED,
+                            message="PCF validation failed",
                             detail={
-                                "message": "PCF validation failed",
+                                "template_name": req.template_name,
                                 "errors": [e.model_dump() for e in pcf_result.errors],
                                 "warnings": [w.model_dump() for w in pcf_result.warnings],
                                 "completeness_score": pcf_result.completeness_score,
@@ -294,6 +311,12 @@ async def batch_export(
             media_type="application/zip",
             headers={"Content-Disposition": 'attachment; filename="submodels.zip"'},
         )
+    except APIError:
+        raise
     except Exception as e:
         logger.exception("Failed to create batch export")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to create batch export",
+            detail={"error": str(e)},
+        )

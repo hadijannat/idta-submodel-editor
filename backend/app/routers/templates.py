@@ -7,9 +7,10 @@ Provides API endpoints for browsing available IDTA submodel templates.
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_fetcher
+from app.errors import APIError, ErrorCode
 from app.schemas.ui_schema import TemplateInfo, TemplateListResponse, TemplateVersionInfo
 from app.services.fetcher import TemplateFetcherService
 
@@ -66,9 +67,15 @@ async def list_templates(
             total=len(templates),
             cached=cached,
         )
+    except APIError:
+        raise
     except Exception as e:
         logger.exception("Failed to list templates")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.UPSTREAM_ERROR,
+            message="Failed to fetch templates",
+            detail={"error": str(e)},
+        )
 
 
 @router.get("/{template_name}")
@@ -95,14 +102,22 @@ async def get_template_info(
         template = next((t for t in templates if t["name"] == template_name), None)
 
         if not template:
-            raise HTTPException(status_code=404, detail="Template not found")
+            raise APIError(
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+                message="Template not found",
+                detail={"template_name": template_name},
+            )
 
         return TemplateInfo(**template)
-    except HTTPException:
+    except APIError:
         raise
     except Exception as e:
         logger.exception(f"Failed to get template info for {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.UPSTREAM_ERROR,
+            message="Failed to fetch template info",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 @router.get("/{template_name}/versions", response_model=list[TemplateVersionInfo])
@@ -120,9 +135,15 @@ async def get_template_versions(
     try:
         versions = await fetcher.get_template_versions(f"{status}/{template_name}")
         return [TemplateVersionInfo(**v) for v in versions]
+    except APIError:
+        raise
     except Exception as e:
         logger.exception(f"Failed to get versions for {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.UPSTREAM_ERROR,
+            message="Failed to fetch template versions",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 @router.post("/refresh")

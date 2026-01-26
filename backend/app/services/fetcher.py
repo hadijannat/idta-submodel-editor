@@ -18,6 +18,7 @@ from urllib.parse import quote
 import httpx
 
 from app.config import get_settings
+from app.metrics import record_template_fetch, template_fetch_duration_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,23 @@ class TemplateFetcherService:
         """Generate cache file path for a template."""
         cache_key = hashlib.md5(template_path.encode()).hexdigest()
         return self.cache_dir / f"{cache_key}.aasx"
+
+    def _get_etag_path(self, template_path: str) -> Path:
+        """Generate ETag file path for a template."""
+        cache_key = hashlib.md5(template_path.encode()).hexdigest()
+        return self.cache_dir / f"{cache_key}.etag"
+
+    def _get_cached_etag(self, template_path: str) -> str | None:
+        """Get cached ETag for a template if it exists."""
+        etag_path = self._get_etag_path(template_path)
+        if etag_path.exists():
+            return etag_path.read_text().strip()
+        return None
+
+    def _save_etag(self, template_path: str, etag: str) -> None:
+        """Save ETag for a template."""
+        etag_path = self._get_etag_path(template_path)
+        etag_path.write_text(etag)
 
     async def list_available_templates(
         self, statuses: list[str] | None = None, include_local: bool = True
@@ -270,6 +288,10 @@ class TemplateFetcherService:
         """
         Fetch AASX file for a template.
 
+        Uses ETag-based conditional requests to reduce GitHub API pressure.
+        If we have a cached file and ETag, sends If-None-Match header.
+        On 304 Not Modified, returns cached content and extends TTL.
+
         Args:
             template_path: Path to template directory (e.g., "published/IDTA 02006...")
                           For local templates, use "local/{template_name}"
@@ -277,32 +299,72 @@ class TemplateFetcherService:
         Returns:
             AASX file contents as bytes.
         """
+        import time
+        fetch_start = time.perf_counter()
+
         # Handle local templates
         if template_path.startswith("local/"):
-            return self._fetch_local_template_aasx(template_path)
+            content = self._fetch_local_template_aasx(template_path)
+            record_template_fetch(source="local", cache_hit=True)
+            template_fetch_duration_seconds.labels(source="local").observe(
+                time.perf_counter() - fetch_start
+            )
+            return content
 
         cache_file = self._get_cache_path(template_path)
+        cached_etag = self._get_cached_etag(template_path)
 
         # Check disk cache
         if cache_file.exists():
             mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
             if self._is_cache_valid(mtime):
                 logger.debug(f"Returning cached AASX for {template_path}")
+                record_template_fetch(source="github", cache_hit=True)
+                template_fetch_duration_seconds.labels(source="github").observe(
+                    time.perf_counter() - fetch_start
+                )
                 return cache_file.read_bytes()
 
         logger.info(f"Fetching AASX for {template_path} from GitHub")
 
         # Navigate to find the AASX file
         aasx_download_url = None
+        aasx_sha = None
         async with httpx.AsyncClient(timeout=60.0) as client:
             contents_url = (
                 f"https://api.github.com/repos/{self.github_repo}/contents/{template_path}"
             )
+
+            # Build request headers - add If-None-Match if we have a cached ETag
+            request_headers = dict(self.headers)
+            if cached_etag and cache_file.exists():
+                request_headers["If-None-Match"] = cached_etag
+
             try:
-                response = await client.get(contents_url, headers=self.headers)
+                response = await client.get(contents_url, headers=request_headers)
+
+                # Handle 304 Not Modified - return cached content
+                if response.status_code == 304:
+                    logger.debug(
+                        f"ETag match for {template_path}, returning cached content"
+                    )
+                    # Touch cache file to extend TTL
+                    cache_file.touch()
+                    record_template_fetch(source="github", cache_hit=True)
+                    template_fetch_duration_seconds.labels(source="github").observe(
+                        time.perf_counter() - fetch_start
+                    )
+                    return cache_file.read_bytes()
+
                 response.raise_for_status()
                 items = response.json()
-                aasx_download_url = await self._find_aasx_file(items)
+                aasx_download_url, aasx_sha = await self._find_aasx_file_with_sha(items)
+
+                # Store ETag from response if present
+                etag = response.headers.get("ETag")
+                if etag:
+                    self._save_etag(template_path, etag)
+
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 403 and "rate limit" in exc.response.text.lower():
                     logger.warning(
@@ -317,15 +379,41 @@ class TemplateFetcherService:
         if not aasx_download_url:
             raise ValueError(f"No AASX file found in {template_path}")
 
-        # Download the AASX file
+        # Download the AASX file with conditional request if we have a SHA
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.get(aasx_download_url, follow_redirects=True)
+            download_headers = {}
+            if aasx_sha and cache_file.exists():
+                download_headers["If-None-Match"] = f'"{aasx_sha}"'
+
+            response = await client.get(
+                aasx_download_url, follow_redirects=True, headers=download_headers
+            )
+
+            # Handle 304 Not Modified for the actual download
+            if response.status_code == 304:
+                logger.debug(f"File unchanged for {template_path}, extending cache TTL")
+                cache_file.touch()
+                record_template_fetch(source="github", cache_hit=True)
+                template_fetch_duration_seconds.labels(source="github").observe(
+                    time.perf_counter() - fetch_start
+                )
+                return cache_file.read_bytes()
+
             response.raise_for_status()
             aasx_bytes = response.content
 
         # Cache to disk
         cache_file.write_bytes(aasx_bytes)
+        # Store file SHA as ETag for future conditional downloads
+        if aasx_sha:
+            self._save_etag(template_path, f'"{aasx_sha}"')
         logger.info(f"Cached AASX to {cache_file}")
+
+        # Record cache miss (full fetch)
+        record_template_fetch(source="github", cache_hit=False)
+        template_fetch_duration_seconds.labels(source="github").observe(
+            time.perf_counter() - fetch_start
+        )
 
         return aasx_bytes
 
@@ -337,8 +425,22 @@ class TemplateFetcherService:
 
         Searches through version directories to find the latest AASX file.
         """
+        result, _ = await self._find_aasx_file_with_sha(items, depth, max_depth)
+        return result
+
+    async def _find_aasx_file_with_sha(
+        self, items: list[dict], depth: int = 0, max_depth: int = 3
+    ) -> tuple[str | None, str | None]:
+        """
+        Recursively find AASX file in directory listing, returning both URL and SHA.
+
+        The SHA can be used for conditional requests (ETag) on subsequent downloads.
+
+        Returns:
+            Tuple of (download_url, sha) where sha may be None.
+        """
         if depth > max_depth:
-            return None
+            return None, None
 
         aasx_files = []
         subdirs = []
@@ -349,11 +451,12 @@ class TemplateFetcherService:
             elif item["type"] == "dir":
                 subdirs.append(item)
 
-        # If we found AASX files, return the download URL of the most recent one
+        # If we found AASX files, return the download URL and SHA of the most recent one
         if aasx_files:
             # Sort by name to get the latest version
             aasx_files.sort(key=lambda x: x["name"], reverse=True)
-            return aasx_files[0]["download_url"]
+            selected = aasx_files[0]
+            return selected.get("download_url"), selected.get("sha")
 
         # Otherwise, search in subdirectories (version folders)
         for subdir in subdirs:
@@ -361,11 +464,13 @@ class TemplateFetcherService:
                 response = await client.get(subdir["url"], headers=self.headers)
                 if response.status_code == 200:
                     sub_items = response.json()
-                    result = await self._find_aasx_file(sub_items, depth + 1, max_depth)
-                    if result:
-                        return result
+                    url, sha = await self._find_aasx_file_with_sha(
+                        sub_items, depth + 1, max_depth
+                    )
+                    if url:
+                        return url, sha
 
-        return None
+        return None, None
 
     async def _find_aasx_file_via_html(
         self, template_path: str, depth: int = 0, max_depth: int = 3
@@ -474,7 +579,7 @@ class TemplateFetcherService:
 
     def clear_cache(self) -> int:
         """
-        Clear all cached templates.
+        Clear all cached templates and ETags.
 
         Returns:
             Number of files removed.
@@ -483,6 +588,9 @@ class TemplateFetcherService:
         for cache_file in self.cache_dir.glob("*.aasx"):
             cache_file.unlink()
             count += 1
+        # Also clear ETag files
+        for etag_file in self.cache_dir.glob("*.etag"):
+            etag_file.unlink()
 
         self._index_cache.clear()
         logger.info(f"Cleared {count} cached templates")
@@ -492,15 +600,25 @@ class TemplateFetcherService:
         """
         Invalidate cache for a specific template.
 
+        Also removes the associated ETag file.
+
         Returns:
             True if cache file was removed.
         """
         cache_file = self._get_cache_path(template_path)
+        etag_file = self._get_etag_path(template_path)
+        removed = False
+
         if cache_file.exists():
             cache_file.unlink()
+            removed = True
+
+        if etag_file.exists():
+            etag_file.unlink()
+
+        if removed:
             logger.info(f"Invalidated cache for {template_path}")
-            return True
-        return False
+        return removed
 
     # -------------------------------------------------------------------------
     # Local Template Management

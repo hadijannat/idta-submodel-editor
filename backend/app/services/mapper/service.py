@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from app.services.semantic import SemanticService
 
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 
 from app.config import get_settings
+from app.errors import APIError, ErrorCode
 from app.schemas.form_data import SubmodelFormData
 from app.schemas.mapper import (
     DatasetColumnProfile,
@@ -78,7 +79,10 @@ class MapperService:
     ) -> DatasetProfile:
         file_type = self._detect_file_type(file.filename, file.content_type)
         if file_type not in {"csv", "xlsx"}:
-            raise HTTPException(status_code=400, detail="Unsupported file type")
+            raise APIError(
+                code=ErrorCode.INVALID_FILE_TYPE,
+                message="Unsupported file type. Only CSV and XLSX files are supported.",
+            )
 
         profile_id = uuid.uuid4().hex
         suffix = ".xlsx" if file_type == "xlsx" else ".csv"
@@ -86,7 +90,10 @@ class MapperService:
         contents = await file.read()
         max_bytes = self.settings.max_upload_size_mb * 1024 * 1024
         if len(contents) > max_bytes:
-            raise HTTPException(status_code=413, detail="File too large")
+            raise APIError(
+                code=ErrorCode.FILE_TOO_LARGE,
+                message=f"File too large. Maximum size is {self.settings.max_upload_size_mb}MB",
+            )
         file_path.write_bytes(contents)
 
         reader = DatasetReader(file_path, file_type, sheet=sheet, header_row=header_row or 1)
@@ -97,11 +104,17 @@ class MapperService:
 
         rows = reader.read_rows(max_rows=(header_row or 1) + sample_rows)
         if not rows:
-            raise HTTPException(status_code=400, detail="No rows found in file")
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="No rows found in file",
+            )
 
         header_index = (header_row or 1) - 1
         if header_index >= len(rows):
-            raise HTTPException(status_code=400, detail="Header row out of range")
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="Header row out of range",
+            )
 
         header = rows[header_index]
         header_values = [str(cell).strip() if cell is not None else "" for cell in header]
@@ -177,7 +190,10 @@ class MapperService:
         reader = DatasetReader(file_path, file_type, sheet=sheet, header_row=header_row)
         rows = reader.read_rows()
         if not rows:
-            raise HTTPException(status_code=400, detail="No rows found")
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="No rows found in file",
+            )
 
         header_index = header_row - 1
         header = rows[header_index]
@@ -197,7 +213,11 @@ class MapperService:
         if mode.type == "single":
             row_index = request.row_index or 1
             if row_index < 1 or row_index > len(data_rows):
-                raise HTTPException(status_code=400, detail="Row index out of range")
+                raise APIError(
+                    code=ErrorCode.BAD_REQUEST,
+                    message="Row index out of range",
+                    detail={"row_index": row_index, "max_rows": len(data_rows)},
+                )
             row = data_rows[row_index - 1]
             form_data, diagnostics = apply_mapping(
                 row,
@@ -233,8 +253,9 @@ class MapperService:
 
         if mode.type == "grouped":
             if not mode.group_by:
-                raise HTTPException(
-                    status_code=400, detail="Grouped mode requires group_by columns"
+                raise APIError(
+                    code=ErrorCode.BAD_REQUEST,
+                    message="Grouped mode requires group_by columns",
                 )
 
             group_indices: list[int] = []
@@ -243,9 +264,10 @@ class MapperService:
                 if idx is None:
                     idx = header_map.get(normalize_header(name))
                 if idx is None:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Group-by column '{name}' not found",
+                    raise APIError(
+                        code=ErrorCode.BAD_REQUEST,
+                        message=f"Group-by column '{name}' not found",
+                        detail={"column": name},
                     )
                 group_indices.append(idx)
 
@@ -286,7 +308,11 @@ class MapperService:
                 row_count=len(data_rows),
             )
 
-        raise HTTPException(status_code=400, detail="Unsupported mode")
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Unsupported mapping mode",
+            detail={"mode_type": mode.type},
+        )
 
     async def auto_suggest(
         self, request: MapperAutoSuggestRequest
@@ -558,13 +584,16 @@ class MapperService:
 
         if mode.type == "single":
             if response.form_data is None:
-                raise HTTPException(status_code=400, detail="No form data produced")
+                raise APIError(
+                    code=ErrorCode.BAD_REQUEST,
+                    message="No form data produced",
+                )
             errors, warnings = validate_form_data(schema, response.form_data)
             if errors:
-                raise HTTPException(
-                    status_code=422,
+                raise APIError(
+                    code=ErrorCode.VALIDATION_FAILED,
+                    message="Validation failed",
                     detail={
-                        "message": "Validation failed",
                         "errors": [e.model_dump() for e in errors],
                         "warnings": [w.model_dump() for w in warnings],
                     },
@@ -594,7 +623,11 @@ class MapperService:
                 request.output_format,
             )
 
-        raise HTTPException(status_code=400, detail="Unsupported mode")
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Unsupported mapping mode",
+            detail={"mode_type": mode.type},
+        )
 
     def _export_single(
         self,
@@ -617,10 +650,17 @@ class MapperService:
             return content, "application/json", f"{template_name}.json"
         if output_format == "pdf":
             if self.pdf_service is None:
-                raise HTTPException(status_code=501, detail="PDF export not enabled")
+                raise APIError(
+                    code=ErrorCode.FEATURE_DISABLED,
+                    message="PDF export not enabled",
+                )
             content = self.pdf_service.generate_pdf_from_form(template_bytes, form_data)
             return content, "application/pdf", f"{template_name}.pdf"
-        raise HTTPException(status_code=400, detail="Unsupported format")
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Unsupported export format",
+            detail={"format": output_format},
+        )
 
     def _export_batch(
         self,
@@ -708,7 +748,11 @@ class MapperService:
     def _load_profile(self, profile_id: str) -> dict:
         profile_path = self.profile_dir / f"{profile_id}.json"
         if not profile_path.exists():
-            raise HTTPException(status_code=404, detail="Profile not found")
+            raise APIError(
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+                message="Profile not found",
+                detail={"profile_id": profile_id},
+            )
         return json.loads(profile_path.read_text())
 
     def list_recipes(self, user: dict | None) -> list[MapperRecipe]:
@@ -725,7 +769,11 @@ class MapperService:
     def get_recipe(self, name: str, user: dict | None) -> MapperRecipe:
         recipe_path = self._recipe_path(name, user)
         if not recipe_path.exists():
-            raise HTTPException(status_code=404, detail="Recipe not found")
+            raise APIError(
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+                message="Recipe not found",
+                detail={"recipe_name": name},
+            )
         return MapperRecipe(**json.loads(recipe_path.read_text()))
 
     def save_recipe(self, recipe: MapperRecipe, user: dict | None) -> MapperRecipe:
@@ -736,7 +784,11 @@ class MapperService:
     def delete_recipe(self, name: str, user: dict | None) -> None:
         recipe_path = self._recipe_path(name, user)
         if not recipe_path.exists():
-            raise HTTPException(status_code=404, detail="Recipe not found")
+            raise APIError(
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+                message="Recipe not found",
+                detail={"recipe_name": name},
+            )
         recipe_path.unlink()
 
     @staticmethod

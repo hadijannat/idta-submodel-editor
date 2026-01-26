@@ -19,6 +19,10 @@ from pathlib import Path
 from celery import shared_task
 
 from app.config import get_settings
+from app.metrics import (
+    magic_import_job_duration_seconds,
+    record_magic_import_job,
+)
 from app.schemas.magic_import import (
     JobStatus,
     MagicImportResult,
@@ -228,6 +232,12 @@ def process_magic_import_job(self, job_id: str) -> dict:
             processing_time,
         )
 
+        # Record metrics
+        record_magic_import_job(status="success", template_name=job.template_name)
+        magic_import_job_duration_seconds.labels(
+            template_name=job.template_name
+        ).observe(processing_time)
+
         return {
             "job_id": job_id,
             "status": "done",
@@ -244,6 +254,14 @@ def process_magic_import_job(self, job_id: str) -> dict:
             JobStatus.FAILED,
             error_message=str(e),
         )
+
+        # Record failure metrics
+        processing_time = time.time() - start_time
+        record_magic_import_job(status="failed", template_name=job.template_name)
+        magic_import_job_duration_seconds.labels(
+            template_name=job.template_name
+        ).observe(processing_time)
+
         return {"error": str(e), "job_id": job_id}
 
 
