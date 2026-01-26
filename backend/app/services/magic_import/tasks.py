@@ -360,10 +360,15 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         )
 
         localizer = EvidenceLocalizer()
-        extractions_with_evidence = localizer.refine_bboxes(
-            extractions_with_evidence,
-            index,
-        )
+        if hasattr(localizer, "refine_bboxes"):
+            extractions_with_evidence = localizer.refine_bboxes(
+                extractions_with_evidence,
+                index,
+            )
+        else:
+            logger.warning(
+                "EvidenceLocalizer missing refine_bboxes; skipping bbox refinement"
+            )
 
         # ================================================================
         # Step 7: Score confidence (with evidence rule enforcement)
