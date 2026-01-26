@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
-from app.routers import editor, export, templates, semantic, mapper, pcf, magic_import
+from app.routers import editor, export, templates, semantic, mapper, pcf, magic_import, dataspace
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -50,6 +50,10 @@ async def lifespan(app: FastAPI):
     settings.semantic_index_dir.mkdir(parents=True, exist_ok=True)
     settings.mapper_cache_dir.mkdir(parents=True, exist_ok=True)
     settings.magic_import_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create dataspace cache directory if feature is enabled
+    if settings.dataspace_enabled:
+        settings.dataspace_cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Create temp directory for file processing
     Path("./tmp").mkdir(parents=True, exist_ok=True)
@@ -97,6 +101,10 @@ def create_application() -> FastAPI:
     app.include_router(mapper.router)
     app.include_router(pcf.router)
     app.include_router(magic_import.router)
+
+    # Conditionally include dataspace router based on feature flag
+    if settings.dataspace_enabled:
+        app.include_router(dataspace.router)
 
     # Health check endpoints
     @app.get("/health", tags=["health"])
