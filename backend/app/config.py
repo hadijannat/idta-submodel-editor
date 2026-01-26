@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # Application
     env: Literal["development", "staging", "production"] = "development"
     debug: bool = False
-    secret_key: str = Field(default="change-me-in-production", min_length=32)
+    secret_key: str = Field(default="change-me-in-production-please-update", min_length=32)
 
     # Server
     host: str = "0.0.0.0"

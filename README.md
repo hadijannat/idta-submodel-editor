@@ -15,6 +15,7 @@ A metamodel-driven application for editing any IDTA submodel template without co
   <a href="#pcf-calculator"><img src="https://img.shields.io/badge/PCF_Calculator-orange?style=for-the-badge" alt="PCF Calculator"/></a>
   <a href="#passport-mode"><img src="https://img.shields.io/badge/Passport_Mode-purple?style=for-the-badge" alt="Passport Mode"/></a>
   <a href="#magic-import"><img src="https://img.shields.io/badge/Magic_Import-red?style=for-the-badge" alt="Magic Import"/></a>
+  <a href="#dataspace-publishing"><img src="https://img.shields.io/badge/Dataspace_Publishing-cyan?style=for-the-badge" alt="Dataspace Publishing"/></a>
 </p>
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-gray?style=flat-square" alt="Quick Start"/></a>

@@ -307,7 +307,7 @@ describe('PolicyBuilder', () => {
 
   it('should debounce preview API calls', async () => {
     vi.useFakeTimers();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
     render(<PolicyBuilder elements={mockElements} />);
 
