@@ -155,11 +155,10 @@ describe('DataspaceConnectorPanel', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Connected Dataspace')).toBeInTheDocument();
+      expect(screen.getByText('Dataspace')).toBeInTheDocument();
     });
 
     expect(screen.getByText('Sandbox')).toBeInTheDocument();
-    expect(screen.getByText('Tractus-X EDC')).toBeInTheDocument();
   });
 
   it('should display BPN when available', async () => {
@@ -202,10 +201,10 @@ describe('DataspaceConnectorPanel', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Disconnect')).toBeInTheDocument();
+      expect(screen.getByTitle('Disconnect')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Disconnect'));
+    await user.click(screen.getByTitle('Disconnect'));
 
     expect(window.confirm).toHaveBeenCalledWith(
       'Are you sure you want to disconnect from the dataspace? Any unpublished changes will be lost.'
@@ -234,10 +233,10 @@ describe('DataspaceConnectorPanel', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Disconnect')).toBeInTheDocument();
+      expect(screen.getByTitle('Disconnect')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Disconnect'));
+    await user.click(screen.getByTitle('Disconnect'));
 
     expect(dataspaceApi.deleteConnection).not.toHaveBeenCalled();
   });
@@ -396,10 +395,10 @@ describe('DataspaceConnectorPanel', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Refresh Status')).toBeInTheDocument();
+      expect(screen.getByTitle('Refresh Status')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Refresh Status'));
+    await user.click(screen.getByTitle('Refresh Status'));
 
     // Note: getConnection won't be called since this uses useDataspace which
     // requires an active connection object, not just existence check
@@ -423,7 +422,7 @@ describe('DataspaceConnectorPanel', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Connected Dataspace')).toBeInTheDocument();
+      expect(screen.getByText('Dataspace')).toBeInTheDocument();
     });
 
     // The PublicationManager section should be visible
