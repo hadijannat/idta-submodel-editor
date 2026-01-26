@@ -498,7 +498,7 @@ async def publish_submodel(
         raise APIError(
             code=ErrorCode.RESOURCE_NOT_FOUND,
             message="Connection not found",
-            detail={"connection_id": connection_id},
+            detail={"connection_id": request.connection_id},
         )
     _assert_owner(connection, user)
 

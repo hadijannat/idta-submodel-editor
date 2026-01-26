@@ -107,15 +107,71 @@ def create_test_app(
 
     Uses dependency_overrides for proper FastAPI dependency injection.
     """
+    from app.errors import APIError, ErrorCode, ErrorResponse
+    from app.middleware.correlation import get_correlation_id
     from app.routers.dataspace import (
         router,
         get_connection_manager,
         get_health_checker,
         get_policy_engine,
     )
+    from fastapi import HTTPException, Request
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
 
     app = FastAPI()
     app.include_router(router)
+
+    @app.exception_handler(APIError)
+    async def api_error_handler(request: Request, exc: APIError):
+        correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or "unknown"
+        response = exc.to_response(correlation_id)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=response.model_dump(mode="json"),
+            headers={"X-Correlation-ID": correlation_id},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or "unknown"
+        response = ErrorResponse(
+            code=ErrorCode.VALIDATION_FAILED,
+            message="Request validation failed",
+            detail={"errors": exc.errors()},
+            correlation_id=correlation_id,
+        )
+        return JSONResponse(
+            status_code=422,
+            content=response.model_dump(mode="json"),
+            headers={"X-Correlation-ID": correlation_id},
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or "unknown"
+        code_map = {
+            400: ErrorCode.BAD_REQUEST,
+            404: ErrorCode.RESOURCE_NOT_FOUND,
+            409: ErrorCode.RESOURCE_CONFLICT,
+            413: ErrorCode.FILE_TOO_LARGE,
+            422: ErrorCode.VALIDATION_FAILED,
+            429: ErrorCode.UPSTREAM_RATE_LIMITED,
+            502: ErrorCode.UPSTREAM_ERROR,
+            503: ErrorCode.UPSTREAM_UNAVAILABLE,
+        }
+        error_code = code_map.get(exc.status_code, ErrorCode.INTERNAL_ERROR)
+        response = ErrorResponse(
+            code=error_code,
+            message=exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+            detail=exc.detail if isinstance(exc.detail, dict) else None,
+            correlation_id=correlation_id,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=response.model_dump(mode="json"),
+            headers={"X-Correlation-ID": correlation_id},
+        )
 
     # Override dependencies
     if mock_manager is not None:
@@ -154,7 +210,7 @@ class TestDataspaceDisabled:
             # Test various endpoints
             response = client.get("/api/dataspace/connections")
             assert response.status_code == 503
-            assert "disabled" in response.json()["detail"].lower()
+            assert "disabled" in response.json()["message"].lower()
 
             response = client.get("/api/dataspace/publications")
             assert response.status_code == 503
@@ -299,7 +355,7 @@ class TestConnectionEndpoints:
             )
 
             assert response.status_code == 409
-            assert "active publications" in response.json()["detail"]
+            assert "active publications" in response.json()["message"].lower()
 
 
 # ---------------------------------------------------------------------------
