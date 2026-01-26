@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.schemas.magic_import import (
+    DocumentClassification,
     JobStatus,
     MagicImportJob,
     MagicImportResult,
@@ -103,6 +104,7 @@ class JobManager:
         progress_message: str | None = None,
         error_message: str | None = None,
         pdf_info: PDFIndexInfo | None = None,
+        doc_classification: DocumentClassification | None = None,
     ) -> MagicImportJob | None:
         """Update job status and optional fields."""
         job = self.get_job(job_id)
@@ -118,6 +120,8 @@ class JobManager:
             update_data["error_message"] = error_message
         if pdf_info is not None:
             update_data["pdf_info"] = pdf_info
+        if doc_classification is not None:
+            update_data["doc_classification"] = doc_classification
 
         job = job.model_copy(update=update_data)
         self._save_job(job)

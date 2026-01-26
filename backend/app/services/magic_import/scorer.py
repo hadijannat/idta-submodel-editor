@@ -9,7 +9,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.schemas.magic_import import ConfidenceBreakdown, FieldExtraction, PDFIndex
+from app.schemas.magic_import import (
+    ConfidenceBreakdown,
+    ConfidenceReason,
+    ConfidenceReasonCode,
+    FieldExtraction,
+    PDFIndex,
+)
 
 
 class ConfidenceScorer:
@@ -73,6 +79,147 @@ class ConfidenceScorer:
         if not value or not evidence_quote:
             return False
         return value.strip().lower() in evidence_quote.strip().lower()
+
+    def _generate_reasons(
+        self,
+        extraction: FieldExtraction,
+        llm_score: float,
+        localizer_score: float,
+        ocr_score: float,
+        rules_score: float,
+        ocr_quality: float,
+    ) -> list[ConfidenceReason]:
+        """Generate actionable reasons explaining confidence factors."""
+        reasons: list[ConfidenceReason] = []
+
+        # Check for low LLM confidence
+        if llm_score < 0.7:
+            reasons.append(
+                ConfidenceReason(
+                    code=ConfidenceReasonCode.LOW_LLM_CONFIDENCE,
+                    message=f"AI model reported low confidence ({int(llm_score * 100)}%)",
+                    severity="warning" if llm_score >= 0.5 else "error",
+                    detail={"llm_confidence": llm_score},
+                )
+            )
+
+        # Check for no evidence found
+        if extraction.evidence is None:
+            reasons.append(
+                ConfidenceReason(
+                    code=ConfidenceReasonCode.NO_EVIDENCE_FOUND,
+                    message="No supporting evidence located in document",
+                    severity="error",
+                )
+            )
+        else:
+            # Check if value not in evidence quote
+            if not self._value_in_evidence(
+                extraction.value_raw, extraction.evidence.quote
+            ):
+                reasons.append(
+                    ConfidenceReason(
+                        code=ConfidenceReasonCode.VALUE_OUTSIDE_EVIDENCE,
+                        message="Extracted value not found in evidence quote",
+                        severity="warning",
+                        detail={
+                            "value": extraction.value_raw[:50],
+                            "quote_preview": extraction.evidence.quote[:80],
+                        },
+                    )
+                )
+
+            # Check for low locator score
+            if localizer_score < 0.7:
+                reasons.append(
+                    ConfidenceReason(
+                        code=ConfidenceReasonCode.NO_EVIDENCE_FOUND,
+                        message=f"Evidence location uncertain ({int(localizer_score * 100)}% match)",
+                        severity="warning",
+                        detail={"locator_score": localizer_score},
+                    )
+                )
+
+            # Check for OCR quality issues
+            if extraction.evidence.method == "OCR" and ocr_quality < 0.7:
+                reasons.append(
+                    ConfidenceReason(
+                        code=ConfidenceReasonCode.OCR_QUALITY_LOW,
+                        message=f"Text extracted via OCR with low quality ({int(ocr_quality * 100)}%)",
+                        severity="warning",
+                        detail={"ocr_quality": ocr_quality},
+                    )
+                )
+
+        # Check for type mismatch
+        if extraction.value_type and rules_score < 0.8:
+            type_score = self.validate_against_type(
+                extraction.value_raw, extraction.value_type
+            )
+            if type_score < 0.8:
+                reasons.append(
+                    ConfidenceReason(
+                        code=ConfidenceReasonCode.TYPE_MISMATCH,
+                        message=f"Value may not match expected type '{extraction.value_type}'",
+                        severity="warning",
+                        detail={
+                            "expected_type": extraction.value_type,
+                            "value": extraction.value_raw[:50],
+                        },
+                    )
+                )
+
+        # Check for placeholder values
+        if extraction.value_raw and extraction.value_raw.strip().lower() in (
+            "n/a",
+            "na",
+            "unknown",
+            "not available",
+            "-",
+        ):
+            reasons.append(
+                ConfidenceReason(
+                    code=ConfidenceReasonCode.NO_EVIDENCE_FOUND,
+                    message="Value appears to be a placeholder or missing indicator",
+                    severity="info",
+                    detail={"placeholder_value": extraction.value_raw},
+                )
+            )
+
+        # Check for unit ambiguity (simple heuristic)
+        if extraction.value_raw:
+            value_lower = extraction.value_raw.lower()
+            # Common unit variations that might indicate ambiguity
+            unit_patterns = [
+                (r"\d+\s*(kg|kilogram|kilograms|KG)", "unit_variations"),
+                (r"\d+\s*(m|meter|meters|metre|metres)", "unit_variations"),
+                (r"\d+\s*(nm|n·m|n-m|newton)", "unit_variations"),
+            ]
+            for pattern, _ in unit_patterns:
+                if re.search(pattern, extraction.value_raw, re.IGNORECASE):
+                    # Check if evidence has different unit representation
+                    if extraction.evidence and extraction.evidence.quote:
+                        quote_lower = extraction.evidence.quote.lower()
+                        # Very basic check for unit mismatch
+                        if (
+                            "kg" in value_lower
+                            and "kilogram" in quote_lower
+                            and "kg" not in quote_lower
+                        ) or (
+                            "kilogram" in value_lower
+                            and "kg" in quote_lower
+                            and "kilogram" not in quote_lower
+                        ):
+                            reasons.append(
+                                ConfidenceReason(
+                                    code=ConfidenceReasonCode.UNIT_AMBIGUITY,
+                                    message="Unit representation may differ from source",
+                                    severity="info",
+                                )
+                            )
+                            break
+
+        return reasons
 
     def validate_against_type(self, value: str, value_type: str) -> float:
         """Validate a value against an expected XSD type."""
@@ -339,11 +486,22 @@ class ConfidenceScorer:
                 rules=rules_score,
             )
 
+            # Generate actionable reasons for confidence score
+            reasons = self._generate_reasons(
+                extraction,
+                llm_score,
+                localizer_score,
+                ocr_score,
+                rules_score,
+                ocr_quality,
+            )
+
             scored.append(
                 extraction.model_copy(
                     update={
                         "confidence": round(overall, 3),
                         "confidence_breakdown": breakdown,
+                        "confidence_reasons": reasons,
                         "needs_review": overall < confidence_threshold,
                         "value_normalized": normalized_value,
                     }

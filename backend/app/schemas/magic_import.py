@@ -11,6 +11,28 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class ConfidenceReasonCode(str, Enum):
+    """Codes explaining why confidence may be low."""
+
+    MULTIPLE_CANDIDATES = "multiple_candidates"
+    OCR_QUALITY_LOW = "ocr_quality_low"
+    UNIT_AMBIGUITY = "unit_ambiguity"
+    TYPE_MISMATCH = "type_mismatch"
+    NO_EVIDENCE_FOUND = "no_evidence_found"
+    LOW_LLM_CONFIDENCE = "low_llm_confidence"
+    VALUE_OUTSIDE_EVIDENCE = "value_outside_evidence"
+    SEMANTIC_CONSTRAINT_VIOLATION = "semantic_constraint_violation"
+
+
+class ConfidenceReason(BaseModel):
+    """Structured reason explaining a confidence factor."""
+
+    code: ConfidenceReasonCode
+    message: str = Field(description="Human-readable explanation")
+    severity: Literal["info", "warning", "error"] = "warning"
+    detail: dict | None = Field(default=None, description="Additional context data")
+
+
 class JobStatus(str, Enum):
     """Job processing status."""
 
@@ -20,6 +42,7 @@ class JobStatus(str, Enum):
     EXTRACTING = "extracting"
     LOCALIZING = "localizing"
     SCORING = "scoring"
+    VALIDATING = "validating"
     DONE = "done"
     FAILED = "failed"
 
@@ -76,6 +99,9 @@ class FieldExtraction(BaseModel):
     )
     confidence: float = Field(ge=0.0, le=1.0, description="Overall confidence score")
     confidence_breakdown: ConfidenceBreakdown | None = None
+    confidence_reasons: list[ConfidenceReason] = Field(
+        default_factory=list, description="Actionable reasons for confidence score"
+    )
     evidence: EvidenceRef | None = None
     needs_review: bool = Field(default=False, description="True if confidence < threshold")
     user_edited: bool = Field(default=False, description="True if user modified this value")
@@ -103,6 +129,29 @@ class PDFIndexInfo(BaseModel):
     language_detected: str | None = None
 
 
+class DocumentClassification(BaseModel):
+    """Classification results for a PDF document."""
+
+    doc_type: Literal["text", "scanned", "mixed"] = Field(
+        description="Document type based on text extraction method"
+    )
+    language: str | None = Field(
+        default=None, description="Detected primary language (ISO 639-1)"
+    )
+    has_tables: bool = Field(
+        default=False, description="Whether tables were detected"
+    )
+    quality_score: float = Field(
+        ge=0.0, le=1.0, description="Overall document quality score"
+    )
+    avg_ocr_confidence: float | None = Field(
+        default=None, description="Average OCR confidence for scanned pages"
+    )
+    text_density: float = Field(
+        default=0.0, description="Words per page average"
+    )
+
+
 class MagicImportJobCreate(BaseModel):
     """Request to create a new Magic Import job."""
 
@@ -127,6 +176,25 @@ class MagicImportJob(BaseModel):
     progress_message: str | None = None
     error_message: str | None = None
     pdf_info: PDFIndexInfo | None = None
+    doc_classification: DocumentClassification | None = Field(
+        default=None, description="Document classification results"
+    )
+
+
+class ValidationError(BaseModel):
+    """A validation error for a specific field."""
+
+    path: str = Field(description="idShortPath of the field with error")
+    message: str = Field(description="Human-readable error message")
+    code: str = Field(description="Error code for programmatic handling")
+
+
+class ValidationResult(BaseModel):
+    """Result of validating extractions against template schema."""
+
+    is_valid: bool = Field(description="True if no errors (warnings OK)")
+    errors: list[ValidationError] = Field(default_factory=list)
+    warnings: list[ValidationError] = Field(default_factory=list)
 
 
 class MagicImportResult(BaseModel):
@@ -141,6 +209,12 @@ class MagicImportResult(BaseModel):
     llm_provider: str
     llm_model: str
     processing_time_seconds: float
+    validation_result: ValidationResult | None = Field(
+        default=None, description="Template schema validation result"
+    )
+    template_version_used: str | None = Field(
+        default=None, description="Version of template used for extraction"
+    )
 
 
 class MagicImportApplyRequest(BaseModel):
@@ -148,6 +222,15 @@ class MagicImportApplyRequest(BaseModel):
 
     job_id: str
     extractions: list[FieldExtraction]
+
+
+class ReExtractRequest(BaseModel):
+    """Request to re-extract specific fields."""
+
+    paths: list[str] = Field(description="List of idShortPaths to re-extract")
+    hint: str | None = Field(
+        default=None, description="Optional hint to guide re-extraction"
+    )
 
 
 class ExtractionHint(BaseModel):
@@ -161,6 +244,9 @@ class ExtractionHint(BaseModel):
     semantic_label: str | None = None
     keywords: list[str] = Field(default_factory=list, description="Search keywords")
     required: bool = False
+    user_hint: str | None = Field(
+        default=None, description="Optional user-provided hint for re-extraction"
+    )
 
 
 class PDFWord(BaseModel):

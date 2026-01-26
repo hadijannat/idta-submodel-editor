@@ -1,0 +1,56 @@
+{
+  "description": "Expected extractions for techspec_tables.pdf - a technical specification document with tables",
+  "template_name": "IDTA 02006-2-0 Digital Nameplate",
+  "min_confidence_threshold": 0.70,
+  "expected_extractions": [
+    {
+      "path": "ManufacturerName",
+      "expected_value": "TechCorp Industries",
+      "expected_confidence_min": 0.80
+    },
+    {
+      "path": "AssetSpecificProperties[].PropertyName",
+      "expected_value": "Rated Voltage",
+      "expected_confidence_min": 0.75,
+      "expected_evidence": {
+        "page": 1,
+        "quote_contains": "Rated Voltage"
+      },
+      "notes": "Should be extracted from specifications table"
+    },
+    {
+      "path": "AssetSpecificProperties[].PropertyValue",
+      "expected_value": "230",
+      "expected_unit": "V",
+      "expected_confidence_min": 0.75
+    },
+    {
+      "path": "AssetSpecificProperties[].PropertyName",
+      "expected_value": "Rated Power",
+      "expected_confidence_min": 0.75
+    },
+    {
+      "path": "AssetSpecificProperties[].PropertyValue",
+      "expected_value": "1.5",
+      "expected_unit": "kW",
+      "expected_confidence_min": 0.70
+    },
+    {
+      "path": "AssetSpecificProperties[].PropertyName",
+      "expected_value": "Weight",
+      "expected_confidence_min": 0.75
+    },
+    {
+      "path": "AssetSpecificProperties[].PropertyValue",
+      "expected_value": "25",
+      "expected_unit": "kg",
+      "expected_confidence_min": 0.70
+    }
+  ],
+  "expected_classification": {
+    "doc_type": "text",
+    "has_tables": true,
+    "quality_score_min": 0.6
+  },
+  "notes": "This fixture tests table extraction. Values in tables may have lower confidence due to layout complexity."
+}

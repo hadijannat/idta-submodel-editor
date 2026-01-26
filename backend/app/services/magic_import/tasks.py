@@ -118,6 +118,30 @@ def process_magic_import_job(self, job_id: str) -> dict:
             else:
                 logger.warning("OCR needed but Tesseract not available")
 
+        # Step 2.5: Classify document
+        from app.services.magic_import.classifier import DocumentClassifier
+
+        classifier = DocumentClassifier()
+        doc_classification = classifier.classify(index)
+
+        job_manager.update_job_status(
+            job_id,
+            JobStatus.INDEXING,
+            progress=0.38,
+            progress_message=f"Document classified: {doc_classification.doc_type}, quality={doc_classification.quality_score:.0%}",
+            pdf_info=index.info,
+            doc_classification=doc_classification,
+        )
+
+        logger.info(
+            "Classified document %s: type=%s, language=%s, tables=%s, quality=%.2f",
+            job_id,
+            doc_classification.doc_type,
+            doc_classification.language,
+            doc_classification.has_tables,
+            doc_classification.quality_score,
+        )
+
         # Step 3: Resolve schema and get extraction hints
         job_manager.update_job_status(
             job_id,
@@ -181,7 +205,7 @@ def process_magic_import_job(self, job_id: str) -> dict:
         job_manager.update_job_status(
             job_id,
             JobStatus.SCORING,
-            progress=0.85,
+            progress=0.80,
             progress_message="Calculating confidence scores...",
         )
 
@@ -190,6 +214,32 @@ def process_magic_import_job(self, job_id: str) -> dict:
             extractions_with_evidence,
             index,
             settings.magic_import_confidence_threshold,
+        )
+
+        # Step 8: Validate against template schema
+        job_manager.update_job_status(
+            job_id,
+            JobStatus.VALIDATING,
+            progress=0.90,
+            progress_message="Validating against template schema...",
+        )
+
+        from app.services.magic_import.validator import ExtractionValidator
+
+        validator = ExtractionValidator()
+        validation_result = validator.validate_extractions(
+            final_extractions,
+            job.template_name,
+            job.template_status,
+            job.template_version,
+            mode="warn",  # Use warn mode for Magic Import
+        )
+
+        logger.info(
+            "Validation complete: valid=%s, errors=%d, warnings=%d",
+            validation_result.is_valid,
+            len(validation_result.errors),
+            len(validation_result.warnings),
         )
 
         # Calculate summary statistics
@@ -213,6 +263,8 @@ def process_magic_import_job(self, job_id: str) -> dict:
             llm_provider=settings.magic_import_llm_provider,
             llm_model=settings.magic_import_llm_model,
             processing_time_seconds=processing_time,
+            validation_result=validation_result,
+            template_version_used=job.template_version,
         )
         job_manager.save_result(result)
 

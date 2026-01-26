@@ -1,8 +1,10 @@
 /**
  * ExtractionReviewTable - Table showing extracted fields with values and confidence.
+ *
+ * Supports batch selection and approval operations.
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { FieldExtraction } from '../../services/magicImportApi';
 import ConfidenceBadge from './ConfidenceBadge';
 import './MagicImport.css';
@@ -14,6 +16,7 @@ interface ExtractionReviewTableProps {
   onUpdate: (path: string, value: string) => void;
   onApprove: (path: string) => void;
   onApproveAll: () => void;
+  onApproveMany?: (paths: string[]) => void;
 }
 
 export default function ExtractionReviewTable({
@@ -23,6 +26,7 @@ export default function ExtractionReviewTable({
   onUpdate,
   onApprove,
   onApproveAll,
+  onApproveMany,
 }: ExtractionReviewTableProps) {
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -32,6 +36,9 @@ export default function ExtractionReviewTable({
     'confidence_desc'
   );
   const [evidenceOnly, setEvidenceOnly] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [showApproveDropdown, setShowApproveDropdown] = useState(false);
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
 
   // Filter extractions
   const normalizedQuery = query.trim().toLowerCase();
@@ -93,6 +100,85 @@ export default function ExtractionReviewTable({
     setEditingPath(null);
     setEditValue('');
   };
+
+  // Toggle checkbox selection
+  const handleCheckboxChange = useCallback(
+    (path: string, index: number, shiftKey: boolean) => {
+      setSelectedPaths((prev) => {
+        const next = new Set(prev);
+
+        // Shift+click for range selection
+        if (shiftKey && lastClickedIndex !== null) {
+          const start = Math.min(lastClickedIndex, index);
+          const end = Math.max(lastClickedIndex, index);
+          for (let i = start; i <= end; i++) {
+            next.add(filteredExtractions[i].path);
+          }
+        } else {
+          // Toggle single selection
+          if (next.has(path)) {
+            next.delete(path);
+          } else {
+            next.add(path);
+          }
+        }
+
+        return next;
+      });
+      setLastClickedIndex(index);
+    },
+    [filteredExtractions, lastClickedIndex]
+  );
+
+  // Select all visible
+  const handleSelectAll = useCallback(() => {
+    if (selectedPaths.size === filteredExtractions.length) {
+      // Deselect all
+      setSelectedPaths(new Set());
+    } else {
+      // Select all visible
+      setSelectedPaths(new Set(filteredExtractions.map((e) => e.path)));
+    }
+  }, [filteredExtractions, selectedPaths.size]);
+
+  // Clear selection
+  const clearSelection = useCallback(() => {
+    setSelectedPaths(new Set());
+  }, []);
+
+  // Approve selected
+  const handleApproveSelected = useCallback(() => {
+    if (onApproveMany) {
+      onApproveMany(Array.from(selectedPaths));
+    } else {
+      // Fallback: approve one by one
+      selectedPaths.forEach((path) => onApprove(path));
+    }
+    setSelectedPaths(new Set());
+  }, [selectedPaths, onApproveMany, onApprove]);
+
+  // Approve all above threshold
+  const handleApproveAboveThreshold = useCallback(
+    (threshold: number) => {
+      const pathsAboveThreshold = filteredExtractions
+        .filter((e) => e.confidence >= threshold && e.needs_review && !e.user_approved)
+        .map((e) => e.path);
+
+      if (onApproveMany) {
+        onApproveMany(pathsAboveThreshold);
+      } else {
+        pathsAboveThreshold.forEach((path) => onApprove(path));
+      }
+      setShowApproveDropdown(false);
+    },
+    [filteredExtractions, onApproveMany, onApprove]
+  );
+
+  // Counts for threshold options
+  const countAboveThreshold = (threshold: number) =>
+    filteredExtractions.filter(
+      (e) => e.confidence >= threshold && e.needs_review && !e.user_approved
+    ).length;
 
   return (
     <div className="extraction-table">
@@ -157,13 +243,50 @@ export default function ExtractionReviewTable({
         </label>
 
         {needsReviewCount > 0 && (
-          <button
-            type="button"
-            className="extraction-table__approve-all"
-            onClick={onApproveAll}
-          >
-            Approve All
-          </button>
+          <div className="extraction-table__approve-dropdown">
+            <button
+              type="button"
+              className="extraction-table__dropdown-btn"
+              onClick={() => setShowApproveDropdown(!showApproveDropdown)}
+            >
+              Approve All ▼
+            </button>
+            {showApproveDropdown && (
+              <div className="extraction-table__dropdown-menu">
+                <button
+                  type="button"
+                  className="extraction-table__dropdown-item"
+                  onClick={() => {
+                    onApproveAll();
+                    setShowApproveDropdown(false);
+                  }}
+                >
+                  All ({needsReviewCount})
+                </button>
+                <button
+                  type="button"
+                  className="extraction-table__dropdown-item"
+                  onClick={() => handleApproveAboveThreshold(0.9)}
+                >
+                  ≥90% confidence ({countAboveThreshold(0.9)})
+                </button>
+                <button
+                  type="button"
+                  className="extraction-table__dropdown-item"
+                  onClick={() => handleApproveAboveThreshold(0.85)}
+                >
+                  ≥85% confidence ({countAboveThreshold(0.85)})
+                </button>
+                <button
+                  type="button"
+                  className="extraction-table__dropdown-item"
+                  onClick={() => handleApproveAboveThreshold(0.8)}
+                >
+                  ≥80% confidence ({countAboveThreshold(0.8)})
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -179,11 +302,47 @@ export default function ExtractionReviewTable({
         </span>
       </div>
 
+      {/* Batch selection bar */}
+      {selectedPaths.size > 0 && (
+        <div className="extraction-table__batch-bar">
+          <span className="extraction-table__batch-count">
+            {selectedPaths.size} selected
+          </span>
+          <div className="extraction-table__batch-actions">
+            <button
+              type="button"
+              className="extraction-table__btn extraction-table__btn--approve"
+              onClick={handleApproveSelected}
+            >
+              Approve Selected
+            </button>
+            <button
+              type="button"
+              className="extraction-table__btn"
+              onClick={clearSelection}
+            >
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="extraction-table__container">
         <table className="extraction-table__table">
           <thead>
             <tr>
+              <th className="extraction-table__checkbox-col">
+                <input
+                  type="checkbox"
+                  checked={
+                    filteredExtractions.length > 0 &&
+                    selectedPaths.size === filteredExtractions.length
+                  }
+                  onChange={handleSelectAll}
+                  title="Select all"
+                />
+              </th>
               <th>Field</th>
               <th>Value</th>
               <th>Confidence</th>
@@ -191,14 +350,29 @@ export default function ExtractionReviewTable({
             </tr>
           </thead>
           <tbody>
-            {filteredExtractions.map((extraction) => (
+            {filteredExtractions.map((extraction, index) => (
               <tr
                 key={extraction.path}
                 className={`extraction-table__row ${
                   selectedPath === extraction.path ? 'selected' : ''
-                } ${extraction.needs_review ? 'needs-review' : ''}`}
+                } ${extraction.needs_review ? 'needs-review' : ''} ${
+                  selectedPaths.has(extraction.path) ? 'batch-selected' : ''
+                }`}
                 onClick={() => onSelect(extraction.path)}
               >
+                <td className="extraction-table__checkbox-col">
+                  <input
+                    type="checkbox"
+                    checked={selectedPaths.has(extraction.path)}
+                    onChange={() => {
+                      // onChange is needed for React controlled input
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCheckboxChange(extraction.path, index, e.shiftKey);
+                    }}
+                  />
+                </td>
                 <td className="extraction-table__field">
                   <span className="extraction-table__path">{formatPath(extraction.path)}</span>
                   {extraction.value_type && (
@@ -240,29 +414,23 @@ export default function ExtractionReviewTable({
                   )}
                 </td>
                 <td className="extraction-table__confidence">
-                  <span
-                    title={
-                      extraction.confidence_breakdown
-                        ? `LLM ${Math.round(
-                            extraction.confidence_breakdown.llm * 100
-                          )}% · Localizer ${Math.round(
-                            extraction.confidence_breakdown.localizer * 100
-                          )}% · OCR ${Math.round(
-                            extraction.confidence_breakdown.ocr * 100
-                          )}% · Rules ${Math.round(
-                            extraction.confidence_breakdown.rules * 100
-                          )}%`
-                        : `Confidence: ${Math.round(extraction.confidence * 100)}%`
-                    }
-                  >
+                  <div className="extraction-table__confidence-stack">
                     <ConfidenceBadge
                       confidence={extraction.confidence}
                       needsReview={extraction.needs_review}
                       userApproved={extraction.user_approved}
                       userEdited={extraction.user_edited}
+                      confidenceBreakdown={extraction.confidence_breakdown}
+                      confidenceReasons={extraction.confidence_reasons}
                       size="sm"
                     />
-                  </span>
+                    {extraction.confidence_reasons?.length > 0 && (
+                      <span className="extraction-table__reason-subtitle">
+                        {extraction.confidence_reasons[0].message.slice(0, 40)}
+                        {extraction.confidence_reasons[0].message.length > 40 ? '…' : ''}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="extraction-table__actions">
                   {editingPath === extraction.path ? (

@@ -15,6 +15,7 @@ from app.schemas.magic_import import (
     JobStatus,
     MagicImportJob,
     MagicImportResult,
+    ReExtractRequest,
 )
 from app.services.magic_import.job_manager import JobManager
 from app.utils.upload_security import FileType, UploadValidator, read_upload_file
@@ -149,6 +150,164 @@ async def get_job_result(
         )
 
     return result
+
+
+@router.post("/jobs/{job_id}/reextract", response_model=MagicImportResult)
+async def reextract_fields(
+    job_id: str,
+    request: ReExtractRequest,
+    job_manager: Annotated[JobManager, Depends(get_job_manager)] = None,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> MagicImportResult:
+    """
+    Re-extract specific fields from an existing job.
+
+    This runs extraction only for the specified paths, optionally
+    with a hint to guide the LLM, and updates the result.
+    """
+    settings = get_settings()
+
+    if not settings.magic_import_enabled:
+        raise APIError(
+            code=ErrorCode.FEATURE_DISABLED,
+            message="Magic Import is disabled",
+        )
+
+    # Verify job exists and is complete
+    job = job_manager.get_job(job_id)
+    if job is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
+
+    if job.status != JobStatus.DONE:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Can only re-extract from completed jobs",
+            detail={"job_id": job_id, "status": job.status},
+        )
+
+    # Load existing result and index
+    result = job_manager.load_result(job_id)
+    if result is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Result not found",
+            detail={"job_id": job_id},
+        )
+
+    index = job_manager.load_index(job_id)
+    if index is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="PDF index not found - cannot re-extract",
+            detail={"job_id": job_id},
+        )
+
+    try:
+        from app.services.magic_import.schema_resolver import SchemaResolver
+        from app.services.magic_import.retriever import SnippetRetriever
+        from app.services.magic_import.extractor import Extractor
+        from app.services.magic_import.localizer import EvidenceLocalizer
+        from app.services.magic_import.scorer import ConfidenceScorer
+
+        # Resolve hints only for requested paths
+        schema_resolver = SchemaResolver()
+        all_hints = schema_resolver.resolve_hints(
+            job.template_name,
+            job.template_status,
+            job.template_version,
+        )
+        hints = [h for h in all_hints if h.path in request.paths]
+
+        if not hints:
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="No valid paths to re-extract",
+                detail={"paths": request.paths},
+            )
+
+        # Add user hint if provided
+        if request.hint:
+            for hint in hints:
+                hint.user_hint = request.hint
+
+        # Retrieve snippets and re-extract
+        retriever = SnippetRetriever()
+        snippets = retriever.retrieve_snippets(index, hints)
+
+        extractor = Extractor()
+        llm_extractions = extractor.extract_fields(hints, snippets)
+
+        # Localize evidence
+        localizer = EvidenceLocalizer()
+        hints_by_path = {h.path: h for h in hints}
+        extractions_with_evidence = localizer.localize_all(
+            llm_extractions.extractions,
+            index,
+            hints_by_path=hints_by_path,
+        )
+
+        # Score confidence
+        scorer = ConfidenceScorer()
+        new_extractions = scorer.score_all(
+            extractions_with_evidence,
+            index,
+            settings.magic_import_confidence_threshold,
+        )
+
+        # Merge new extractions into existing result
+        new_paths = {e.path for e in new_extractions}
+        merged_extractions = [
+            e for e in result.extractions if e.path not in new_paths
+        ] + new_extractions
+
+        # Update statistics
+        fields_needing_review = sum(1 for e in merged_extractions if e.needs_review)
+        avg_confidence = (
+            sum(e.confidence for e in merged_extractions) / len(merged_extractions)
+            if merged_extractions
+            else 0.0
+        )
+
+        # Create updated result
+        updated_result = MagicImportResult(
+            job_id=job_id,
+            template_name=result.template_name,
+            extractions=merged_extractions,
+            fields_extracted=len(merged_extractions),
+            fields_needing_review=fields_needing_review,
+            average_confidence=avg_confidence,
+            llm_provider=result.llm_provider,
+            llm_model=result.llm_model,
+            processing_time_seconds=result.processing_time_seconds,
+            validation_result=result.validation_result,
+            template_version_used=result.template_version_used,
+        )
+
+        # Save updated result
+        job_manager.save_result(updated_result)
+
+        logger.info(
+            "Re-extracted %d fields for job %s: %s",
+            len(new_extractions),
+            job_id,
+            request.paths,
+        )
+
+        return updated_result
+
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to re-extract fields for job %s", job_id)
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to re-extract fields",
+            detail={"error": str(e)},
+        )
 
 
 @router.get("/jobs/{job_id}/pdf")

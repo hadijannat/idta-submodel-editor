@@ -1,0 +1,59 @@
+{
+  "description": "Expected extractions for nameplate_text.pdf - a clean text-based PDF with product nameplate data",
+  "template_name": "IDTA 02006-2-0 Digital Nameplate",
+  "min_confidence_threshold": 0.75,
+  "expected_extractions": [
+    {
+      "path": "ManufacturerName",
+      "expected_value": "ACME Industrial GmbH",
+      "expected_confidence_min": 0.85,
+      "expected_evidence": {
+        "page": 0,
+        "quote_contains": "ACME Industrial"
+      }
+    },
+    {
+      "path": "ManufacturerProductDesignation",
+      "expected_value": "Electric Motor Type A",
+      "expected_confidence_min": 0.80,
+      "expected_evidence": {
+        "page": 0,
+        "quote_contains": "Electric Motor"
+      }
+    },
+    {
+      "path": "SerialNumber",
+      "expected_value": "SN-2024-001234",
+      "expected_confidence_min": 0.90,
+      "expected_evidence": {
+        "page": 0,
+        "quote_contains": "SN-2024"
+      }
+    },
+    {
+      "path": "YearOfConstruction",
+      "expected_value": "2024",
+      "expected_confidence_min": 0.85
+    },
+    {
+      "path": "ContactInformation.NationalCode",
+      "expected_value": "DE",
+      "expected_confidence_min": 0.80
+    },
+    {
+      "path": "ContactInformation.CityTown",
+      "expected_value": "Stuttgart",
+      "expected_confidence_min": 0.80
+    },
+    {
+      "path": "Markings[].MarkingName",
+      "expected_value": "CE",
+      "expected_confidence_min": 0.85
+    }
+  ],
+  "expected_classification": {
+    "doc_type": "text",
+    "quality_score_min": 0.7
+  },
+  "notes": "This fixture tests clean text PDF extraction. All values should be extracted with high confidence."
+}

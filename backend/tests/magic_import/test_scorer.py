@@ -4,6 +4,7 @@ import pytest
 
 from app.schemas.magic_import import (
     BBox,
+    ConfidenceReasonCode,
     EvidenceRef,
     FieldExtraction,
     PDFIndex,
@@ -294,3 +295,230 @@ class TestConfidenceScorer:
 
         quality = scorer._calculate_ocr_quality(mixed_index)
         assert quality == pytest.approx(0.85)  # Average of 0.8 and 0.9
+
+
+class TestConfidenceReasons:
+    """Test suite for confidence reason generation."""
+
+    def test_no_reasons_for_high_confidence(self, sample_index):
+        """High-confidence extractions should have no reasons."""
+        extraction = FieldExtraction(
+            path="SerialNumber",
+            value_raw="SN-12345",
+            confidence=0.95,
+            evidence=EvidenceRef(
+                page=0,
+                quote="Serial Number SN-12345",
+                boxes=[BBox(x0=0.1, y0=0.1, x1=0.3, y1=0.15)],
+                method="TEXT",
+                locator_score=0.98,
+            ),
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all([extraction], sample_index, confidence_threshold=0.80)
+
+        assert len(results) == 1
+        # High confidence should have few/no critical reasons
+        reasons = results[0].confidence_reasons
+        error_reasons = [r for r in reasons if r.severity == "error"]
+        assert len(error_reasons) == 0
+
+    def test_low_llm_confidence_generates_reason(self, sample_index):
+        """Low LLM confidence should generate a reason."""
+        extraction = FieldExtraction(
+            path="Weight",
+            value_raw="5kg",
+            confidence=0.4,  # Low LLM confidence
+            evidence=EvidenceRef(
+                page=0,
+                quote="weight 5kg",
+                boxes=[BBox(x0=0.1, y0=0.1, x1=0.3, y1=0.15)],
+                method="TEXT",
+                locator_score=0.9,
+            ),
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all([extraction], sample_index, confidence_threshold=0.80)
+
+        assert len(results) == 1
+        reasons = results[0].confidence_reasons
+        codes = [r.code for r in reasons]
+        assert ConfidenceReasonCode.LOW_LLM_CONFIDENCE in codes
+
+    def test_no_evidence_generates_reason(self, sample_index):
+        """Missing evidence should generate a reason."""
+        extraction = FieldExtraction(
+            path="MissingField",
+            value_raw="unknown",
+            confidence=0.5,
+            evidence=None,  # No evidence
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all([extraction], sample_index, confidence_threshold=0.80)
+
+        assert len(results) == 1
+        reasons = results[0].confidence_reasons
+        codes = [r.code for r in reasons]
+        assert ConfidenceReasonCode.NO_EVIDENCE_FOUND in codes
+        # Check severity is error
+        no_evidence_reason = next(
+            r for r in reasons if r.code == ConfidenceReasonCode.NO_EVIDENCE_FOUND
+        )
+        assert no_evidence_reason.severity == "error"
+
+    def test_value_outside_evidence_generates_reason(self, sample_index):
+        """Value not in evidence quote should generate a reason."""
+        extraction = FieldExtraction(
+            path="Model",
+            value_raw="MODEL-XYZ",  # Not in evidence quote
+            confidence=0.8,
+            evidence=EvidenceRef(
+                page=0,
+                quote="The product model is ABC-123",  # Different value
+                boxes=[BBox(x0=0.1, y0=0.1, x1=0.3, y1=0.15)],
+                method="TEXT",
+                locator_score=0.9,
+            ),
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all([extraction], sample_index, confidence_threshold=0.80)
+
+        assert len(results) == 1
+        reasons = results[0].confidence_reasons
+        codes = [r.code for r in reasons]
+        assert ConfidenceReasonCode.VALUE_OUTSIDE_EVIDENCE in codes
+
+    def test_type_mismatch_generates_reason(self, sample_index):
+        """Type mismatch should generate a reason."""
+        extraction = FieldExtraction(
+            path="Count",
+            value_raw="not-a-number",  # Invalid integer
+            value_type="xs:int",
+            confidence=0.8,
+            evidence=EvidenceRef(
+                page=0,
+                quote="count: not-a-number",
+                boxes=[BBox(x0=0.1, y0=0.1, x1=0.3, y1=0.15)],
+                method="TEXT",
+                locator_score=0.9,
+            ),
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all([extraction], sample_index, confidence_threshold=0.80)
+
+        assert len(results) == 1
+        reasons = results[0].confidence_reasons
+        codes = [r.code for r in reasons]
+        assert ConfidenceReasonCode.TYPE_MISMATCH in codes
+
+    def test_ocr_quality_low_generates_reason(self):
+        """Low OCR quality should generate a reason."""
+        # Index with low OCR quality
+        low_quality_index = PDFIndex(
+            job_id="test",
+            pdf_path="test.pdf",
+            info=PDFIndexInfo(
+                total_pages=1,
+                pages_with_text=0,
+                pages_needing_ocr=1,
+                total_words=2,
+            ),
+            pages=[],
+            words=[
+                PDFWord(
+                    text="blurry",
+                    page=0,
+                    bbox=BBox(x0=0.1, y0=0.1, x1=0.2, y1=0.15),
+                    confidence=0.4,  # Low OCR confidence
+                    method="OCR",
+                ),
+                PDFWord(
+                    text="text",
+                    page=0,
+                    bbox=BBox(x0=0.3, y0=0.1, x1=0.4, y1=0.15),
+                    confidence=0.5,
+                    method="OCR",
+                ),
+            ],
+        )
+
+        extraction = FieldExtraction(
+            path="ScannedValue",
+            value_raw="blurry",
+            confidence=0.8,
+            evidence=EvidenceRef(
+                page=0,
+                quote="blurry text",
+                boxes=[BBox(x0=0.1, y0=0.1, x1=0.4, y1=0.15)],
+                method="OCR",  # OCR method
+                locator_score=0.9,
+            ),
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all(
+            [extraction], low_quality_index, confidence_threshold=0.80
+        )
+
+        assert len(results) == 1
+        reasons = results[0].confidence_reasons
+        codes = [r.code for r in reasons]
+        assert ConfidenceReasonCode.OCR_QUALITY_LOW in codes
+
+    def test_placeholder_value_generates_reason(self, sample_index):
+        """Placeholder values should generate a reason."""
+        extraction = FieldExtraction(
+            path="SomeField",
+            value_raw="N/A",  # Placeholder
+            confidence=0.8,
+            evidence=EvidenceRef(
+                page=0,
+                quote="Field: N/A",
+                boxes=[BBox(x0=0.1, y0=0.1, x1=0.3, y1=0.15)],
+                method="TEXT",
+                locator_score=0.9,
+            ),
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all([extraction], sample_index, confidence_threshold=0.80)
+
+        assert len(results) == 1
+        reasons = results[0].confidence_reasons
+        # Should have at least one reason about placeholder
+        placeholder_reasons = [
+            r
+            for r in reasons
+            if r.detail and "placeholder_value" in r.detail
+        ]
+        assert len(placeholder_reasons) > 0
+
+    def test_reasons_have_required_fields(self, sample_index):
+        """All generated reasons should have required fields."""
+        extraction = FieldExtraction(
+            path="LowConfField",
+            value_raw="xyz",
+            confidence=0.3,
+            evidence=None,
+            needs_review=False,
+        )
+        scorer = ConfidenceScorer()
+
+        results = scorer.score_all([extraction], sample_index, confidence_threshold=0.80)
+
+        for reason in results[0].confidence_reasons:
+            assert reason.code is not None
+            assert reason.message is not None
+            assert reason.severity in ("info", "warning", "error")

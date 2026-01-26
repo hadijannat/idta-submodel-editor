@@ -36,10 +36,11 @@ interface PDFjsLib {
 interface PdfViewerProps {
   url: string | null;
   evidence: EvidenceRef | null;
+  confidence?: number;
   onPageChange?: (page: number) => void;
 }
 
-export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProps) {
+export default function PdfViewer({ url, evidence, confidence, onPageChange }: PdfViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingFocusRef = useRef<{ page: number; box: EvidenceRef['boxes'][0] } | null>(
@@ -287,16 +288,26 @@ export default function PdfViewer({ url, evidence, onPageChange }: PdfViewerProp
   const zoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
   const resetZoom = () => setScale(1.0);
 
+  // Get highlight class based on confidence
+  const getHighlightClass = () => {
+    if (confidence === undefined) return 'pdf-viewer__highlight';
+    if (confidence >= 0.9) return 'pdf-viewer__highlight pdf-viewer__highlight--high';
+    if (confidence >= 0.8) return 'pdf-viewer__highlight pdf-viewer__highlight--medium';
+    return 'pdf-viewer__highlight pdf-viewer__highlight--low';
+  };
+
   // Render highlights
   const renderHighlights = () => {
     if (!evidence || !pageViewport || evidence.page + 1 !== currentPage) {
       return null;
     }
 
+    const highlightClass = getHighlightClass();
+
     return evidence.boxes.map((box, idx) => (
       <div
         key={idx}
-        className="pdf-viewer__highlight"
+        className={highlightClass}
         style={{
           left: `${box.x0 * 100}%`,
           top: `${box.y0 * 100}%`,

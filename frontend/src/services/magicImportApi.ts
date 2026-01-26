@@ -14,6 +14,7 @@ export type JobStatus =
   | 'extracting'
   | 'localizing'
   | 'scoring'
+  | 'validating'
   | 'done'
   | 'failed';
 
@@ -49,6 +50,29 @@ export interface ConfidenceBreakdown {
 }
 
 /**
+ * Confidence reason codes.
+ */
+export type ConfidenceReasonCode =
+  | 'multiple_candidates'
+  | 'ocr_quality_low'
+  | 'unit_ambiguity'
+  | 'type_mismatch'
+  | 'no_evidence_found'
+  | 'low_llm_confidence'
+  | 'value_outside_evidence'
+  | 'semantic_constraint_violation';
+
+/**
+ * Structured reason explaining a confidence factor.
+ */
+export interface ConfidenceReason {
+  code: ConfidenceReasonCode;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+  detail?: Record<string, unknown>;
+}
+
+/**
  * Extracted field value.
  */
 export interface FieldExtraction {
@@ -58,6 +82,7 @@ export interface FieldExtraction {
   value_normalized: string | number | boolean | null;
   confidence: number;
   confidence_breakdown: ConfidenceBreakdown | null;
+  confidence_reasons: ConfidenceReason[];
   evidence: EvidenceRef | null;
   needs_review: boolean;
   user_edited: boolean;
@@ -73,6 +98,18 @@ export interface PDFIndexInfo {
   pages_needing_ocr: number;
   total_words: number;
   language_detected: string | null;
+}
+
+/**
+ * Document classification results.
+ */
+export interface DocumentClassification {
+  doc_type: 'text' | 'scanned' | 'mixed';
+  language: string | null;
+  has_tables: boolean;
+  quality_score: number;
+  avg_ocr_confidence: number | null;
+  text_density: number;
 }
 
 /**
@@ -92,6 +129,25 @@ export interface MagicImportJob {
   progress_message: string | null;
   error_message: string | null;
   pdf_info: PDFIndexInfo | null;
+  doc_classification: DocumentClassification | null;
+}
+
+/**
+ * Validation error for a specific field.
+ */
+export interface ValidationError {
+  path: string;
+  message: string;
+  code: string;
+}
+
+/**
+ * Validation result from template schema validation.
+ */
+export interface ValidationResult {
+  is_valid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationError[];
 }
 
 /**
@@ -107,6 +163,8 @@ export interface MagicImportResult {
   llm_provider: string;
   llm_model: string;
   processing_time_seconds: number;
+  validation_result: ValidationResult | null;
+  template_version_used: string | null;
 }
 
 /**
@@ -230,4 +288,36 @@ export async function pollJobStatus(
   }
 
   throw new Error('Job polling timeout');
+}
+
+/**
+ * Re-extract request.
+ */
+export interface ReExtractRequest {
+  paths: string[];
+  hint?: string;
+}
+
+/**
+ * Re-extract specific fields from an existing job.
+ */
+export async function reExtractFields(
+  jobId: string,
+  paths: string[],
+  hint?: string
+): Promise<MagicImportResult> {
+  const response = await fetch(`${API_BASE_URL}/api/magic-import/jobs/${jobId}/reextract`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ paths, hint }),
+  });
+
+  if (!response.ok) {
+    const details = await response.json().catch(() => response.statusText);
+    throw new ApiError('Failed to re-extract fields', response.status, details);
+  }
+
+  return response.json();
 }
