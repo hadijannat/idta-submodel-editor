@@ -40,6 +40,10 @@ docker-compose up
 - **[PCF Calculator](docs/features/pcf-calculator.md)** — Carbon footprint calculation with IDTA 02023 validation
 - **[Passport Mode](docs/features/passport-mode.md)** — Digital Product Passport visualization
 - **[Magic Import](docs/features/magic-import.md)** — PDF-to-AAS extraction with LLM and OCR support
+  - **Confidence Scoring** — 4-signal hybrid scoring (LLM, Localizer, OCR, Rules) with structured reason codes
+  - **Document Intelligence** — Auto-detection of text/scanned/mixed PDFs with 70+ engineering unit normalization
+  - **Validation & Provenance** — Schema validation, field evidence display, batch approve/reject operations
+  - **Visual Feedback** — Color-coded PDF highlights (green/yellow/red) based on extraction confidence
 - **[Dataspace Publishing](docs/features/dataspace-publishing.md)** — Manufacturing-X / Catena-X connectivity
 
 ### Core Capabilities
@@ -139,6 +143,7 @@ Key environment variables (see [full reference](docs/reference/configuration.md)
 | `OIDC_ENABLED` | Enable authentication | false |
 | `DATASPACE_ENABLED` | Enable dataspace features | false |
 | `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai/anthropic/local) | openai |
+| `MAGIC_IMPORT_VALIDATION_MODE` | Validation strictness (strict/warn/off) | warn |
 
 ---
 
