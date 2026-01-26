@@ -301,3 +301,42 @@ class EvidenceLocalizer:
             )
 
         return results
+
+    def refine_bboxes(
+        self,
+        extractions: list[FieldExtraction],
+        index: PDFIndex,
+    ) -> list[FieldExtraction]:
+        """
+        Ensure each extraction has evidence bounding boxes.
+
+        If evidence exists but boxes are empty, attempt to re-localize the quote
+        against the PDF index to populate boxes. Otherwise, return as-is.
+        """
+        refined: list[FieldExtraction] = []
+
+        for extraction in extractions:
+            evidence = extraction.evidence
+            if evidence is None or (evidence.boxes and len(evidence.boxes) > 0):
+                refined.append(extraction)
+                continue
+
+            localized, score = self._localize_quote(evidence.quote, index)
+            if localized is not None and localized.boxes:
+                localized = localized.model_copy(
+                    update={
+                        "locator_score": max(evidence.locator_score, score),
+                        "snippet_hash": evidence.snippet_hash,
+                        "char_start": evidence.char_start,
+                        "char_end": evidence.char_end,
+                    }
+                )
+                refined.append(
+                    extraction.model_copy(
+                        update={"evidence": localized}
+                    )
+                )
+            else:
+                refined.append(extraction)
+
+        return refined
