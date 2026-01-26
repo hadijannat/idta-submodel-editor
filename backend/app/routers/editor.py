@@ -8,13 +8,14 @@ import logging
 from io import BytesIO
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
+from fastapi import APIRouter, Depends, File, UploadFile, Query
 from fastapi.responses import Response
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 
 from app.config import get_settings
 from app.dependencies import get_fetcher, get_hydrator, get_parser
+from app.errors import APIError, ErrorCode
 from app.schemas.concept_description import ConceptDescriptionResponse
 from app.schemas.form_data import (
     LocalTemplateInfo,
@@ -29,12 +30,13 @@ from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
 from app.services.pcf.activity_list import ensure_activity_list_schema
 from app.services.pcf.validator import is_pcf_template
-from app.services.validation import validate_form_data
+from app.services.validation import validate_form_data as run_validation
 from app.utils.aasx_reader import SafeAASXReader
 from app.utils.semantic_resolver import (
     concept_description_to_dict,
     resolve_concept_description_by_semantic_id,
 )
+from app.utils.upload_security import FileType, UploadValidator, read_upload_file
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +71,20 @@ async def get_template_schema(
         schema["templatePath"] = template_path
         return SubmodelUISchema(**schema)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(e),
+            detail={"template_name": template_name},
+        )
+    except APIError:
+        raise
     except Exception as e:
         logger.exception(f"Failed to get schema for {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to get template schema",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 @router.get(
@@ -109,24 +121,33 @@ async def get_concept_description(
             semantic_id, object_store
         )
         if concept_description is None:
-            raise HTTPException(
-                status_code=404,
-                detail="ConceptDescription not found for semanticId",
+            raise APIError(
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+                message="ConceptDescription not found for semanticId",
+                detail={"semantic_id": semantic_id, "template_name": template_name},
             )
 
         payload = concept_description_to_dict(concept_description)
         return ConceptDescriptionResponse(**payload)
-    except HTTPException:
+    except APIError:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(e),
+            detail={"template_name": template_name, "semantic_id": semantic_id},
+        )
     except Exception as e:
         logger.exception(
             "Failed to resolve ConceptDescription for %s (%s)",
             template_name,
             semantic_id,
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to resolve ConceptDescription",
+            detail={"template_name": template_name, "semantic_id": semantic_id, "error": str(e)},
+        )
 
 
 @router.post("/hydrate/{template_name}")
@@ -156,12 +177,12 @@ async def hydrate_template(
         schema = parser.parse_aasx_to_ui_schema(template_bytes)
         if is_pcf_template(schema):
             schema = ensure_activity_list_schema(schema)
-        errors, warnings = validate_form_data(schema, form_data.model_dump())
+        errors, warnings = run_validation(schema, form_data.model_dump())
         if errors:
-            raise HTTPException(
-                status_code=422,
+            raise APIError(
+                code=ErrorCode.VALIDATION_FAILED,
+                message="Validation failed",
                 detail={
-                    "message": "Validation failed",
                     "errors": [e.model_dump() for e in errors],
                     "warnings": [w.model_dump() for w in warnings],
                 },
@@ -175,11 +196,21 @@ async def hydrate_template(
                 "Content-Disposition": f'attachment; filename="{template_name}_filled.aasx"'
             },
         )
+    except APIError:
+        raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(e),
+            detail={"template_name": template_name},
+        )
     except Exception as e:
         logger.exception(f"Failed to hydrate {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to hydrate template",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 @router.post("/hydrate/{template_name}/json")
@@ -206,12 +237,12 @@ async def hydrate_template_json(
         schema = parser.parse_aasx_to_ui_schema(template_bytes)
         if is_pcf_template(schema):
             schema = ensure_activity_list_schema(schema)
-        errors, warnings = validate_form_data(schema, form_data.model_dump())
+        errors, warnings = run_validation(schema, form_data.model_dump())
         if errors:
-            raise HTTPException(
-                status_code=422,
+            raise APIError(
+                code=ErrorCode.VALIDATION_FAILED,
+                message="Validation failed",
                 detail={
-                    "message": "Validation failed",
                     "errors": [e.model_dump() for e in errors],
                     "warnings": [w.model_dump() for w in warnings],
                 },
@@ -225,11 +256,21 @@ async def hydrate_template_json(
                 "Content-Disposition": f'attachment; filename="{template_name}_filled.json"'
             },
         )
+    except APIError:
+        raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(e),
+            detail={"template_name": template_name},
+        )
     except Exception as e:
         logger.exception(f"Failed to hydrate {template_name} to JSON")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to hydrate template to JSON",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -245,26 +286,33 @@ async def upload_aasx(
     """
     settings = get_settings()
 
-    # Validate file type
-    if not file.filename or not file.filename.endswith(".aasx"):
+    # Read file content with size limit
+    try:
+        contents = await read_upload_file(
+            file,
+            max_size_bytes=settings.max_upload_size_mb * 1024 * 1024,
+        )
+    except APIError as exc:
         return UploadResponse(
             success=False,
-            error="Only AASX files are accepted",
+            error=exc.message,
+            filename=file.filename,
+        )
+
+    # Validate with magic bytes checking
+    validator = UploadValidator(
+        allowed_types=[FileType.AASX],
+        max_size_bytes=settings.max_upload_size_mb * 1024 * 1024,
+    )
+    result = validator.validate(contents, file.filename)
+    if not result.valid:
+        return UploadResponse(
+            success=False,
+            error=result.error_message,
             filename=file.filename,
         )
 
     try:
-        # Read file with size limit
-        contents = await file.read()
-        max_size = settings.max_upload_size_mb * 1024 * 1024
-
-        if len(contents) > max_size:
-            return UploadResponse(
-                success=False,
-                error=f"File too large. Maximum size is {settings.max_upload_size_mb}MB",
-                filename=file.filename,
-            )
-
         # Parse the AASX
         schema = parser.parse_aasx_to_ui_schema(contents)
         if is_pcf_template(schema):
@@ -291,7 +339,7 @@ async def upload_aasx(
 
 
 @router.post("/validate/{template_name}", response_model=ValidationResult)
-async def validate_form_data(
+async def validate_template_form_data(
     template_name: str,
     form_data: SubmodelFormData,
     fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
@@ -316,16 +364,22 @@ async def validate_form_data(
         if is_pcf_template(schema):
             schema = ensure_activity_list_schema(schema)
 
-        errors, warnings = validate_form_data(schema, form_data.model_dump())
+        errors, warnings = run_validation(schema, form_data.model_dump())
 
         return ValidationResult(
             valid=len(errors) == 0,
             errors=errors,
             warnings=warnings,
         )
+    except APIError:
+        raise
     except Exception as e:
         logger.exception(f"Failed to validate form data for {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to validate form data",
+            detail={"template_name": template_name, "error": str(e)},
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -361,24 +415,31 @@ async def upload_local_template(
     """
     settings = get_settings()
 
-    # Validate file type
-    if not file.filename or not file.filename.endswith(".aasx"):
+    # Read file content with size limit
+    try:
+        contents = await read_upload_file(
+            file,
+            max_size_bytes=settings.max_upload_size_mb * 1024 * 1024,
+        )
+    except APIError as exc:
         return LocalTemplateUploadResponse(
             success=False,
-            error="Only AASX files are accepted",
+            error=exc.message,
+        )
+
+    # Validate with magic bytes checking
+    validator = UploadValidator(
+        allowed_types=[FileType.AASX],
+        max_size_bytes=settings.max_upload_size_mb * 1024 * 1024,
+    )
+    result = validator.validate(contents, file.filename)
+    if not result.valid:
+        return LocalTemplateUploadResponse(
+            success=False,
+            error=result.error_message,
         )
 
     try:
-        # Read file with size limit
-        contents = await file.read()
-        max_size = settings.max_upload_size_mb * 1024 * 1024
-
-        if len(contents) > max_size:
-            return LocalTemplateUploadResponse(
-                success=False,
-                error=f"File too large. Maximum size is {settings.max_upload_size_mb}MB",
-            )
-
         # Validate that it's a parseable AASX
         try:
             parser.parse_aasx_to_ui_schema(contents)
@@ -427,14 +488,23 @@ async def delete_local_template(
         if deleted:
             return {"success": True, "message": f"Template '{template_name}' deleted"}
         else:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Template '{template_name}' not found",
+            raise APIError(
+                code=ErrorCode.RESOURCE_NOT_FOUND,
+                message="Template not found",
+                detail={"template_name": template_name},
             )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
+    except APIError:
         raise
+    except ValueError as e:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(e),
+            detail={"template_name": template_name},
+        )
     except Exception as e:
         logger.exception(f"Failed to delete local template: {template_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to delete local template",
+            detail={"template_name": template_name, "error": str(e)},
+        )

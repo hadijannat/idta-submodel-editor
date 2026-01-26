@@ -5,19 +5,19 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import FileResponse
 
 from app.config import get_settings
 from app.dependencies import get_current_user
+from app.errors import APIError, ErrorCode
 from app.schemas.magic_import import (
     JobStatus,
     MagicImportJob,
-    MagicImportJobCreate,
     MagicImportResult,
-    MagicImportApplyRequest,
 )
 from app.services.magic_import.job_manager import JobManager
+from app.utils.upload_security import FileType, UploadValidator, read_upload_file
 
 logger = logging.getLogger(__name__)
 
@@ -47,24 +47,23 @@ async def create_job(
     settings = get_settings()
 
     if not settings.magic_import_enabled:
-        raise HTTPException(status_code=503, detail="Magic Import is disabled")
-
-    # Validate file type
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-
-    # Validate content type
-    if file.content_type and "pdf" not in file.content_type.lower():
-        raise HTTPException(status_code=400, detail="Invalid content type, expected PDF")
-
-    # Read and validate file size
-    content = await file.read()
-    max_size = settings.magic_import_max_pdf_size_mb * 1024 * 1024
-    if len(content) > max_size:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum size is {settings.magic_import_max_pdf_size_mb}MB",
+        raise APIError(
+            code=ErrorCode.FEATURE_DISABLED,
+            message="Magic Import is disabled",
         )
+
+    # Read file content with size limit
+    content = await read_upload_file(
+        file,
+        max_size_bytes=settings.magic_import_max_pdf_size_mb * 1024 * 1024,
+    )
+
+    # Validate upload with magic bytes checking
+    validator = UploadValidator(
+        allowed_types=[FileType.PDF],
+        max_size_bytes=settings.magic_import_max_pdf_size_mb * 1024 * 1024,
+    )
+    validator.validate_and_raise(content, file.filename)
 
     try:
         # Create job
@@ -91,11 +90,15 @@ async def create_job(
 
         return job
 
-    except HTTPException:
+    except APIError:
         raise
     except Exception as e:
         logger.exception("Failed to create Magic Import job")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to create Magic Import job",
+            detail={"error": str(e)},
+        )
 
 
 @router.get("/jobs/{job_id}", response_model=MagicImportJob)
@@ -107,7 +110,11 @@ async def get_job(
     """Get the status of a Magic Import job."""
     job = job_manager.get_job(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
     return job
 
 
@@ -120,17 +127,26 @@ async def get_job_result(
     """Get the extraction results for a completed job."""
     job = job_manager.get_job(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
 
     if job.status != JobStatus.DONE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Job is not complete. Current status: {job.status}",
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=f"Job is not complete. Current status: {job.status}",
+            detail={"job_id": job_id, "status": job.status},
         )
 
     result = job_manager.load_result(job_id)
     if result is None:
-        raise HTTPException(status_code=404, detail="Result not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Result not found",
+            detail={"job_id": job_id},
+        )
 
     return result
 
@@ -144,11 +160,19 @@ async def get_job_pdf(
     """Get the PDF file for a job (for viewer)."""
     job = job_manager.get_job(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
 
     pdf_path = job_manager.get_pdf_path(job_id)
     if pdf_path is None:
-        raise HTTPException(status_code=404, detail="PDF file not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="PDF file not found",
+            detail={"job_id": job_id},
+        )
 
     return FileResponse(
         path=pdf_path,
@@ -165,7 +189,11 @@ async def delete_job(
 ) -> dict:
     """Delete a Magic Import job and all associated files."""
     if not job_manager.delete_job(job_id):
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
     return {"deleted": job_id}
 
 
