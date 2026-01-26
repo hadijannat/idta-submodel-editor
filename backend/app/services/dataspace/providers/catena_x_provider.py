@@ -67,7 +67,11 @@ class CatenaXProvider(DataspaceProvider):
             "bpn",
         ]
 
-    async def connect(self, connection: "ConnectionState") -> "ConnectionState":
+    async def connect(
+        self,
+        connection: "ConnectionState",
+        secrets: dict[str, Any] | None = None,
+    ) -> "ConnectionState":
         """
         Establish connection to Catena-X dataspace.
 

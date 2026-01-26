@@ -158,7 +158,7 @@ class DataspaceConnection(BaseModel):
 
     connection_id: str = Field(description="Unique connection identifier")
     status: DataspaceConnectionStatus = Field(description="Current connection status")
-    environment: Literal["sandbox", "catena-x-test", "catena-x-prod"] = Field(
+    environment: Literal["sandbox", "catena-x-test", "catena-x-prod", "manufacturing-x"] = Field(
         description="Target dataspace environment"
     )
     edc_mode: Literal["tractus-x", "aas-extension"] = Field(
@@ -233,7 +233,7 @@ class SubmodelPublication(BaseModel):
 class CreateConnectionRequest(BaseModel):
     """Request to create a new dataspace connection."""
 
-    environment: Literal["sandbox", "catena-x-test", "catena-x-prod"] = Field(
+    environment: Literal["sandbox", "catena-x-test", "catena-x-prod", "manufacturing-x"] = Field(
         description="Target dataspace environment"
     )
     edc_mode: Literal["tractus-x", "aas-extension"] = Field(
@@ -248,8 +248,8 @@ class CreateConnectionRequest(BaseModel):
     @model_validator(mode="after")
     def validate_bpn_required_for_catenax(self) -> "CreateConnectionRequest":
         """Validate BPN is provided for Catena-X environments and has correct format."""
-        if self.environment.startswith("catena-x") and not self.bpn:
-            raise ValueError("BPN is required for Catena-X environments")
+        if (self.environment.startswith("catena-x") or self.environment == "manufacturing-x") and not self.bpn:
+            raise ValueError("BPN is required for non-sandbox environments")
         if self.bpn is not None and not self.bpn.startswith("BPNL"):
             raise ValueError(f"Invalid BPN format: {self.bpn}. Must start with 'BPNL'.")
         return self

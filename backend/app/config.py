@@ -119,7 +119,12 @@ class Settings(BaseSettings):
     # Feature flag and general settings
     dataspace_enabled: bool = False
     dataspace_cache_dir: Path = Path("./cache/dataspace")
-    dataspace_default_environment: Literal["sandbox", "catena-x-test", "catena-x-prod"] = "sandbox"
+    dataspace_default_environment: Literal[
+        "sandbox",
+        "catena-x-test",
+        "catena-x-prod",
+        "manufacturing-x",
+    ] = "sandbox"
     dataspace_default_edc_mode: Literal["tractus-x", "aas-extension"] = "tractus-x"
 
     # BaSyx AAS Server

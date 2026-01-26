@@ -53,19 +53,12 @@ class VaultClient:
         """Check if Vault is configured with credentials."""
         return bool(self.vault_url and self.token)
 
-    async def _get_client(self):
-        """Get or create Vault client."""
-        if self._client is None:
-            try:
-                import hvac
-                self._client = hvac.Client(
-                    url=self.vault_url,
-                    token=self.token,
-                    namespace=self.namespace,
-                )
-            except ImportError:
-                raise ImportError("hvac is required for Vault integration. Install with: pip install hvac")
-        return self._client
+    def _headers(self) -> dict[str, str]:
+        """Build Vault request headers."""
+        headers = {"X-Vault-Token": self.token or ""}
+        if self.namespace:
+            headers["X-Vault-Namespace"] = self.namespace
+        return headers
 
     async def authenticate(self) -> bool:
         """
@@ -78,9 +71,15 @@ class VaultClient:
             logger.warning("Vault not configured")
             return False
 
+        import httpx
+
         try:
-            # TODO: Implement actual authentication
-            # This would verify the token is valid
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{self.vault_url.rstrip('/')}/v1/auth/token/lookup-self",
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
 
             self._authenticated = True
             logger.info("Authenticated with Vault at %s", self.vault_url)
@@ -106,15 +105,20 @@ class VaultClient:
 
         logger.debug("Getting secret from Vault: %s", path)
 
-        # TODO: Implement actual Vault API call
-        # client = await self._get_client()
-        # response = client.secrets.kv.v2.read_secret_version(
-        #     path=path,
-        #     mount_point=self.mount_point,
-        # )
-        # return response.get("data", {}).get("data")
+        import httpx
 
-        return None
+        url = f"{self.vault_url.rstrip('/')}/v1/{self.mount_point}/data/{path}"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(url, headers=self._headers())
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                payload = response.json()
+                return (payload.get("data") or {}).get("data")
+        except httpx.HTTPError as e:
+            logger.warning("Vault read failed for %s: %s", path, e)
+            return None
 
     async def set_secret(
         self,
@@ -137,15 +141,21 @@ class VaultClient:
 
         logger.info("Storing secret in Vault: %s", path)
 
-        # TODO: Implement actual Vault API call
-        # client = await self._get_client()
-        # client.secrets.kv.v2.create_or_update_secret(
-        #     path=path,
-        #     secret=data,
-        #     mount_point=self.mount_point,
-        # )
+        import httpx
 
-        return True
+        url = f"{self.vault_url.rstrip('/')}/v1/{self.mount_point}/data/{path}"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(
+                    url,
+                    headers=self._headers(),
+                    json={"data": data},
+                )
+                response.raise_for_status()
+            return True
+        except httpx.HTTPError as e:
+            logger.warning("Vault write failed for %s: %s", path, e)
+            return False
 
     async def delete_secret(self, path: str) -> bool:
         """
@@ -162,9 +172,17 @@ class VaultClient:
 
         logger.info("Deleting secret from Vault: %s", path)
 
-        # TODO: Implement actual Vault API call
+        import httpx
 
-        return True
+        url = f"{self.vault_url.rstrip('/')}/v1/{self.mount_point}/metadata/{path}"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.delete(url, headers=self._headers())
+                response.raise_for_status()
+            return True
+        except httpx.HTTPError as e:
+            logger.warning("Vault delete failed for %s: %s", path, e)
+            return False
 
     async def get_edc_credentials(self, connection_id: str) -> dict[str, Any] | None:
         """
@@ -217,6 +235,33 @@ class VaultClient:
         """
         path = f"dataspace/connections/{connection_id}/dtr"
         return await self.get_secret(path)
+
+    async def get_credentials(self, connection_id: str) -> dict[str, Any] | None:
+        """
+        Get generic credentials for a connection.
+
+        Args:
+            connection_id: Connection identifier
+
+        Returns:
+            Credentials dictionary or None
+        """
+        path = f"dataspace/connections/{connection_id}/credentials"
+        return await self.get_secret(path)
+
+    async def store_credentials(self, connection_id: str, data: dict[str, Any]) -> bool:
+        """
+        Store generic credentials for a connection.
+
+        Args:
+            connection_id: Connection identifier
+            data: Credentials dictionary
+
+        Returns:
+            True if stored successfully
+        """
+        path = f"dataspace/connections/{connection_id}/credentials"
+        return await self.set_secret(path, data)
 
     async def store_certificate(
         self,

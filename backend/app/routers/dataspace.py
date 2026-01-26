@@ -45,6 +45,7 @@ from app.schemas.dataspace import (
 )
 from app.services.dataspace.connection_manager import ConnectionManager
 from app.services.dataspace.health import DataspaceHealthChecker
+from app.services.dataspace.identity.vault_client import VaultClient
 from app.services.dataspace.models import (
     ConnectionStatus as InternalConnectionStatus,
     DataspaceType,
@@ -88,12 +89,27 @@ def _check_dataspace_enabled() -> None:
         )
 
 
+def _get_owner_id(user: dict | None) -> str | None:
+    """Extract owner identifier from user payload."""
+    if not user:
+        return None
+    return user.get("sub") or user.get("email") or user.get("preferred_username")
+
+
+def _assert_owner(connection, user: dict | None) -> None:
+    """Ensure the current user owns the connection if auth is enabled."""
+    owner_id = _get_owner_id(user)
+    if owner_id and connection.owner_id and connection.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail="Access denied for this connection.")
+
+
 def _map_internal_status(status: InternalConnectionStatus) -> DataspaceConnectionStatus:
     """Map internal connection status to API status."""
     status_map = {
         InternalConnectionStatus.DISCONNECTED: DataspaceConnectionStatus.DISCONNECTED,
         InternalConnectionStatus.CONNECTING: DataspaceConnectionStatus.CONFIGURING_EDC,
         InternalConnectionStatus.CONNECTED: DataspaceConnectionStatus.CONNECTED,
+        InternalConnectionStatus.DEGRADED: DataspaceConnectionStatus.DEGRADED,
         InternalConnectionStatus.ERROR: DataspaceConnectionStatus.FAILED,
         InternalConnectionStatus.AUTHENTICATING: DataspaceConnectionStatus.PROVISIONING_SECRETS,
     }
@@ -157,22 +173,57 @@ async def create_connection(
     settings = get_settings()
 
     try:
+        if request.environment != "sandbox":
+            if not request.credentials:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Credentials are required for non-sandbox environments.",
+                )
+            if not settings.vault_token or not settings.vault_url:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Vault is required for non-sandbox environments. Configure VAULT_URL and VAULT_TOKEN.",
+                )
+
+        owner_id = _get_owner_id(user)
+
         # Create connection record
         connection = conn_manager.create_connection(
             dataspace_type=_map_dataspace_type(request.environment),
             dtr_url=settings.dtr_url,
             edc_url=settings.edc_control_plane_url,
             bpn=request.bpn,
+            owner_id=owner_id,
             metadata={
                 "environment": request.environment,
                 "edc_mode": request.edc_mode,
-                "credentials": request.credentials,
                 "basyx_url": settings.basyx_aas_server_url,
                 "edc_data_url": settings.edc_data_plane_url,
                 "progress": 0.0,
                 "progress_message": "Connection created, starting onboarding...",
             },
         )
+
+        # Store credentials in Vault if provided
+        if request.credentials:
+            vault = VaultClient(
+                vault_url=settings.vault_url,
+                token=settings.vault_token,
+            )
+            stored = await vault.store_credentials(connection.connection_id, request.credentials)
+            if not stored:
+                conn_manager.delete_connection(connection.connection_id)
+                raise HTTPException(
+                    status_code=502,
+                    detail="Failed to store credentials in Vault.",
+                )
+            conn_manager.update_connection(
+                connection.connection_id,
+                metadata={
+                    **(connection.metadata or {}),
+                    "vault_path": f"dataspace/connections/{connection.connection_id}/credentials",
+                },
+            )
 
         # Update status to connecting
         conn_manager.update_connection(
@@ -198,7 +249,7 @@ async def create_connection(
         raise
     except Exception as e:
         logger.exception("Failed to create dataspace connection")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create dataspace connection.")
 
 
 @router.get("/connections", response_model=ListConnectionsResponse)
@@ -215,14 +266,15 @@ async def list_connections(
     _check_dataspace_enabled()
 
     try:
-        connections = conn_manager.list_connections(limit=limit)
+        owner_id = _get_owner_id(user)
+        connections = conn_manager.list_connections(limit=limit, owner_id=owner_id)
         return ListConnectionsResponse(
             connections=[_connection_to_response(c) for c in connections],
             total=len(connections),
         )
     except Exception as e:
         logger.exception("Failed to list connections")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to list connections.")
 
 
 @router.get("/connections/{connection_id}", response_model=ConnectionStatusResponse)
@@ -242,9 +294,28 @@ async def get_connection(
     connection = conn_manager.get_connection(connection_id)
     if connection is None:
         raise HTTPException(status_code=404, detail="Connection not found")
+    _assert_owner(connection, user)
+    _assert_owner(connection, user)
 
     # Get health check results
-    health_results = health_checker.check_connection(connection)
+    settings = get_settings()
+    secrets = {}
+    vault = VaultClient(
+        vault_url=settings.vault_url if hasattr(settings, "vault_url") else None,
+        token=settings.vault_token if hasattr(settings, "vault_token") else None,
+    )
+    if vault.is_configured:
+        generic_creds = await vault.get_credentials(connection_id)
+        if generic_creds:
+            secrets.update(generic_creds)
+        edc_creds = await vault.get_edc_credentials(connection_id)
+        if edc_creds:
+            secrets.setdefault("edc_api_key", edc_creds.get("api_key"))
+        dtr_creds = await vault.get_dtr_credentials(connection_id)
+        if dtr_creds:
+            secrets.setdefault("dtr_token", dtr_creds.get("token"))
+
+    health_results = health_checker.check_connection(connection, secrets=secrets or None)
     api_health_results = [
         HealthCheckResult(
             component=r.component,
@@ -282,6 +353,7 @@ async def disconnect(
     connection = conn_manager.get_connection(connection_id)
     if connection is None:
         raise HTTPException(status_code=404, detail="Connection not found")
+    _assert_owner(connection, user)
 
     # Check for active publications
     registrations = conn_manager.list_registrations(connection_id=connection_id)
@@ -380,6 +452,7 @@ async def publish_submodel(
     connection = conn_manager.get_connection(request.connection_id)
     if connection is None:
         raise HTTPException(status_code=404, detail="Connection not found")
+    _assert_owner(connection, user)
 
     if connection.status != InternalConnectionStatus.CONNECTED:
         raise HTTPException(
@@ -450,10 +523,27 @@ async def list_publications(
     _check_dataspace_enabled()
 
     try:
+        owner_id = _get_owner_id(user)
+        allowed_connection_ids = None
+        if owner_id:
+            allowed_connection_ids = {
+                conn.connection_id
+                for conn in conn_manager.list_connections(owner_id=owner_id, limit=100)
+            }
+
+        if connection_id and allowed_connection_ids is not None:
+            if connection_id not in allowed_connection_ids:
+                raise HTTPException(status_code=403, detail="Access denied for this connection.")
+
         registrations = conn_manager.list_registrations(
             connection_id=connection_id,
             limit=limit,
         )
+        if allowed_connection_ids is not None:
+            registrations = [
+                reg for reg in registrations
+                if reg.connection_id in allowed_connection_ids
+            ]
 
         # Apply filters
         publications = []
@@ -492,7 +582,7 @@ async def list_publications(
 
     except Exception as e:
         logger.exception("Failed to list publications")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to list publications.")
 
 
 def _map_registration_status(status) -> PublicationStatus:
@@ -522,6 +612,10 @@ async def get_publication(
     registration = conn_manager.get_registration(publication_id)
     if registration is None:
         raise HTTPException(status_code=404, detail="Publication not found")
+    connection = conn_manager.get_connection(registration.connection_id)
+    if connection is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    _assert_owner(connection, user)
 
     return SubmodelPublication(
         publication_id=registration.registration_id,
@@ -555,6 +649,10 @@ async def update_publication(
     registration = conn_manager.get_registration(publication_id)
     if registration is None:
         raise HTTPException(status_code=404, detail="Publication not found")
+    connection = conn_manager.get_connection(registration.connection_id)
+    if connection is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    _assert_owner(connection, user)
 
     # Update metadata
     from app.services.dataspace.models import RegistrationStatus
@@ -616,6 +714,10 @@ async def unpublish(
     registration = conn_manager.get_registration(publication_id)
     if registration is None:
         raise HTTPException(status_code=404, detail="Publication not found")
+    connection = conn_manager.get_connection(registration.connection_id)
+    if connection is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    _assert_owner(connection, user)
 
     # TODO: Implement actual unpublishing via EDC/DTR clients
     # For now, just update status
@@ -749,7 +851,7 @@ async def preview_policy(
 
     except Exception as e:
         logger.exception("Failed to preview policy")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to preview policy.")
 
 
 @router.post("/policies", status_code=201)
@@ -803,7 +905,7 @@ async def create_policy(
         raise
     except Exception as e:
         logger.exception("Failed to create policy")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create policy.")
 
 
 @router.get("/policies/{policy_id}")
@@ -892,8 +994,25 @@ async def check_health(
         connection = conn_manager.get_connection(connection_id)
         if connection is None:
             raise HTTPException(status_code=404, detail="Connection not found")
+        _assert_owner(connection, user)
 
-        health_results = health_checker.check_connection(connection)
+        secrets = {}
+        vault = VaultClient(
+            vault_url=settings.vault_url if hasattr(settings, "vault_url") else None,
+            token=settings.vault_token if hasattr(settings, "vault_token") else None,
+        )
+        if vault.is_configured:
+            generic_creds = await vault.get_credentials(connection_id)
+            if generic_creds:
+                secrets.update(generic_creds)
+            edc_creds = await vault.get_edc_credentials(connection_id)
+            if edc_creds:
+                secrets.setdefault("edc_api_key", edc_creds.get("api_key"))
+            dtr_creds = await vault.get_dtr_credentials(connection_id)
+            if dtr_creds:
+                secrets.setdefault("dtr_token", dtr_creds.get("token"))
+
+        health_results = health_checker.check_connection(connection, secrets=secrets or None)
         overall_healthy = all(r.healthy for r in health_results)
 
         # Update connection with health check timestamp
@@ -972,6 +1091,14 @@ async def get_environments(
             "requires_bpn": True,
             "requires_credentials": True,
             "is_default": settings.dataspace_default_environment == "catena-x-prod",
+        },
+        {
+            "id": "manufacturing-x",
+            "name": "Manufacturing-X",
+            "description": "Manufacturing-X dataspace environment",
+            "requires_bpn": True,
+            "requires_credentials": True,
+            "is_default": settings.dataspace_default_environment == "manufacturing-x",
         },
     ]
 

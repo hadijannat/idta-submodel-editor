@@ -47,6 +47,10 @@ services:
       - MAGIC_IMPORT_CONFIDENCE_THRESHOLD=0.80
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Dataspace
+      - DATASPACE_ENABLED=${DATASPACE_ENABLED:-false}
+      - VAULT_URL=${VAULT_URL:-http://vault:8200}
+      - VAULT_TOKEN=${VAULT_TOKEN:-}
     volumes:
       - ./backend/app:/app/app
       - template_cache:/app/cache

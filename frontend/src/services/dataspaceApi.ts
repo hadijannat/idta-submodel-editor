@@ -48,7 +48,11 @@ export type ConstraintOperator =
   | 'isAnyOf'
   | 'isNoneOf';
 
-export type Environment = 'sandbox' | 'catena-x-test' | 'catena-x-prod';
+export type Environment =
+  | 'sandbox'
+  | 'catena-x-test'
+  | 'catena-x-prod'
+  | 'manufacturing-x';
 export type EDCMode = 'tractus-x' | 'aas-extension';
 
 // ---------------------------------------------------------------------------

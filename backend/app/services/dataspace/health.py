@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 from datetime import datetime
 
 from app.services.dataspace.models import (
@@ -28,7 +29,11 @@ class DataspaceHealthChecker:
     Verifies connectivity to all dataspace components and reports status.
     """
 
-    def check_connection(self, connection: ConnectionState) -> list[HealthCheckResult]:
+    def check_connection(
+        self,
+        connection: ConnectionState,
+        secrets: dict[str, Any] | None = None,
+    ) -> list[HealthCheckResult]:
         """
         Run all health checks for a connection.
 
@@ -42,19 +47,23 @@ class DataspaceHealthChecker:
 
         # Check DTR connectivity
         if connection.dtr_url:
-            results.append(self._check_dtr(connection))
+            results.append(self._check_dtr(connection, secrets))
 
         # Check EDC connectivity
         if connection.edc_url:
-            results.append(self._check_edc(connection))
+            results.append(self._check_edc(connection, secrets))
 
         # Check provider URL
         if connection.provider_url:
-            results.append(self._check_provider(connection))
+            results.append(self._check_provider(connection, secrets))
 
         return results
 
-    def _check_dtr(self, connection: ConnectionState) -> HealthCheckResult:
+    def _check_dtr(
+        self,
+        connection: ConnectionState,
+        secrets: dict[str, Any] | None = None,
+    ) -> HealthCheckResult:
         """
         Check Digital Twin Registry health.
 
@@ -67,15 +76,20 @@ class DataspaceHealthChecker:
         start_time = time.time()
 
         try:
-            # TODO: Implement actual DTR health check
-            # For now, return a placeholder result
-            latency_ms = (time.time() - start_time) * 1000
+            headers = {}
+            token = (secrets or {}).get("dtr_token")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
 
+            healthy, message, latency_ms = self._probe_endpoint(
+                connection.dtr_url,
+                headers=headers,
+            )
             return HealthCheckResult(
                 component="dtr",
-                healthy=True,
+                healthy=healthy,
                 latency_ms=latency_ms,
-                message="DTR health check not yet implemented",
+                message=message,
                 checked_at=datetime.utcnow(),
             )
 
@@ -91,7 +105,11 @@ class DataspaceHealthChecker:
                 checked_at=datetime.utcnow(),
             )
 
-    def _check_edc(self, connection: ConnectionState) -> HealthCheckResult:
+    def _check_edc(
+        self,
+        connection: ConnectionState,
+        secrets: dict[str, Any] | None = None,
+    ) -> HealthCheckResult:
         """
         Check EDC Connector health.
 
@@ -104,14 +122,20 @@ class DataspaceHealthChecker:
         start_time = time.time()
 
         try:
-            # TODO: Implement actual EDC health check
-            latency_ms = (time.time() - start_time) * 1000
+            headers = {}
+            api_key = (secrets or {}).get("edc_api_key")
+            if api_key:
+                headers["X-Api-Key"] = api_key
 
+            healthy, message, latency_ms = self._probe_endpoint(
+                connection.edc_url,
+                headers=headers,
+            )
             return HealthCheckResult(
                 component="edc",
-                healthy=True,
+                healthy=healthy,
                 latency_ms=latency_ms,
-                message="EDC health check not yet implemented",
+                message=message,
                 checked_at=datetime.utcnow(),
             )
 
@@ -127,7 +151,11 @@ class DataspaceHealthChecker:
                 checked_at=datetime.utcnow(),
             )
 
-    def _check_provider(self, connection: ConnectionState) -> HealthCheckResult:
+    def _check_provider(
+        self,
+        connection: ConnectionState,
+        secrets: dict[str, Any] | None = None,
+    ) -> HealthCheckResult:
         """
         Check dataspace provider health.
 
@@ -140,14 +168,20 @@ class DataspaceHealthChecker:
         start_time = time.time()
 
         try:
-            # TODO: Implement actual provider health check
-            latency_ms = (time.time() - start_time) * 1000
+            headers = {}
+            token = (secrets or {}).get("provider_token")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
 
+            healthy, message, latency_ms = self._probe_endpoint(
+                connection.provider_url,
+                headers=headers,
+            )
             return HealthCheckResult(
                 component="provider",
-                healthy=True,
+                healthy=healthy,
                 latency_ms=latency_ms,
-                message="Provider health check not yet implemented",
+                message=message,
                 checked_at=datetime.utcnow(),
             )
 
@@ -193,3 +227,40 @@ class DataspaceHealthChecker:
                 ]
 
         return results
+
+    def _probe_endpoint(
+        self,
+        base_url: str,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[bool, str | None, float]:
+        """
+        Probe a health endpoint and return status.
+
+        Returns:
+            (healthy, message, latency_ms)
+        """
+        import httpx
+
+        if not base_url:
+            return False, "Missing endpoint URL", 0.0
+
+        candidates = []
+        base = base_url.rstrip("/")
+        if not base.endswith("/health") and not base.endswith("/actuator/health"):
+            candidates.extend([f"{base}/health", f"{base}/actuator/health"])
+        candidates.append(base)
+
+        last_error = None
+        for url in candidates:
+            start_time = time.time()
+            try:
+                with httpx.Client(timeout=5.0, follow_redirects=True) as client:
+                    response = client.get(url, headers=headers)
+                latency_ms = (time.time() - start_time) * 1000
+                if response.status_code < 400:
+                    return True, f"OK ({response.status_code})", latency_ms
+                last_error = f"HTTP {response.status_code}"
+            except httpx.HTTPError as e:
+                latency_ms = (time.time() - start_time) * 1000
+                last_error = str(e)
+        return False, last_error or "Health check failed", latency_ms

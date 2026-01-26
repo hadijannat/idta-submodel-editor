@@ -81,7 +81,8 @@ def onboard_to_dataspace(self, connection_id: str) -> dict:
     from app.services.dataspace.connection_manager import ConnectionManager
     from app.services.dataspace.health import DataspaceHealthChecker
     from app.services.dataspace.identity.vault_client import VaultClient
-    from app.services.dataspace.models import ConnectionStatus
+    from app.services.dataspace.models import ConnectionStatus, DataspaceType
+    from app.services.dataspace.providers.provider_base import DataspaceConnectionError
 
     settings = get_settings()
     manager = ConnectionManager()
@@ -107,7 +108,7 @@ def onboard_to_dataspace(self, connection_id: str) -> dict:
             token=settings.vault_token if hasattr(settings, 'vault_token') else None,
         )
 
-        secrets = {}
+        secrets: dict[str, Any] = {}
         if vault.is_configured:
             logger.info("Loading secrets from Vault for connection %s", connection_id)
             manager.update_connection(
@@ -115,16 +116,27 @@ def onboard_to_dataspace(self, connection_id: str) -> dict:
                 status=ConnectionStatus.AUTHENTICATING,
             )
 
-            # Try to load EDC and DTR credentials
+            # Try to load generic credentials first, then fall back to EDC/DTR
+            generic_creds = run_async(vault.get_credentials(connection_id))
             edc_creds = run_async(vault.get_edc_credentials(connection_id))
             dtr_creds = run_async(vault.get_dtr_credentials(connection_id))
 
+            if generic_creds:
+                secrets.update(generic_creds)
             if edc_creds:
-                secrets['edc_api_key'] = edc_creds.get('api_key')
+                secrets.setdefault('edc_api_key', edc_creds.get('api_key'))
+                if edc_creds.get('api_secret'):
+                    secrets.setdefault('edc_api_secret', edc_creds.get('api_secret'))
             if dtr_creds:
-                secrets['dtr_token'] = dtr_creds.get('token')
+                secrets.setdefault('dtr_token', dtr_creds.get('token'))
         else:
             logger.debug("Vault not configured, skipping secrets retrieval")
+
+        if connection.dataspace_type != DataspaceType.SANDBOX:
+            if not vault.is_configured:
+                raise DataspaceConnectionError("Vault is required for non-sandbox environments.")
+            if not secrets:
+                raise DataspaceConnectionError("Missing credentials for non-sandbox environment.")
 
         # Step 3: Get provider and establish connection
         provider = get_provider_for_connection(connection)
@@ -136,7 +148,7 @@ def onboard_to_dataspace(self, connection_id: str) -> dict:
         )
 
         # Use the provider to establish connection
-        updated_connection = run_async(provider.connect(connection))
+        updated_connection = run_async(provider.connect(connection, secrets=secrets or None))
 
         # Save updated connection state
         manager.update_connection(
@@ -151,7 +163,7 @@ def onboard_to_dataspace(self, connection_id: str) -> dict:
         # Step 4: Perform initial health check
         logger.info("Performing initial health check for connection %s", connection_id)
         health_checker = DataspaceHealthChecker()
-        health_results = health_checker.check_connection(updated_connection)
+        health_results = health_checker.check_connection(updated_connection, secrets=secrets or None)
 
         all_healthy = all(r.healthy for r in health_results)
 
@@ -165,7 +177,7 @@ def onboard_to_dataspace(self, connection_id: str) -> dict:
 
         # Final status update
         processing_time = time.time() - start_time
-        final_status = ConnectionStatus.CONNECTED if all_healthy else ConnectionStatus.ERROR
+        final_status = ConnectionStatus.CONNECTED if all_healthy else ConnectionStatus.DEGRADED
 
         manager.update_connection(
             connection_id,
@@ -382,13 +394,23 @@ def health_check_all() -> dict:
     """
     from app.services.dataspace.connection_manager import ConnectionManager
     from app.services.dataspace.health import DataspaceHealthChecker
+    from app.services.dataspace.identity.vault_client import VaultClient
     from app.services.dataspace.models import ConnectionStatus
 
+    settings = get_settings()
     manager = ConnectionManager()
     health_checker = DataspaceHealthChecker()
+    vault = VaultClient(
+        vault_url=settings.vault_url if hasattr(settings, 'vault_url') else None,
+        token=settings.vault_token if hasattr(settings, 'vault_token') else None,
+    )
 
-    # Get all connected connections
-    connections = manager.list_connections(status=ConnectionStatus.CONNECTED)
+    # Get all active connections
+    connections = [
+        conn
+        for conn in manager.list_connections()
+        if conn.status in (ConnectionStatus.CONNECTED, ConnectionStatus.DEGRADED)
+    ]
 
     if not connections:
         logger.debug("No active connections to health check")
@@ -402,11 +424,23 @@ def health_check_all() -> dict:
 
     for connection in connections:
         try:
-            health_results = health_checker.check_connection(connection)
+            secrets: dict[str, Any] = {}
+            if vault.is_configured:
+                generic_creds = run_async(vault.get_credentials(connection.connection_id))
+                if generic_creds:
+                    secrets.update(generic_creds)
+                edc_creds = run_async(vault.get_edc_credentials(connection.connection_id))
+                if edc_creds:
+                    secrets.setdefault('edc_api_key', edc_creds.get('api_key'))
+                dtr_creds = run_async(vault.get_dtr_credentials(connection.connection_id))
+                if dtr_creds:
+                    secrets.setdefault('dtr_token', dtr_creds.get('token'))
+
+            health_results = health_checker.check_connection(connection, secrets=secrets or None)
             all_healthy = all(r.healthy for r in health_results)
 
             # Update connection status
-            new_status = ConnectionStatus.CONNECTED if all_healthy else ConnectionStatus.ERROR
+            new_status = ConnectionStatus.CONNECTED if all_healthy else ConnectionStatus.DEGRADED
             error_msg = None if all_healthy else "Health check failed"
 
             manager.update_connection(
@@ -438,7 +472,7 @@ def health_check_all() -> dict:
 
             manager.update_connection(
                 connection.connection_id,
-                status=ConnectionStatus.ERROR,
+                status=ConnectionStatus.DEGRADED,
                 last_health_check=datetime.utcnow(),
                 error_message=f"Health check error: {e}",
             )
@@ -714,22 +748,40 @@ def health_check_task(connection_id: str | None = None) -> dict:
 
     from app.services.dataspace.connection_manager import ConnectionManager
     from app.services.dataspace.health import DataspaceHealthChecker
+    from app.services.dataspace.identity.vault_client import VaultClient
     from app.services.dataspace.models import ConnectionStatus
 
+    settings = get_settings()
     manager = ConnectionManager()
     health_checker = DataspaceHealthChecker()
+    vault = VaultClient(
+        vault_url=settings.vault_url if hasattr(settings, 'vault_url') else None,
+        token=settings.vault_token if hasattr(settings, 'vault_token') else None,
+    )
 
     connection = manager.get_connection(connection_id)
     if connection is None:
         return {"error": "Connection not found", "connection_id": connection_id}
 
     try:
-        health_results = health_checker.check_connection(connection)
+        secrets: dict[str, Any] = {}
+        if vault.is_configured:
+            generic_creds = run_async(vault.get_credentials(connection.connection_id))
+            if generic_creds:
+                secrets.update(generic_creds)
+            edc_creds = run_async(vault.get_edc_credentials(connection.connection_id))
+            if edc_creds:
+                secrets.setdefault('edc_api_key', edc_creds.get('api_key'))
+            dtr_creds = run_async(vault.get_dtr_credentials(connection.connection_id))
+            if dtr_creds:
+                secrets.setdefault('dtr_token', dtr_creds.get('token'))
+
+        health_results = health_checker.check_connection(connection, secrets=secrets or None)
         all_healthy = all(r.healthy for r in health_results)
 
         manager.update_connection(
             connection.connection_id,
-            status=ConnectionStatus.CONNECTED if all_healthy else ConnectionStatus.ERROR,
+            status=ConnectionStatus.CONNECTED if all_healthy else ConnectionStatus.DEGRADED,
             last_health_check=datetime.utcnow(),
             error_message=None if all_healthy else "Health check failed",
         )

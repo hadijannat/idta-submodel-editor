@@ -40,12 +40,17 @@ class DataspaceProvider(ABC):
         ...
 
     @abstractmethod
-    async def connect(self, connection: "ConnectionState") -> "ConnectionState":
+    async def connect(
+        self,
+        connection: "ConnectionState",
+        secrets: dict[str, Any] | None = None,
+    ) -> "ConnectionState":
         """
         Establish connection to the dataspace.
 
         Args:
             connection: Connection configuration
+            secrets: Optional secrets for authentication (API keys, tokens)
 
         Returns:
             Updated connection state with status

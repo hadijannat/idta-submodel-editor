@@ -19,6 +19,7 @@ class ConnectionStatus(str, Enum):
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"
+    DEGRADED = "degraded"
     ERROR = "error"
     AUTHENTICATING = "authenticating"
 
@@ -73,6 +74,7 @@ class ConnectionState:
 
     connection_id: str
     dataspace_type: DataspaceType
+    owner_id: str | None = None
     status: ConnectionStatus = ConnectionStatus.DISCONNECTED
     provider_url: str | None = None
     dtr_url: str | None = None
@@ -88,6 +90,7 @@ class ConnectionState:
         """Serialize to dictionary for JSON persistence."""
         return {
             "connection_id": self.connection_id,
+            "owner_id": self.owner_id,
             "dataspace_type": self.dataspace_type.value,
             "status": self.status.value,
             "provider_url": self.provider_url,
@@ -106,6 +109,7 @@ class ConnectionState:
         """Deserialize from dictionary."""
         return cls(
             connection_id=data["connection_id"],
+            owner_id=data.get("owner_id"),
             dataspace_type=DataspaceType(data["dataspace_type"]),
             status=ConnectionStatus(data["status"]),
             provider_url=data.get("provider_url"),

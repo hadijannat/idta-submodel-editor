@@ -68,6 +68,7 @@ class ConnectionManager:
         dtr_url: str | None = None,
         edc_url: str | None = None,
         bpn: str | None = None,
+        owner_id: str | None = None,
         metadata: dict | None = None,
     ) -> ConnectionState:
         """
@@ -89,6 +90,7 @@ class ConnectionManager:
 
         connection = ConnectionState(
             connection_id=connection_id,
+            owner_id=owner_id,
             dataspace_type=dataspace_type,
             status=ConnectionStatus.DISCONNECTED,
             provider_url=provider_url,
@@ -115,7 +117,12 @@ class ConnectionManager:
             return None
 
         data = json.loads(connection_path.read_text())
-        return ConnectionState.from_dict(data)
+        connection = ConnectionState.from_dict(data)
+        if "credentials" in (connection.metadata or {}):
+            # Scrub any persisted credentials
+            connection.metadata.pop("credentials", None)
+            self._save_connection(connection)
+        return connection
 
     def update_connection(
         self,
@@ -213,6 +220,7 @@ class ConnectionManager:
         self,
         dataspace_type: DataspaceType | None = None,
         status: ConnectionStatus | None = None,
+        owner_id: str | None = None,
         limit: int = 50,
     ) -> list[ConnectionState]:
         """
@@ -232,11 +240,16 @@ class ConnectionManager:
             try:
                 data = json.loads(conn_path.read_text())
                 connection = ConnectionState.from_dict(data)
+                if "credentials" in (connection.metadata or {}):
+                    connection.metadata.pop("credentials", None)
+                    self._save_connection(connection)
 
                 # Apply filters
                 if dataspace_type is not None and connection.dataspace_type != dataspace_type:
                     continue
                 if status is not None and connection.status != status:
+                    continue
+                if owner_id is not None and connection.owner_id != owner_id:
                     continue
 
                 connections.append(connection)

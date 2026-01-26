@@ -51,7 +51,11 @@ class SandboxProvider(DataspaceProvider):
         """Provider description."""
         return "Local sandbox for testing dataspace connectivity without external dependencies"
 
-    async def connect(self, connection: "ConnectionState") -> "ConnectionState":
+    async def connect(
+        self,
+        connection: "ConnectionState",
+        secrets: dict[str, Any] | None = None,
+    ) -> "ConnectionState":
         """
         Simulate connection establishment.
 
