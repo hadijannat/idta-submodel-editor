@@ -8,7 +8,7 @@ including mTLS client certificates for EDC connectors.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -62,8 +62,22 @@ class CertManager:
         """
         logger.info("Loading certificate '%s' from %s", name, cert_path)
 
-        # TODO: Implement actual certificate loading
-        # This would use cryptography library to parse X.509 certificates
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+
+        cert_bytes = cert_path.read_bytes()
+        try:
+            cert = x509.load_pem_x509_certificate(cert_bytes)
+        except ValueError:
+            cert = x509.load_der_x509_certificate(cert_bytes)
+
+        key = None
+        if key_path:
+            key_bytes = key_path.read_bytes()
+            key = serialization.load_pem_private_key(
+                key_bytes,
+                password=password.encode() if password else None,
+            )
 
         cert_info = {
             "name": name,
@@ -71,11 +85,13 @@ class CertManager:
             "key_path": str(key_path) if key_path else None,
             "loaded_at": datetime.utcnow().isoformat(),
             "valid": True,
-            "subject": None,
-            "issuer": None,
-            "not_before": None,
-            "not_after": None,
-            "serial_number": None,
+            "subject": cert.subject.rfc4514_string(),
+            "issuer": cert.issuer.rfc4514_string(),
+            "not_before": cert.not_valid_before_utc.isoformat(),
+            "not_after": cert.not_valid_after_utc.isoformat(),
+            "serial_number": str(cert.serial_number),
+            "_cert": cert,
+            "_key": key,
         }
 
         self._certificates[name] = cert_info
@@ -114,10 +130,34 @@ class CertManager:
 
         errors = []
 
-        # TODO: Implement actual validation
-        # - Check expiration dates
-        # - Verify certificate chain
-        # - Verify key matches certificate
+        from cryptography.hazmat.primitives import serialization
+
+        cert_obj = cert.get("_cert")
+        key_obj = cert.get("_key")
+
+        if cert_obj is None:
+            return False, ["Certificate data not loaded"]
+
+        now = datetime.utcnow()
+        if cert_obj.not_valid_before_utc > now:
+            errors.append("Certificate not yet valid")
+        if cert_obj.not_valid_after_utc < now:
+            errors.append("Certificate has expired")
+
+        if key_obj is not None:
+            try:
+                cert_pub = cert_obj.public_key().public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+                key_pub = key_obj.public_key().public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+                if cert_pub != key_pub:
+                    errors.append("Private key does not match certificate")
+            except Exception as e:
+                errors.append(f"Failed to verify key match: {e}")
 
         return len(errors) == 0, errors
 
@@ -140,9 +180,17 @@ class CertManager:
         if cert is None:
             return True, None, f"Certificate '{name}' not found"
 
-        # TODO: Implement actual expiration check
+        cert_obj = cert.get("_cert")
+        if cert_obj is None:
+            return True, None, f"Certificate '{name}' not loaded"
 
-        return False, 365, f"Certificate '{name}' valid for 365 days"
+        now = datetime.utcnow()
+        not_after = cert_obj.not_valid_after_utc
+        delta = not_after - now
+        days_left = max(delta.days, 0)
+        if days_left <= warn_days:
+            return True, days_left, f"Certificate '{name}' expires in {days_left} days"
+        return False, days_left, f"Certificate '{name}' valid for {days_left} days"
 
     def get_mtls_context(self, name: str) -> dict[str, Any] | None:
         """
@@ -222,11 +270,40 @@ class CertManager:
             name,
         )
 
-        # TODO: Implement using cryptography library
-        # This would generate a new key pair and self-signed certificate
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject_parts = [x509.NameAttribute(NameOID.COMMON_NAME, common_name)]
+        if organization:
+            subject_parts.append(x509.NameAttribute(NameOID.ORGANIZATION_NAME, organization))
+        subject = issuer = x509.Name(subject_parts)
+        now = datetime.utcnow()
+
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now)
+            .not_valid_after(now + timedelta(days=validity_days))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .sign(key, hashes.SHA256())
+        )
 
         cert_path = self.cert_dir / f"{name}.pem"
         key_path = self.cert_dir / f"{name}.key"
+        cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+        key_path.write_bytes(
+            key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
 
         cert_info = {
             "name": name,
@@ -237,6 +314,13 @@ class CertManager:
             "organization": organization,
             "created_at": datetime.utcnow().isoformat(),
             "valid": True,
+            "subject": cert.subject.rfc4514_string(),
+            "issuer": cert.issuer.rfc4514_string(),
+            "not_before": cert.not_valid_before_utc.isoformat(),
+            "not_after": cert.not_valid_after_utc.isoformat(),
+            "serial_number": str(cert.serial_number),
+            "_cert": cert,
+            "_key": key,
         }
 
         self._certificates[name] = cert_info
@@ -262,7 +346,13 @@ class CertManager:
         """
         logger.info("Certificate renewal requested for '%s'", name)
 
-        # TODO: Implement certificate renewal
-        # This would integrate with ACME/Let's Encrypt or enterprise CAs
-
+        cert = self.get_certificate(name)
+        if cert is None:
+            return None
+        if cert.get("self_signed"):
+            return self.create_self_signed_certificate(
+                name=name,
+                common_name=cert.get("common_name", name),
+                organization=cert.get("organization"),
+            )
         return None

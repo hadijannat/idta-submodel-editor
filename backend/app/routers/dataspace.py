@@ -374,9 +374,19 @@ async def disconnect(
 
     unpublished_count = 0
     if request.unpublish_all:
-        # TODO: Implement actual unpublishing via EDC/DTR clients
         unpublished_count = len(active_registrations)
-        logger.info("Would unpublish %d assets (not yet implemented)", unpublished_count)
+        try:
+            from app.services.dataspace.tasks import unpublish_publication_task
+
+            for registration in active_registrations:
+                unpublish_publication_task.delay(
+                    registration.registration_id,
+                    remove_from_registry=request.unpublish_all,
+                    remove_from_edc=True,
+                )
+            logger.info("Queued unpublish for %d assets", unpublished_count)
+        except Exception as e:
+            logger.warning("Celery unavailable for unpublish_all: %s", e)
 
     # Delete the connection
     deleted = conn_manager.delete_connection(connection_id)

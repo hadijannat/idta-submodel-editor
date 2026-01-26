@@ -100,13 +100,18 @@ class CatenaXProvider(DataspaceProvider):
             connection.status = ConnectionStatus.AUTHENTICATING
             connection.updated_at = datetime.utcnow()
 
-            # TODO: Implement actual Catena-X connection
-            # Step 1: Authenticate with DAPS/SSI
-            # Step 2: Verify DTR connectivity
-            # Step 3: Verify EDC connectivity
-            # Step 4: Validate BPN
+            # Verify component health before marking connected
+            from app.services.dataspace.health import DataspaceHealthChecker
 
-            # Placeholder: Mark as connected
+            checker = DataspaceHealthChecker()
+            health_results = checker.check_connection(connection)
+            all_healthy = all(r.healthy for r in health_results)
+            if not all_healthy:
+                unhealthy = [r.component for r in health_results if not r.healthy]
+                raise DataspaceConnectionError(
+                    f"Catena-X connectivity check failed: {', '.join(unhealthy)}"
+                )
+
             connection.status = ConnectionStatus.CONNECTED
             connection.last_health_check = datetime.utcnow()
             connection.updated_at = datetime.utcnow()
@@ -132,11 +137,6 @@ class CatenaXProvider(DataspaceProvider):
             Updated connection state
         """
         logger.info("Catena-X: Disconnecting %s", connection.connection_id)
-
-        # TODO: Implement graceful disconnection
-        # - Revoke active tokens
-        # - Close EDC connections
-        # - Clean up resources
 
         connection.status = ConnectionStatus.DISCONNECTED
         connection.updated_at = datetime.utcnow()

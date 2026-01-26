@@ -353,10 +353,34 @@ class PolicyEngine:
         Returns:
             Tuple of (is_compatible, reason)
         """
-        # TODO: Implement policy compatibility checking
-        # This would compare constraints and ensure they can be satisfied together
+        valid_a, errors_a = self.validate_policy(policy_a)
+        if not valid_a:
+            return False, f"Policy A invalid: {'; '.join(errors_a)}"
+        valid_b, errors_b = self.validate_policy(policy_b)
+        if not valid_b:
+            return False, f"Policy B invalid: {'; '.join(errors_b)}"
 
-        return True, "Compatibility check not yet implemented"
+        def _extract_bpns(policy: dict[str, Any]) -> set[str]:
+            bpns: set[str] = set()
+            for perm in policy.get("permission", []):
+                for constraint in perm.get("constraint", []):
+                    left = constraint.get("leftOperand")
+                    if left not in ("BusinessPartnerNumber", "BPN", "BPNL"):
+                        continue
+                    right = constraint.get("rightOperand")
+                    if isinstance(right, list):
+                        bpns.update(right)
+                    elif isinstance(right, str):
+                        bpns.add(right)
+            return bpns
+
+        bpns_a = _extract_bpns(policy_a)
+        bpns_b = _extract_bpns(policy_b)
+
+        if bpns_a and bpns_b and not (bpns_a & bpns_b):
+            return False, "No overlapping BPN constraints"
+
+        return True, "Policies are compatible"
 
     def translate(
         self,
