@@ -2,7 +2,7 @@
  * Main application component for the IDTA Submodel Editor.
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
 import { FormProvider, useWatch } from 'react-hook-form';
 import type { TemplateInfo, TemplateVersionInfo } from './types/ui-schema';
 import type { SubmodelFormData } from './types/aas-elements';
@@ -10,15 +10,15 @@ import { useSubmodelForm } from './hooks/useSubmodelForm';
 import TemplateSelector from './components/TemplateSelector';
 import AASRenderer from './components/AASRenderer';
 import ExportPanel from './components/ExportPanel';
-import SmartMapperPage from './components/SmartMapper/SmartMapperPage';
-import { MagicImportPanel } from './components/MagicImport';
 import PCFPanel from './components/PCFPanel';
 import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
 import { PassportView } from './components/PassportMode';
-import { DataspaceConnectorPanel } from './components/DataspaceConnector';
 import { MnestixBrowser } from './components/MnestixBrowser';
 import { getTemplateVersions, getPublicSettings, type PublicSettings } from './services/api';
 import { computeCompletion } from './utils/completion';
+import { useTools } from './tools/hooks/useTools';
+import { toolRegistry } from './tools';
+import type { ToolComponentProps } from './tools/types';
 import './App.css';
 
 /**
@@ -34,6 +34,9 @@ function App() {
   const [showAASBrowser, setShowAASBrowser] = useState(false);
   const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
   const templateStatus = selectedTemplate?.status ?? 'published';
+
+  // Load tool registry
+  const { wizardSteps, isToolEnabled } = useTools();
 
   // Load public settings on mount
   useEffect(() => {
@@ -76,44 +79,6 @@ function App() {
     ? Math.round((completion.completed / completion.required) * 100)
     : 100;
 
-  const steps = [
-    {
-      id: 1,
-      title: 'Choose Template',
-      description: 'Select an IDTA template',
-    },
-    {
-      id: 2,
-      title: 'Configure Instance',
-      description: 'Review identifiers and versioning',
-    },
-    {
-      id: 3,
-      title: 'Smart Mapper',
-      description: 'Import and map CSV/XLSX data',
-    },
-    {
-      id: 4,
-      title: 'Magic Import',
-      description: 'Extract fields from PDF datasheets',
-    },
-    {
-      id: 5,
-      title: 'Fill Required Fields',
-      description: 'Complete mandatory elements',
-    },
-    {
-      id: 6,
-      title: 'Review & Export',
-      description: 'Validate and export',
-    },
-    {
-      id: 7,
-      title: 'Dataspace Publishing',
-      description: 'Publish to Manufacturing-X/Catena-X',
-    },
-  ];
-
   const handleTemplateSelect = useCallback((template: TemplateInfo) => {
     setSelectedTemplate(template);
     setSelectedVersion(null);
@@ -134,10 +99,16 @@ function App() {
         return;
       }
       if (step >= 3 && canEdit) {
+        // Check if the step's tool is enabled
+        const stepInfo = wizardSteps.find((s) => s.id === step);
+        if (stepInfo && stepInfo.toolId && !stepInfo.enabled) {
+          // Skip disabled tool steps
+          return;
+        }
         setWizardStep(step);
       }
     },
-    [canConfigure, canEdit]
+    [canConfigure, canEdit, wizardSteps]
   );
 
   useEffect(() => {
@@ -177,6 +148,108 @@ function App() {
       active = false;
     };
   }, [selectedTemplate, templateStatus]);
+
+  // Build tool component props
+  const toolProps: ToolComponentProps = useMemo(
+    () => ({
+      templateName: selectedTemplate?.name ?? '',
+      templateStatus: templateStatus as 'published' | 'deprecated' | 'local',
+      templateVersion: selectedVersion,
+      form,
+      schema,
+      onComplete: () => handleStepChange(wizardStep + 1),
+      onNavigate: handleStepChange,
+    }),
+    [selectedTemplate, templateStatus, selectedVersion, form, schema, wizardStep, handleStepChange]
+  );
+
+  /**
+   * Render a tool step using the registry.
+   */
+  const renderToolStep = (toolId: string, backStep: number, nextStep: number) => {
+    const tool = toolRegistry.getTool(toolId);
+
+    if (!tool) {
+      return (
+        <div className="wizard-panel">
+          <div className="app-error" role="alert">
+            <h2>Tool Not Available</h2>
+            <p>The tool "{toolId}" is not available.</p>
+          </div>
+          <div className="wizard-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleStepChange(backStep)}
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (!tool.metadata.enabled) {
+      return (
+        <div className="wizard-panel">
+          <div className="app-welcome">
+            <h2>{tool.metadata.name} is disabled</h2>
+            <p>{tool.metadata.description}</p>
+          </div>
+          <div className="wizard-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleStepChange(backStep)}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => handleStepChange(nextStep)}
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const ToolComponent = tool.component;
+
+    return (
+      <div className="wizard-panel">
+        <Suspense
+          fallback={
+            <div className="app-loading">
+              <span className="spinner" />
+              <p>Loading {tool.metadata.name}...</p>
+            </div>
+          }
+        >
+          <ToolComponent {...toolProps} />
+        </Suspense>
+
+        <div className="wizard-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => handleStepChange(backStep)}
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => handleStepChange(nextStep)}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const renderStepContent = () => {
     if (wizardStep === 1) {
@@ -364,50 +437,17 @@ function App() {
       );
     }
 
+    // Step 3: Smart Mapper (dynamic tool)
     if (wizardStep === 3) {
-      return (
-        <SmartMapperPage
-          schema={schema}
-          templateName={selectedTemplate.name}
-          templateStatus={templateStatus}
-          templateVersion={selectedVersion}
-          form={form}
-          onContinue={() => handleStepChange(4)}
-        />
-      );
+      return renderToolStep('smart-mapper', 2, 4);
     }
 
+    // Step 4: Magic Import (dynamic tool)
     if (wizardStep === 4) {
-      return (
-        <div className="wizard-panel">
-          <MagicImportPanel
-            templateName={selectedTemplate.name}
-            templateStatus={templateStatus}
-            templateVersion={selectedVersion}
-            form={form}
-            schema={schema}
-          />
-
-          <div className="wizard-actions">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => handleStepChange(3)}
-            >
-              Back to Smart Mapper
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => handleStepChange(5)}
-            >
-              Continue to fields
-            </button>
-          </div>
-        </div>
-      );
+      return renderToolStep('magic-import', 3, 5);
     }
 
+    // Step 5: Fill Required Fields (hardcoded - contains form editor)
     if (wizardStep === 5) {
       const metadataIdShort =
         watchedValues?.metadata &&
@@ -489,6 +529,7 @@ function App() {
       );
     }
 
+    // Step 6: Review & Export (hardcoded - contains validation UI)
     if (wizardStep === 6) {
       return (
         <div className="wizard-panel">
@@ -568,43 +609,23 @@ function App() {
             >
               Back to fields
             </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => handleStepChange(7)}
-            >
-              Continue to Dataspace Publishing
-            </button>
+            {isToolEnabled('dataspace-connector') && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleStepChange(7)}
+              >
+                Continue to Dataspace Publishing
+              </button>
+            )}
           </div>
         </div>
       );
     }
 
+    // Step 7: Dataspace Connector (dynamic tool)
     if (wizardStep === 7) {
-      return (
-        <div className="wizard-panel">
-          <DataspaceConnectorPanel
-            templateName={selectedTemplate.name}
-            templateStatus={templateStatus}
-            templateVersion={selectedVersion}
-            form={form}
-            schema={schema}
-            onPublished={() => {
-              // Optionally show success message or navigate
-            }}
-          />
-
-          <div className="wizard-actions">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => handleStepChange(6)}
-            >
-              Back to Review & Export
-            </button>
-          </div>
-        </div>
-      );
+      return renderToolStep('dataspace-connector', 6, 7);
     }
 
     return null;
@@ -648,10 +669,12 @@ function App() {
           <div className="wizard-card wizard-stepper">
             <h3>Wizard Steps</h3>
             <div className="wizard-step-list">
-              {steps.map((step) => {
+              {wizardSteps.map((step) => {
+                // Determine if step is disabled
                 const isDisabled =
                   (step.id === 2 && !canConfigure) ||
-                  (step.id >= 3 && !canEdit);
+                  (step.id >= 3 && !canEdit) ||
+                  (step.toolId !== null && !step.enabled);
                 const isActive = wizardStep === step.id;
                 const isCompleted = wizardStep > step.id;
 
@@ -661,7 +684,7 @@ function App() {
                     type="button"
                     className={`wizard-step${isActive ? ' active' : ''}${
                       isCompleted ? ' completed' : ''
-                    }`}
+                    }${!step.enabled && step.toolId ? ' disabled-tool' : ''}`}
                     onClick={() => handleStepChange(step.id)}
                     disabled={isDisabled}
                   >
@@ -672,6 +695,11 @@ function App() {
                       {step.id === 5 && schema && (
                         <span className="wizard-step-meta">
                           Required remaining: {requiredRemaining}
+                        </span>
+                      )}
+                      {step.toolId && !step.enabled && (
+                        <span className="wizard-step-meta wizard-step-disabled">
+                          (disabled)
                         </span>
                       )}
                     </span>

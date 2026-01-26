@@ -27,7 +27,8 @@ from app.config import get_settings
 from app.errors import APIError, ErrorCode, ErrorResponse
 from app.metrics import set_app_info
 from app.middleware.correlation import CorrelationIdMiddleware, get_correlation_id
-from app.routers import editor, export, templates, semantic, mapper, pcf, magic_import, dataspace
+from app.routers import editor, export, templates, semantic, mapper, pcf, magic_import, dataspace, tools
+from app.services.tools.registry import initialize_registry, shutdown_registry
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,21 @@ async def lifespan(app: FastAPI):
     # Create temp directory for file processing
     Path("./tmp").mkdir(parents=True, exist_ok=True)
 
+    # Initialize tool registry
+    # This discovers and initializes all builtin tools
+    logger.info("Initializing tool registry...")
+    registry = await initialize_registry()
+    logger.info(
+        "Tool registry initialized with %d tools",
+        len(registry.get_all()),
+    )
+
     yield
 
-    # Cleanup on shutdown (if needed)
+    # Cleanup on shutdown
+    logger.info("Shutting down tool registry...")
+    await shutdown_registry()
+    logger.info("Tool registry shut down")
 
 
 def create_application() -> FastAPI:
@@ -118,6 +131,7 @@ def create_application() -> FastAPI:
     app.include_router(mapper.router)
     app.include_router(pcf.router)
     app.include_router(magic_import.router)
+    app.include_router(tools.router)
 
     # Conditionally include dataspace router based on feature flag
     if settings.dataspace_enabled:

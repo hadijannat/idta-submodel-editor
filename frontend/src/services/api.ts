@@ -428,3 +428,325 @@ export interface PublicSettings {
 export async function getPublicSettings(): Promise<PublicSettings> {
   return apiFetch<PublicSettings>('/api/settings');
 }
+
+// ============================================================================
+// Tools API
+// ============================================================================
+
+/**
+ * Tool metadata from the backend API.
+ */
+export interface ToolMetadataResponse {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  category: string;
+  wizard_step: number | null;
+  feature_flag: string | null;
+  requires_auth: boolean;
+  dependencies: string[];
+  enabled: boolean;
+  initialized: boolean;
+}
+
+/**
+ * Tool health status.
+ */
+export interface ToolHealthResponse {
+  tool_id: string;
+  healthy: boolean;
+  message: string | null;
+}
+
+/**
+ * Health status for all tools.
+ */
+export interface ToolsHealthResponse {
+  tools: Record<string, ToolHealthResponse>;
+  all_healthy: boolean;
+}
+
+/**
+ * Dependency check result.
+ */
+export interface ToolDependencyResponse {
+  id: string;
+  status: string;
+  message: string | null;
+}
+
+/**
+ * Full capability report for a tool.
+ */
+export interface ToolCapabilityReportResponse {
+  tool_id: string;
+  enabled: boolean;
+  initialized: boolean;
+  healthy: boolean;
+  health_message: string | null;
+  dependencies: ToolDependencyResponse[];
+  capabilities: Record<string, unknown>;
+  all_dependencies_satisfied: boolean;
+}
+
+/**
+ * List all registered tools.
+ *
+ * @param enabledOnly - If true, only return enabled tools
+ * @param category - Filter by category (core, import, export, integration, analytics)
+ */
+export async function getTools(
+  enabledOnly = false,
+  category?: string
+): Promise<ToolMetadataResponse[]> {
+  const params = new URLSearchParams();
+  if (enabledOnly) params.set('enabled_only', 'true');
+  if (category) params.set('category', category);
+  const query = params.toString();
+  return apiFetch<ToolMetadataResponse[]>(
+    `/api/tools${query ? `?${query}` : ''}`
+  );
+}
+
+/**
+ * Get the full tool manifest for frontend consumption.
+ *
+ * Returns all tools with their metadata and runtime status.
+ */
+export async function getToolManifest(): Promise<ToolMetadataResponse[]> {
+  return apiFetch<ToolMetadataResponse[]>('/api/tools/manifest');
+}
+
+/**
+ * Check health of all enabled tools.
+ */
+export async function getToolsHealth(): Promise<ToolsHealthResponse> {
+  return apiFetch<ToolsHealthResponse>('/api/tools/health');
+}
+
+/**
+ * Get detailed information about a specific tool.
+ *
+ * @param toolId - The tool's unique identifier
+ */
+export async function getToolById(
+  toolId: string
+): Promise<ToolCapabilityReportResponse> {
+  return apiFetch<ToolCapabilityReportResponse>(
+    `/api/tools/${encodeURIComponent(toolId)}`
+  );
+}
+
+/**
+ * Check health of a specific tool.
+ *
+ * @param toolId - The tool's unique identifier
+ */
+export async function getToolHealth(toolId: string): Promise<ToolHealthResponse> {
+  return apiFetch<ToolHealthResponse>(
+    `/api/tools/${encodeURIComponent(toolId)}/health`
+  );
+}
+
+/**
+ * Get capabilities provided by a specific tool.
+ *
+ * @param toolId - The tool's unique identifier
+ */
+export async function getToolCapabilities(
+  toolId: string
+): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(
+    `/api/tools/${encodeURIComponent(toolId)}/capabilities`
+  );
+}
+
+// ============================================================================
+// Template Ops API
+// ============================================================================
+
+/**
+ * Element change in a diff.
+ */
+export interface ElementChange {
+  path: string;
+  change_type: 'added' | 'removed' | 'modified' | 'moved' | 'renamed';
+  old_value: string | null;
+  new_value: string | null;
+  details: Record<string, unknown> | null;
+}
+
+/**
+ * Cardinality change in a diff.
+ */
+export interface CardinalityChange {
+  path: string;
+  old_cardinality: string;
+  new_cardinality: string;
+  breaking: boolean;
+}
+
+/**
+ * Semantic change in a diff.
+ */
+export interface SemanticChange {
+  path: string;
+  old_semantic_id: string | null;
+  new_semantic_id: string | null;
+}
+
+/**
+ * Result of template diff operation.
+ */
+export interface TemplateDiffResult {
+  source_template: string;
+  source_version: string | null;
+  target_template: string;
+  target_version: string | null;
+  elements_added: string[];
+  elements_removed: string[];
+  elements_modified: ElementChange[];
+  cardinality_changes: CardinalityChange[];
+  semantic_changes: SemanticChange[];
+  is_breaking: boolean;
+  summary: string;
+}
+
+/**
+ * Migration mapping item.
+ */
+export interface MigrationMappingItem {
+  source_path: string;
+  target_path: string;
+  confidence: number;
+  match_reason: 'exact' | 'semantic' | 'fuzzy' | 'manual';
+  transform: string | null;
+}
+
+/**
+ * Migration plan between template versions.
+ */
+export interface MigrationPlan {
+  source_template: string;
+  source_version: string | null;
+  target_template: string;
+  target_version: string | null;
+  auto_mappings: MigrationMappingItem[];
+  unmapped_source: string[];
+  unmapped_target: string[];
+  mapping_coverage: number;
+  warnings: string[];
+}
+
+/**
+ * Validation diagnostic item.
+ */
+export interface ValidationDiagnostic {
+  path: string;
+  severity: 'error' | 'warning' | 'info';
+  code: string;
+  message: string;
+  suggestion: string | null;
+}
+
+/**
+ * Validation diagnostics for a template.
+ */
+export interface ValidationDiagnostics {
+  template_name: string;
+  template_version: string | null;
+  valid: boolean;
+  errors: ValidationDiagnostic[];
+  warnings: ValidationDiagnostic[];
+  info: ValidationDiagnostic[];
+  element_count: number;
+  semantic_coverage: number;
+  conformance_level: string | null;
+}
+
+/**
+ * Diff two template versions.
+ */
+export async function diffTemplates(
+  sourceTemplate: string,
+  targetTemplate: string,
+  options?: {
+    sourceVersion?: string;
+    sourceStatus?: 'published' | 'deprecated' | 'local';
+    targetVersion?: string;
+    targetStatus?: 'published' | 'deprecated' | 'local';
+    includeSemanticChanges?: boolean;
+  }
+): Promise<TemplateDiffResult> {
+  return apiFetch<TemplateDiffResult>('/api/template-ops/diff', {
+    method: 'POST',
+    body: JSON.stringify({
+      source_template: sourceTemplate,
+      source_version: options?.sourceVersion,
+      source_status: options?.sourceStatus || 'published',
+      target_template: targetTemplate,
+      target_version: options?.targetVersion,
+      target_status: options?.targetStatus || 'published',
+      include_semantic_changes: options?.includeSemanticChanges ?? true,
+    }),
+  });
+}
+
+/**
+ * Generate migration plan between template versions.
+ */
+export async function generateMigrationPlan(
+  sourceTemplate: string,
+  targetTemplate: string,
+  options?: {
+    sourceVersion?: string;
+    sourceStatus?: 'published' | 'deprecated' | 'local';
+    targetVersion?: string;
+    targetStatus?: 'published' | 'deprecated' | 'local';
+    useSemantics?: boolean;
+    minConfidence?: number;
+  }
+): Promise<MigrationPlan> {
+  return apiFetch<MigrationPlan>('/api/template-ops/migrate', {
+    method: 'POST',
+    body: JSON.stringify({
+      source_template: sourceTemplate,
+      source_version: options?.sourceVersion,
+      source_status: options?.sourceStatus || 'published',
+      target_template: targetTemplate,
+      target_version: options?.targetVersion,
+      target_status: options?.targetStatus || 'published',
+      use_semantics: options?.useSemantics ?? true,
+      min_confidence: options?.minConfidence ?? 0.5,
+    }),
+  });
+}
+
+/**
+ * Run comprehensive validation on a template.
+ */
+export async function validateTemplate(
+  templateName: string,
+  options?: {
+    templateVersion?: string;
+    templateStatus?: 'published' | 'deprecated' | 'local';
+    checkSemanticIds?: boolean;
+    checkCardinality?: boolean;
+    checkValueTypes?: boolean;
+    checkConformance?: boolean;
+  }
+): Promise<ValidationDiagnostics> {
+  return apiFetch<ValidationDiagnostics>('/api/template-ops/validate', {
+    method: 'POST',
+    body: JSON.stringify({
+      template_name: templateName,
+      template_version: options?.templateVersion,
+      template_status: options?.templateStatus || 'published',
+      check_semantic_ids: options?.checkSemanticIds ?? true,
+      check_cardinality: options?.checkCardinality ?? true,
+      check_value_types: options?.checkValueTypes ?? true,
+      check_conformance: options?.checkConformance ?? true,
+    }),
+  });
+}

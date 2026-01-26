@@ -16,6 +16,8 @@ from app.services.hydrator import HydratorService, PDFExportService
 from app.services.parser import ParserService
 from app.services.semantic import SemanticService
 from app.services.mapper import MapperService
+from app.services.tools.registry import ToolRegistry
+from app.services.tools.registry import get_tool_registry as _get_tool_registry
 
 # Security scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
@@ -75,6 +77,22 @@ def get_pdf_service() -> PDFExportService | None:
         return PDFExportService()
     except ImportError:
         return None
+
+
+def get_tool_registry() -> ToolRegistry:
+    """
+    Get the tool registry instance.
+
+    The registry is initialized during app startup and provides access
+    to all registered tools and their capabilities.
+
+    Returns:
+        The global ToolRegistry instance
+
+    Raises:
+        RuntimeError: If the registry hasn't been initialized
+    """
+    return _get_tool_registry()
 
 
 class OIDCValidator:
