@@ -7,7 +7,7 @@ Upload a PDF datasheet or nameplate and let an LLM extract field values directly
 ## Key Capabilities
 
 - **Privacy-First Extraction**: Only relevant snippets are sent to the LLM, not the full document
-- **Multi-Provider LLM Support**: OpenAI (GPT-4o), Anthropic (Claude), or local Ollama models
+- **Multi-Provider LLM Support**: OpenAI (GPT-4o), Anthropic (Claude), OpenRouter (100+ models), or local Ollama models
 - **OCR Support**: Tesseract-based OCR for scanned PDFs with configurable language and DPI
 - **Confidence Scoring**: 4-signal weighted formula (LLM confidence, evidence match, OCR quality, format rules)
 - **Source Highlighting**: Click any extracted field to highlight the exact source region in the PDF viewer
@@ -80,11 +80,13 @@ Jobs progress through states: `UPLOADED` → `INDEXING` → `OCR` → `EXTRACTIN
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MAGIC_IMPORT_ENABLED` | Enable Magic Import feature | true |
-| `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai, anthropic, local) | openai |
+| `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai, anthropic, openrouter, local) | openai |
 | `MAGIC_IMPORT_LLM_MODEL` | Model name | gpt-4o-mini |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key | - |
+| `OPENROUTER_API_KEY` | OpenRouter API key | - |
 | `OLLAMA_BASE_URL` | Ollama server URL | http://localhost:11434 |
+| `SETTINGS_STORAGE_DIR` | Directory for encrypted settings | ./cache/settings |
 | `MAGIC_IMPORT_CONFIDENCE_THRESHOLD` | Flag fields below this score | 0.80 |
 | `MAGIC_IMPORT_OCR_ENABLED` | Enable OCR fallback | true |
 | `MAGIC_IMPORT_OCR_LANGUAGE` | Tesseract language codes | eng+deu |
@@ -119,6 +121,66 @@ export MAGIC_IMPORT_LLM_PROVIDER=local
 export MAGIC_IMPORT_LLM_MODEL=llama3
 export OLLAMA_BASE_URL=http://localhost:11434
 ```
+
+### OpenRouter
+
+```bash
+export MAGIC_IMPORT_LLM_PROVIDER=openrouter
+export MAGIC_IMPORT_LLM_MODEL=anthropic/claude-3.5-sonnet  # or openai/gpt-4o, google/gemini-pro
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+## LLM Settings UI
+
+Configure LLM providers directly in the application without editing environment files.
+
+### Accessing Settings
+
+1. Navigate to **Magic Import** (Step 4 in wizard)
+2. Click **"Configure Now →"** in the provider status bar
+3. The LLM Provider Configuration panel opens
+
+### Provider Selection
+
+Four providers are supported:
+
+| Provider | Description | API Key Required |
+|----------|-------------|------------------|
+| **OpenAI** | GPT-4o, GPT-4o-mini, GPT-4 Turbo | Yes |
+| **Anthropic** | Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus | Yes |
+| **OpenRouter** | 100+ models via unified API (Claude, GPT-4, Gemini, Llama) | Yes |
+| **Local (Ollama)** | Self-hosted models (Llama, Mistral, Mixtral) | No |
+
+### Configuration Workflow
+
+1. **Select Provider** — Click a provider card
+2. **Enter API Key** — Paste your key (masked for security)
+3. **Validate** — Click "Validate" to test the connection
+4. **Save** — Click "Save" to store encrypted credentials
+5. **Select Model** — Choose from provider-specific models
+
+### Security
+
+- API keys are **encrypted at rest** using Fernet (AES-128-CBC)
+- Keys are **validated** before storage
+- Keys are displayed **masked** (e.g., `sk-...abc`)
+- Keys are **never logged** or exported
+
+### Advanced Settings
+
+Expand "Advanced Settings" to configure:
+
+- **Confidence Threshold** (50-100%) — Minimum confidence for auto-accept
+- **Enable OCR** — Extract text from scanned documents
+
+### Status Indicators
+
+| Status | Indicator | Meaning |
+|--------|-----------|---------|
+| Connected | 🟢 | Provider configured and healthy |
+| Checking | 🟡 | Validating connection |
+| Error | 🔴 | Connection failed |
+| Not configured | ⚪ | No API key set |
 
 ## API Endpoints
 

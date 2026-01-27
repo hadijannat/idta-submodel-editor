@@ -45,7 +45,7 @@ open http://localhost:8080
 
 **Optional features requiring setup:**
 
-- **Magic Import** (PDF extraction): Requires `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
+- **Magic Import** (PDF extraction): Configure via UI or set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`
 - **Dataspace Publishing**: Requires Manufacturing-X infrastructure
 - **Online Semantic Lookup**: Requires ECLASS webservice credentials
 - **PLC4X Bridge**: Requires industrial PLC connectivity
@@ -66,6 +66,7 @@ open http://localhost:8080
 
 - **[Smart Mapper](features/smart-mapper.md)** — CSV/XLSX bulk import with column profiling and reusable recipes
 - **[Magic Import](features/magic-import.md)** — PDF-to-AAS extraction with LLM and OCR support
+    - **In-App Configuration** — Configure LLM providers via UI with encrypted API key storage
     - **Confidence Scoring** — 4-signal hybrid scoring (LLM, Localizer, OCR, Rules) with structured reason codes
     - **Document Intelligence** — Auto-detection of text/scanned/mixed PDFs with 70+ engineering unit normalization
     - **Validation & Provenance** — Schema validation, field evidence display, batch approve/reject operations

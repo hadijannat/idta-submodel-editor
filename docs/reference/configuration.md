@@ -69,11 +69,14 @@ Complete environment variable reference for the IDTA Submodel Template Editor.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MAGIC_IMPORT_ENABLED` | Enable Magic Import feature | true |
-| `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai, anthropic, local) | openai |
+| `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai, anthropic, openrouter, local) | openai |
 | `MAGIC_IMPORT_LLM_MODEL` | Model name | gpt-4o-mini |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key | - |
+| `OPENROUTER_API_KEY` | OpenRouter API key for 100+ model access | - |
 | `OLLAMA_BASE_URL` | Ollama server URL | http://localhost:11434 |
+| `SETTINGS_STORAGE_DIR` | Directory for encrypted LLM settings | ./cache/settings |
+| `SETTINGS_ENCRYPTION_KEY` | Fernet key for API key encryption (auto-generated if not set) | - |
 | `MAGIC_IMPORT_CONFIDENCE_THRESHOLD` | Flag fields below this score | 0.80 |
 | `MAGIC_IMPORT_OCR_ENABLED` | Enable OCR fallback | true |
 | `MAGIC_IMPORT_OCR_LANGUAGE` | Tesseract language codes | eng+deu |

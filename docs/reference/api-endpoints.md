@@ -150,6 +150,19 @@ Full API documentation is available at `/api/docs` (Swagger UI) and `/api/redoc`
 | `DELETE /api/magic-import/jobs/{id}` | Clean up job |
 | `GET /api/magic-import/jobs` | List recent jobs |
 | `POST /api/magic-import/health` | Service health check |
+| `GET /api/magic-import/provider-status` | Quick status check for current provider |
+
+---
+
+## Settings
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/settings/llm` | Get current LLM configuration (keys masked) |
+| `PUT /api/settings/llm` | Update LLM provider settings |
+| `POST /api/settings/llm/validate` | Validate API credentials without storing |
+| `GET /api/settings/llm/models/{provider}` | Get available models for a provider |
+| `DELETE /api/settings/llm/api-key/{provider}` | Delete stored API key for provider |
 
 ---
 
