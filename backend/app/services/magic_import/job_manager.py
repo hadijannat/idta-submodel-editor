@@ -47,6 +47,7 @@ ArtifactType = Literal[
     "snippets",
     "hints",
     "retrieval_diagnostics",
+    "quality_metrics",
 ]
 
 

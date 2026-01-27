@@ -3,26 +3,62 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.dependencies import get_current_user
 from app.errors import APIError, ErrorCode
 from app.schemas.magic_import import (
+    EvidenceQuality,
+    ExtractionOutcome,
+    FieldTypeCategory,
     JobStatus,
     MagicImportJob,
     MagicImportResult,
+    QualityMetrics,
     ReExtractRequest,
 )
 from app.services.magic_import.job_manager import JobManager
+from app.services.magic_import.outcome_tracker import OutcomeTracker
 from app.utils.upload_security import FileType, UploadValidator, read_upload_file
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/magic-import", tags=["magic-import"])
+
+
+class RecordCorrectionRequest(BaseModel):
+    """Request model for recording a user correction."""
+
+    path: str = Field(description="idShortPath of the field")
+    final_value: str | None = Field(description="Final value after user correction")
+    action: Literal["accepted", "edited", "deleted", "rejected"] = Field(
+        description="Action taken by user on extraction"
+    )
+    # These fields come from the existing extraction
+    original_value: str | None = Field(
+        default=None, description="Original extracted value"
+    )
+    original_confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Confidence of original extraction"
+    )
+    had_evidence: bool = Field(
+        default=False, description="Whether original extraction had evidence"
+    )
+    evidence_quality: EvidenceQuality = Field(
+        default=EvidenceQuality.NONE,
+        description="Quality of evidence for original extraction",
+    )
+    field_type: FieldTypeCategory = Field(
+        default=FieldTypeCategory.TEXT_SHORT, description="Category of the field type"
+    )
+    was_required: bool = Field(
+        default=False, description="Whether the field was required"
+    )
 
 
 def get_job_manager() -> JobManager:
@@ -488,3 +524,105 @@ async def health_check() -> dict:
         logger.debug("Celery health check failed: %s", e)
 
     return status
+
+
+# ============================================================================
+# Quality Metrics Endpoints
+# ============================================================================
+
+
+@router.get("/jobs/{job_id}/quality-metrics", response_model=QualityMetrics)
+async def get_quality_metrics(
+    job_id: str,
+    job_manager: Annotated[JobManager, Depends(get_job_manager)] = None,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> QualityMetrics:
+    """Get quality metrics for a completed job."""
+    # Check job exists and is DONE
+    job = job_manager.get_job(job_id)
+    if job is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
+
+    if job.status != JobStatus.DONE:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=f"Job is not complete. Current status: {job.status}",
+            detail={"job_id": job_id, "status": job.status},
+        )
+
+    # Load quality_metrics artifact
+    metrics_data = job_manager.load_artifact(job_id, "quality_metrics")
+    if metrics_data is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Quality metrics not found for this job",
+            detail={"job_id": job_id},
+        )
+
+    return QualityMetrics.model_validate(metrics_data)
+
+
+@router.post("/jobs/{job_id}/corrections", response_model=ExtractionOutcome)
+async def record_correction(
+    job_id: str,
+    request: RecordCorrectionRequest,
+    job_manager: Annotated[JobManager, Depends(get_job_manager)] = None,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> ExtractionOutcome:
+    """Record a user correction for a field extraction."""
+    # Check job exists
+    job = job_manager.get_job(job_id)
+    if job is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
+
+    # Use OutcomeTracker to record correction
+    tracker = OutcomeTracker()
+    outcome = tracker.record_correction(
+        job_id=job_id,
+        field_path=request.path,
+        original_value=request.original_value,
+        final_value=request.final_value,
+        original_confidence=request.original_confidence,
+        action=request.action,
+        had_evidence=request.had_evidence,
+        evidence_quality=request.evidence_quality,
+        field_type=request.field_type,
+        was_required=request.was_required,
+    )
+
+    return outcome
+
+
+@router.get("/analytics/correction-rates")
+async def get_correction_rates(
+    template_name: str | None = None,
+    days: int = 30,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> dict:
+    """
+    Get historical correction rates for threshold tuning.
+
+    Returns correction rates grouped by confidence bucket to help
+    determine optimal confidence thresholds for auto-apply features.
+
+    Args:
+        template_name: Optional filter by template name
+        days: Number of days to look back (default 30)
+
+    Returns:
+        Dict with bucket names as keys, containing total, accepted,
+        edited, deleted, rejected counts and correction_rate.
+    """
+    tracker = OutcomeTracker()
+    return tracker.compute_correction_rates(
+        template_name=template_name,
+        days=days,
+    )
