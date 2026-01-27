@@ -152,7 +152,7 @@ class ToolContext:
         """
         from app.services import settings_service
 
-        return settings_service.get_effective_feature_flag(flag)
+        return settings_service.get_effective_feature_flag(flag, settings=self._settings)
 
     def get_setting(self, name: str, default: object = None) -> object:
         """

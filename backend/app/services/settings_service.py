@@ -140,11 +140,14 @@ def _get_settings_path() -> Path:
     return settings.settings_storage_dir / "llm_settings.json"
 
 
-def _get_feature_flags_path() -> Path:
+def _get_feature_flags_path(settings: object | None = None) -> Path:
     """Get the path to the feature flags JSON file."""
-    settings = get_settings()
-    settings.settings_storage_dir.mkdir(parents=True, exist_ok=True)
-    return settings.settings_storage_dir / "feature_flags.json"
+    resolved_settings = settings if settings is not None else get_settings()
+    storage_dir = getattr(resolved_settings, "settings_storage_dir", None)
+    if not storage_dir:
+        storage_dir = get_settings().settings_storage_dir
+    Path(storage_dir).mkdir(parents=True, exist_ok=True)
+    return Path(storage_dir) / "feature_flags.json"
 
 
 def has_llm_settings(settings: object | None = None) -> bool:
@@ -188,9 +191,12 @@ def save_llm_settings(settings: LLMSettings) -> None:
         raise
 
 
-def load_feature_flags() -> FeatureFlags:
+def load_feature_flags(settings: object | None = None) -> FeatureFlags:
     """Load runtime feature flags from storage."""
-    path = _get_feature_flags_path()
+    if settings is not None and not hasattr(settings, "settings_storage_dir"):
+        return FeatureFlags()
+
+    path = _get_feature_flags_path(settings)
 
     if not path.exists():
         return FeatureFlags()
@@ -203,9 +209,9 @@ def load_feature_flags() -> FeatureFlags:
         return FeatureFlags()
 
 
-def save_feature_flags(flags: FeatureFlags) -> None:
+def save_feature_flags(flags: FeatureFlags, settings: object | None = None) -> None:
     """Save runtime feature flags to storage."""
-    path = _get_feature_flags_path()
+    path = _get_feature_flags_path(settings)
 
     try:
         path.write_text(flags.model_dump_json(indent=2))
@@ -228,21 +234,21 @@ def update_feature_flags(
     return flags
 
 
-def get_effective_feature_flag(flag_name: str) -> bool:
+def get_effective_feature_flag(flag_name: str, settings: object | None = None) -> bool:
     """
     Resolve a feature flag using stored overrides with env fallback.
 
     If a stored value exists, it takes precedence. Otherwise, fall back
     to application settings or default to True.
     """
-    flags = load_feature_flags()
+    flags = load_feature_flags(settings)
     if hasattr(flags, flag_name):
         value = getattr(flags, flag_name)
         if value is not None:
             return value
 
-    settings = get_settings()
-    return getattr(settings, flag_name, True)
+    resolved_settings = settings if settings is not None else get_settings()
+    return getattr(resolved_settings, flag_name, True)
 
 
 def get_provider_config(provider: ProviderType) -> LLMProviderConfig | None:
