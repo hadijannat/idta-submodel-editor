@@ -31,6 +31,35 @@ magic_import_job_duration_seconds = Histogram(
     buckets=(1, 5, 10, 30, 60, 120, 300, 600),  # up to 10 minutes
 )
 
+# Quality score distribution histogram
+magic_import_quality_score = Histogram(
+    "magic_import_quality_score",
+    "Distribution of quality scores",
+    ["template_name", "metric_type"],  # metric_type: overall, weighted, evidence_ratio, grounding_rate
+    buckets=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0),
+)
+
+# Mismatch detection counter
+magic_import_mismatch_detected = Counter(
+    "magic_import_mismatch_detected_total",
+    "Template-document mismatches detected",
+    ["template_name", "severity"],  # severity: proceed, warn, abort
+)
+
+# Auto-apply eligibility counter
+magic_import_auto_apply = Counter(
+    "magic_import_auto_apply_total",
+    "Fields eligible for auto-apply",
+    ["template_name", "eligible"],  # eligible: true, false
+)
+
+# Evidence quality distribution counter
+magic_import_evidence_quality = Counter(
+    "magic_import_evidence_quality_total",
+    "Evidence quality distribution",
+    ["quality_type", "template_name"],  # quality_type: TABLE_STRUCTURED, TEXT_GROUNDED, etc.
+)
+
 # Dataspace publication metrics
 dataspace_publications_total = Counter(
     "dataspace_publications_total",
@@ -170,3 +199,63 @@ def record_validation(template_name: str, has_errors: bool, has_warnings: bool) 
 def record_export(format_type: str, template_name: str) -> None:
     """Record an export."""
     export_total.labels(format=format_type, template_name=template_name).inc()
+
+
+def record_quality_metrics(
+    template_name: str,
+    quality_metrics: "QualityMetrics",
+) -> None:
+    """Record quality metrics to Prometheus.
+
+    Args:
+        template_name: Name of the template being processed
+        quality_metrics: QualityMetrics object from MetricsCalculator
+    """
+    from app.schemas.magic_import import QualityMetrics as QualityMetricsSchema
+
+    # Record quality scores as histogram observations
+    magic_import_quality_score.labels(
+        template_name=template_name,
+        metric_type="overall"
+    ).observe(quality_metrics.overall_confidence)
+
+    magic_import_quality_score.labels(
+        template_name=template_name,
+        metric_type="weighted"
+    ).observe(quality_metrics.weighted_confidence)
+
+    magic_import_quality_score.labels(
+        template_name=template_name,
+        metric_type="evidence_ratio"
+    ).observe(quality_metrics.evidence_ratio)
+
+    magic_import_quality_score.labels(
+        template_name=template_name,
+        metric_type="grounding_rate"
+    ).observe(quality_metrics.grounding_rate)
+
+    # Record mismatch detection
+    if quality_metrics.mismatch_metrics:
+        magic_import_mismatch_detected.labels(
+            template_name=template_name,
+            severity=quality_metrics.mismatch_metrics.recommended_action
+        ).inc()
+
+    # Record auto-apply stats and evidence quality for each field
+    for field in quality_metrics.field_metrics:
+        # Check eligibility based on default thresholds
+        eligible = (
+            "true"
+            if field.confidence >= 0.95 and field.grounding_verified
+            else "false"
+        )
+        magic_import_auto_apply.labels(
+            template_name=template_name,
+            eligible=eligible
+        ).inc()
+
+        # Record evidence quality
+        magic_import_evidence_quality.labels(
+            quality_type=field.evidence_quality.value,
+            template_name=template_name
+        ).inc()

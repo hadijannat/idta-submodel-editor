@@ -29,6 +29,7 @@ from app.config import get_settings
 from app.metrics import (
     magic_import_job_duration_seconds,
     record_magic_import_job,
+    record_quality_metrics,
 )
 from app.schemas.magic_import import (
     JobStatus,
@@ -524,6 +525,12 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         )
 
         job_manager.save_artifact(job_id, "quality_metrics", quality_metrics)
+
+        # Record quality metrics to Prometheus
+        record_quality_metrics(
+            template_name=job.template_name,
+            quality_metrics=quality_metrics,
+        )
 
         # ================================================================
         # Step 8: Validate against template schema
