@@ -121,6 +121,9 @@ class OutcomeTracker:
         evidence_quality: EvidenceQuality,
         field_type: FieldTypeCategory,
         was_required: bool,
+        template_name: str | None = None,
+        template_status: str | None = None,
+        template_version: str | None = None,
     ) -> ExtractionOutcome:
         """
         Record a user correction and return the outcome record.
@@ -158,6 +161,9 @@ class OutcomeTracker:
 
         outcome = ExtractionOutcome(
             job_id=job_id,
+            template_name=template_name,
+            template_status=template_status,
+            template_version=template_version,
             recorded_at=now,
             field_path=field_path,
             original_value=original_value,
@@ -255,6 +261,11 @@ class OutcomeTracker:
                         # Apply job_id filter
                         if job_id is not None and outcome.job_id != job_id:
                             continue
+                        if (
+                            template_name is not None
+                            and outcome.template_name != template_name
+                        ):
+                            continue
 
                         outcomes.append(outcome)
                     except (json.JSONDecodeError, ValueError):
@@ -306,6 +317,12 @@ class OutcomeTracker:
                 start_date=start_date,
                 end_date=end_date,
             )
+        elif template_name is not None:
+            outcomes = [
+                outcome
+                for outcome in outcomes
+                if outcome.template_name == template_name
+            ]
 
         # Initialize buckets
         results: dict[str, dict] = {}

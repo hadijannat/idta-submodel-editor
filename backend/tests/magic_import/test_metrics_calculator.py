@@ -787,8 +787,9 @@ class TestMismatchMetrics:
             high_quality_extractions, sample_hints, None
         )
 
-        # Without diagnostics, keyword match ratio defaults to 1.0
-        assert metrics.keyword_match_ratio == 1.0
+        # Without diagnostics, keyword match ratio is unavailable
+        assert metrics.keyword_match_ratio == 0.0
+        assert "Keyword match ratio unavailable" in metrics.mismatch_indicators
         assert metrics.extraction_yield > 0
 
 

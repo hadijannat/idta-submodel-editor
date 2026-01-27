@@ -225,7 +225,9 @@ class MetricsCalculator:
         )
 
         # Compute auto-apply eligibility
-        auto_apply_eligible = self._compute_auto_apply_eligibility(field_metrics)
+        auto_apply_eligible = self._compute_auto_apply_eligibility(
+            field_metrics, mismatch_metrics
+        )
 
         # Compute error rates by field type
         error_rates = self._compute_error_rates_by_type(field_metrics)
@@ -525,8 +527,8 @@ class MetricsCalculator:
         mismatch_score = 0.0
 
         # 1. Compute keyword match ratio from retrieval diagnostics
-        keyword_match_ratio = 1.0
-        if retrieval_diagnostics:
+        keyword_match_ratio = None
+        if retrieval_diagnostics is not None:
             total_diags = len(retrieval_diagnostics)
             if total_diags > 0:
                 matched = sum(
@@ -536,14 +538,20 @@ class MetricsCalculator:
                 )
                 keyword_match_ratio = matched / total_diags
 
-        if keyword_match_ratio < 0.1:
-            mismatch_score += 0.4
-            indicators.append(
-                f"Very low keyword match ratio ({keyword_match_ratio:.1%})"
-            )
-        elif keyword_match_ratio < 0.3:
+        if keyword_match_ratio is None:
             mismatch_score += 0.2
-            indicators.append(f"Low keyword match ratio ({keyword_match_ratio:.1%})")
+            indicators.append("Keyword match ratio unavailable")
+        else:
+            if keyword_match_ratio < 0.1:
+                mismatch_score += 0.4
+                indicators.append(
+                    f"Very low keyword match ratio ({keyword_match_ratio:.1%})"
+                )
+            elif keyword_match_ratio < 0.3:
+                mismatch_score += 0.2
+                indicators.append(
+                    f"Low keyword match ratio ({keyword_match_ratio:.1%})"
+                )
 
         # 2. Compute extraction yield
         extraction_yield = 0.0
@@ -586,7 +594,7 @@ class MetricsCalculator:
             recommended_action = "proceed"
 
         return TemplateMismatchMetrics(
-            keyword_match_ratio=keyword_match_ratio,
+            keyword_match_ratio=keyword_match_ratio if keyword_match_ratio is not None else 0.0,
             extraction_yield=extraction_yield,
             evidence_localization_rate=evidence_rate,
             mismatch_score=min(1.0, mismatch_score),
@@ -597,6 +605,7 @@ class MetricsCalculator:
     def _compute_auto_apply_eligibility(
         self,
         field_metrics: list[FieldMetrics],
+        mismatch_metrics: TemplateMismatchMetrics | None = None,
     ) -> int:
         """
         Compute how many fields are eligible for automatic application.
@@ -614,6 +623,9 @@ class MetricsCalculator:
         Returns:
             Count of auto-apply eligible fields
         """
+        if mismatch_metrics and mismatch_metrics.recommended_action == "abort":
+            return 0
+
         eligible_count = 0
 
         for fm in field_metrics:
@@ -659,18 +671,30 @@ class MetricsCalculator:
         Returns:
             Weighted average confidence (0.0 to 1.0)
         """
-        if not extractions:
+        if not extractions and not hints_by_path:
             return 0.0
 
         total_weight = 0.0
         weighted_sum = 0.0
 
+        extractions_by_path = {e.path: e for e in extractions}
+
+        # Required fields count 2x; missing required fields contribute 0 confidence.
+        for path, hint in hints_by_path.items():
+            if not hint.required:
+                continue
+            weight = 2.0
+            total_weight += weight
+            extraction = extractions_by_path.get(path)
+            if extraction and extraction.value_raw and extraction.value_raw.strip():
+                weighted_sum += extraction.confidence * weight
+
+        # Optional fields only contribute if extracted.
         for extraction in extractions:
             hint = hints_by_path.get(extraction.path)
-            is_required = hint.required if hint else False
-
-            # Required fields count 2x
-            weight = 2.0 if is_required else 1.0
+            if hint and hint.required:
+                continue
+            weight = 1.0
             total_weight += weight
             weighted_sum += extraction.confidence * weight
 

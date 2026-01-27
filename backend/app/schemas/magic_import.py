@@ -671,6 +671,15 @@ class ExtractionOutcome(BaseModel):
     """Tracks user corrections to extracted values for quality feedback loop."""
 
     job_id: str = Field(description="ID of the Magic Import job")
+    template_name: str | None = Field(
+        default=None, description="Template name used for the job"
+    )
+    template_status: Literal["published", "deprecated"] | None = Field(
+        default=None, description="Template status used for the job"
+    )
+    template_version: str | None = Field(
+        default=None, description="Template version used for the job"
+    )
     recorded_at: datetime = Field(description="When the outcome was recorded")
     field_path: str = Field(description="idShortPath of the field")
 

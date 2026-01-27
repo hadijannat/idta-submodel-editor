@@ -596,6 +596,9 @@ async def record_correction(
         evidence_quality=request.evidence_quality,
         field_type=request.field_type,
         was_required=request.was_required,
+        template_name=job.template_name,
+        template_status=job.template_status,
+        template_version=job.template_version,
     )
 
     return outcome
