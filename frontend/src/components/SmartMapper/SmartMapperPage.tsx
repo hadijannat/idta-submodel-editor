@@ -33,7 +33,7 @@ import PreviewPanel from './PreviewPanel';
 interface SmartMapperPageProps {
   schema: SubmodelUISchema | null;
   templateName: string | null;
-  templateStatus: 'published' | 'deprecated';
+  templateStatus: 'published' | 'deprecated' | 'local';
   templateVersion: string | null;
   form: UseFormReturn<SubmodelFormData>;
   onComplete?: () => void;

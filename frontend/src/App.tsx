@@ -40,6 +40,9 @@ function App() {
   // Load tool registry
   const { wizardSteps, isToolEnabled, utilityTools } = useTools();
   const [activeUtilityTool, setActiveUtilityTool] = useState<string | null>(null);
+  const activeUtilityToolTitleId = activeUtilityTool
+    ? `utility-tool-title-${activeUtilityTool}`
+    : undefined;
 
   // Load public settings on mount
   useEffect(() => {
@@ -119,6 +122,25 @@ function App() {
       setWizardStep(1);
     }
   }, [selectedTemplate]);
+
+  useEffect(() => {
+    if (!canEdit && activeUtilityTool) {
+      setActiveUtilityTool(null);
+    }
+  }, [activeUtilityTool, canEdit]);
+
+  useEffect(() => {
+    if (!activeUtilityTool) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveUtilityTool(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeUtilityTool]);
 
   useEffect(() => {
     let active = true;
@@ -819,9 +841,14 @@ function App() {
             }
           }}
         >
-          <div className="utility-tool-modal">
+          <div
+            className="utility-tool-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={activeUtilityToolTitleId}
+          >
             <div className="utility-tool-modal-header">
-              <h2>
+              <h2 id={activeUtilityToolTitleId}>
                 {utilityTools.find((t) => t.metadata.id === activeUtilityTool)?.metadata.name}
               </h2>
               <button
