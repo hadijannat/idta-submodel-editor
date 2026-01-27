@@ -82,12 +82,12 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
   const [manifestLoaded, setManifestLoaded] = useState(toolRegistry.isManifestLoaded());
   const [version, setVersion] = useState(0); // Force re-render on refresh
 
-  const loadManifest = useCallback(async () => {
+  const loadManifest = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
 
     try {
-      await toolRegistry.loadServerManifest();
+      await toolRegistry.loadServerManifest(force);
       setManifestLoaded(true);
       setVersion((v) => v + 1);
     } catch (err) {
@@ -166,7 +166,7 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
 
   // Refresh from server
   const refresh = useCallback(async () => {
-    await loadManifest();
+    await loadManifest(true);
   }, [loadManifest]);
 
   return {

@@ -125,8 +125,8 @@ class ToolRegistryImpl {
    *
    * Updates tool metadata with runtime status from the server.
    */
-  async loadServerManifest(): Promise<void> {
-    if (this.manifestLoaded) return;
+  async loadServerManifest(force = false): Promise<void> {
+    if (this.manifestLoaded && !force) return;
     if (this.loading && this.loadPromise) {
       return this.loadPromise;
     }
