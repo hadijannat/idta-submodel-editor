@@ -8,7 +8,6 @@ A metamodel-driven application for editing any IDTA submodel template without co
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose"/></a>
   <a href="https://github.com/hadijannat/idta-submodel-editor/tags"><img src="https://img.shields.io/badge/version-1.0.0-2F80ED" alt="Version"/></a>
   <a href="https://github.com/hadijannat"><img src="https://img.shields.io/badge/Author-Hadi%20Jannatabadi-blue" alt="Author"/></a>
-  <a href="https://www.iat.rwth-aachen.de/"><img src="https://img.shields.io/badge/RWTH-IAT-green" alt="RWTH Aachen"/></a>
 </p>
 
 ---
