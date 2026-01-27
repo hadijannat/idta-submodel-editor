@@ -268,6 +268,18 @@ async def create_connection(
     """
     _check_dataspace_enabled()
     settings = get_settings()
+    from app.services import settings_service
+
+    dataspace_enabled = settings_service.get_effective_feature_flag(
+        "dataspace_enabled",
+        settings=settings,
+    )
+    from app.services import settings_service
+
+    dataspace_enabled = settings_service.get_effective_feature_flag(
+        "dataspace_enabled",
+        settings=settings,
+    )
 
     try:
         if request.environment != "sandbox":
@@ -1394,6 +1406,12 @@ async def check_health(
     """
     _check_dataspace_enabled()
     settings = get_settings()
+    from app.services import settings_service
+
+    dataspace_enabled = settings_service.get_effective_feature_flag(
+        "dataspace_enabled",
+        settings=settings,
+    )
 
     now = datetime.now(timezone.utc)
 
