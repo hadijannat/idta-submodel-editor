@@ -103,6 +103,37 @@ class SchemaResolver:
         "temperature": ["temp", "celsius", "fahrenheit"],
     }
 
+    DESCRIPTION_STOPWORDS = {
+        "information",
+        "recommendation",
+        "property",
+        "definition",
+        "required",
+        "value",
+        "language",
+        "independent",
+        "declaration",
+        "specification",
+        "characterization",
+        "enumeration",
+        "should",
+        "may",
+        "shall",
+        "used",
+        "according",
+        "accord",
+        "to",
+        "with",
+        "for",
+        "the",
+        "and",
+        "is",
+        "of",
+        "as",
+        "by",
+        "its",
+    }
+
     def __init__(
         self,
         fetcher: TemplateFetcherService | None = None,
@@ -324,7 +355,12 @@ class SchemaResolver:
                 seen.add(kw_lower)
                 unique_keywords.append(kw_lower)
 
-        return unique_keywords[:20]  # Limit to top 20 keywords
+        # Drop noisy tokens and cap to top 20
+        filtered = [
+            kw for kw in unique_keywords
+            if kw not in self.DESCRIPTION_STOPWORDS
+        ]
+        return filtered[:20]
 
     @staticmethod
     def _collect_description_texts(description: dict | list | str | None) -> list[str]:

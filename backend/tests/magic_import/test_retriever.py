@@ -271,3 +271,60 @@ class TestSnippetRetriever:
         matches = retriever._find_keyword_matches(["email"], page_words)
 
         assert matches, "Expected keyword match for punctuated 'E-mail'"
+
+    def test_contact_anchor_snippets(self):
+        """Ensure contact anchors generate snippets on pages with tel/fax/email."""
+        retriever = SnippetRetriever()
+
+        words = [
+            PDFWord(
+                text="Contact",
+                page=0,
+                bbox=BBox(x0=0.1, y0=0.1, x1=0.2, y1=0.2),
+                confidence=1.0,
+                method="TEXT",
+            ),
+            PDFWord(
+                text="Tel.",
+                page=0,
+                bbox=BBox(x0=0.21, y0=0.1, x1=0.3, y1=0.2),
+                confidence=1.0,
+                method="TEXT",
+            ),
+            PDFWord(
+                text="+31-152-610-900",
+                page=0,
+                bbox=BBox(x0=0.31, y0=0.1, x1=0.5, y1=0.2),
+                confidence=1.0,
+                method="TEXT",
+            ),
+        ]
+
+        index = PDFIndex(
+            job_id="contact-anchor-test",
+            pdf_path="contact.pdf",
+            info=PDFIndexInfo(
+                total_pages=1,
+                pages_with_text=1,
+                pages_needing_ocr=0,
+                total_words=len(words),
+                language_detected=None,
+            ),
+            pages=[
+                PDFPageInfo(
+                    page_number=0,
+                    width=612,
+                    height=792,
+                    has_text=True,
+                    needs_ocr=False,
+                    word_count=len(words),
+                )
+            ],
+            words=words,
+        )
+
+        anchors = retriever._collect_contact_anchor_positions(index)
+        snippets = retriever._extract_snippets_for_anchors(index, anchors, limit=2)
+
+        assert anchors, "Expected contact anchors"
+        assert snippets, "Expected anchor snippets"

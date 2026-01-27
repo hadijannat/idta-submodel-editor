@@ -89,6 +89,8 @@ class SnippetRetriever:
         # Track snippets with their associated fields
         tagged_snippets: list[TaggedSnippet] = []
 
+        contact_anchors = self._collect_contact_anchor_positions(index)
+
         for hint in hints:
             if not hint.keywords:
                 continue
@@ -102,6 +104,15 @@ class SnippetRetriever:
             hint_snippets = self._extract_snippets_for_hint(
                 hint, page_scores, index, page_docs
             )[:max_snippets_per_field]
+
+            # Contact-aware anchor snippets
+            if self._is_contact_hint(hint) and contact_anchors:
+                anchor_snippets = self._extract_snippets_for_anchors(
+                    index,
+                    contact_anchors,
+                    limit=max_snippets_per_field,
+                )
+                hint_snippets.extend(anchor_snippets)
 
             # Tag snippets with field path
             for snippet in hint_snippets:
@@ -456,6 +467,8 @@ class SnippetRetriever:
             words_by_page.setdefault(word.page, []).append((idx, word))
 
         diagnostics: list[dict] = []
+        contact_anchors = self._collect_contact_anchor_positions(index)
+
         for hint in hints:
             if not hint.keywords:
                 continue
@@ -473,6 +486,14 @@ class SnippetRetriever:
                     "path": hint.path,
                     "keyword_count": len(hint.keywords),
                     "match_count": match_count,
+                    "anchor_match_count": (
+                        len(contact_anchors) if self._is_contact_hint(hint) else 0
+                    ),
+                    "anchor_pages": (
+                        sorted({p for p, _ in contact_anchors})
+                        if self._is_contact_hint(hint)
+                        else []
+                    ),
                     "top_pages": [
                         {"page": page, "score": score}
                         for page, score in top_page_scores
@@ -507,6 +528,79 @@ class SnippetRetriever:
         # Remove trailing punctuation variants
         variants.add(kw.rstrip(":."))
         return {v for v in variants if v}
+
+    @staticmethod
+    def _is_contact_hint(hint: ExtractionHint) -> bool:
+        return "contactinformation" in hint.path.lower()
+
+    def _collect_contact_anchor_positions(
+        self,
+        index: PDFIndex,
+    ) -> list[tuple[int, int]]:
+        """Collect anchor positions for contact cues like tel/fax/email/www."""
+        anchors: list[tuple[int, int]] = []
+        for idx, word in enumerate(index.words):
+            text = word.text.lower()
+            norm = self._normalize_token(word.text)
+            is_anchor = (
+                "@" in text
+                or "www" in text
+                or re.search(r"\b(tel|fax|phone|email)\b", text) is not None
+                or norm.startswith("tel")
+                or norm.startswith("fax")
+                or norm.startswith("email")
+            )
+            if is_anchor:
+                anchors.append((word.page, idx))
+        return anchors
+
+    def _extract_snippets_for_anchors(
+        self,
+        index: PDFIndex,
+        anchors: list[tuple[int, int]],
+        limit: int = 3,
+    ) -> list[Snippet]:
+        """Extract snippets around anchor positions."""
+        if not anchors:
+            return []
+
+        words_by_page: dict[int, list[tuple[int, PDFWord]]] = {}
+        for idx, word in enumerate(index.words):
+            words_by_page.setdefault(word.page, []).append((idx, word))
+
+        anchors_by_page: dict[int, list[int]] = {}
+        for page, global_idx in anchors:
+            anchors_by_page.setdefault(page, []).append(global_idx)
+
+        snippets: list[Snippet] = []
+        for page, page_words in words_by_page.items():
+            if page not in anchors_by_page:
+                continue
+
+            anchor_indices = set(anchors_by_page[page])
+            local_indices: list[int] = []
+            for li, (gi, _word) in enumerate(page_words):
+                if gi in anchor_indices:
+                    local_indices.append(li)
+
+            if not local_indices:
+                continue
+
+            # Pick the earliest anchor to capture compact contact blocks (page headers/footers)
+            center = min(local_indices)
+            snippet = self._extract_snippet_at(
+                page_words,
+                center,
+                page,
+                score=1.2,
+                index=index,
+            )
+            if snippet:
+                snippets.append(snippet)
+            if len(snippets) >= limit:
+                break
+
+        return snippets
 
     def retrieve_for_single_hint(
         self,
