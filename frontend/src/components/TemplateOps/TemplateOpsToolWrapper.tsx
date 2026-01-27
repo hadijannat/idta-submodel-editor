@@ -70,9 +70,9 @@ export default function TemplateOpsToolWrapper({
         }
 
         // Load versions for current template
-        if (templateName) {
+        if (templateName && templateStatus !== 'local') {
           try {
-            const versions = await getTemplateVersions(templateName);
+            const versions = await getTemplateVersions(templateName, templateStatus);
             setAvailableVersions(
               versions.map((v) => ({
                 version: v.version,
@@ -82,6 +82,8 @@ export default function TemplateOpsToolWrapper({
           } catch {
             setAvailableVersions([]);
           }
+        } else {
+          setAvailableVersions([]);
         }
       } catch (err) {
         console.error('Failed to load template ops data:', err);
@@ -107,7 +109,7 @@ export default function TemplateOpsToolWrapper({
       templates={templates}
       selectedTemplate={templateName}
       selectedVersion={templateVersion ?? undefined}
-      selectedStatus={templateStatus === 'local' ? 'published' : templateStatus}
+      selectedStatus={templateStatus}
       availableVersions={availableVersions}
       recipes={recipes}
       currentFormData={form.getValues() as unknown as Record<string, unknown>}
@@ -118,10 +120,7 @@ export default function TemplateOpsToolWrapper({
       onFormMigrated={(result) => {
         if (result.migrated_form_data) {
           // Apply migrated form data
-          form.reset({
-            ...form.getValues(),
-            ...result.migrated_form_data,
-          });
+          form.reset(result.migrated_form_data as unknown as SubmodelFormData);
         }
       }}
       onClose={onComplete}

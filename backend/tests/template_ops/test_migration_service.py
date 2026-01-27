@@ -413,6 +413,97 @@ class TestMigrateFormData:
         assert result.migrated_form_data is not None
         assert result.migration_coverage == 1.0
 
+    @pytest.mark.asyncio
+    async def test_migrate_form_data_list_items_preserves_indices(
+        self, migration_service, mock_fetcher, mock_parser
+    ):
+        source_schema = {
+            "elements": [
+                {
+                    "idShort": "Markings",
+                    "modelType": "SubmodelElementList",
+                    "itemTemplate": {
+                        "idShort": "Marking",
+                        "modelType": "SubmodelElementCollection",
+                        "elements": [
+                            {"idShort": "MarkingName", "modelType": "Property"}
+                        ],
+                    },
+                }
+            ]
+        }
+        target_schema = source_schema
+
+        mock_fetcher.fetch_template_aasx = AsyncMock(return_value=b"mock")
+        mock_parser.parse_aasx_to_ui_schema = MagicMock(
+            side_effect=[source_schema, target_schema]
+        )
+
+        form_data = {
+            "elements": {
+                "Markings": {
+                    "items": [
+                        {"elements": {"MarkingName": {"value": "CE"}}},
+                        {"elements": {"MarkingName": {"value": "UL"}}},
+                    ]
+                }
+            }
+        }
+
+        request = FormDataMigrationRequest(
+            form_data=form_data,
+            source_template="TestTemplate",
+            source_version="1.0",
+            target_template="TestTemplate",
+            target_version="2.0",
+        )
+
+        result = await migration_service.migrate_form_data(request)
+
+        assert result.migrated_form_data is not None
+        migrated = result.migrated_form_data["elements"]["Markings"]["items"]
+        assert migrated[0]["elements"]["MarkingName"]["value"] == "CE"
+        assert migrated[1]["elements"]["MarkingName"]["value"] == "UL"
+
+    @pytest.mark.asyncio
+    async def test_migrate_form_data_range_and_file(self, migration_service, mock_fetcher, mock_parser):
+        source_schema = {
+            "elements": [
+                {"idShort": "Voltage", "modelType": "Range"},
+                {"idShort": "MarkingFile", "modelType": "File"},
+            ]
+        }
+        target_schema = source_schema
+
+        mock_fetcher.fetch_template_aasx = AsyncMock(return_value=b"mock")
+        mock_parser.parse_aasx_to_ui_schema = MagicMock(
+            side_effect=[source_schema, target_schema]
+        )
+
+        form_data = {
+            "elements": {
+                "Voltage": {"min": 110, "max": 220},
+                "MarkingFile": {"value": "file.png", "contentType": "image/png"},
+            }
+        }
+
+        request = FormDataMigrationRequest(
+            form_data=form_data,
+            source_template="TestTemplate",
+            source_version="1.0",
+            target_template="TestTemplate",
+            target_version="2.0",
+        )
+
+        result = await migration_service.migrate_form_data(request)
+
+        assert result.migrated_form_data is not None
+        migrated = result.migrated_form_data["elements"]
+        assert migrated["Voltage"]["min"] == 110
+        assert migrated["Voltage"]["max"] == 220
+        assert migrated["MarkingFile"]["value"] == "file.png"
+        assert migrated["MarkingFile"]["contentType"] == "image/png"
+
 
 class TestCheckVersionMismatch:
     """Tests for check_version_mismatch method."""

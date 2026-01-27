@@ -280,10 +280,30 @@ class MigrationService:
         value_migrations: list[ValueMigrationItem] = []
         warnings: list[str] = []
 
+        normalized_migration: dict[str, dict] = {}
+        for path, info in path_migration.items():
+            normalized = self._normalize_path_for_matching(path)
+            existing = normalized_migration.get(normalized)
+            if existing is None or info.get("confidence", 0) > existing.get("confidence", 0):
+                normalized_migration[normalized] = info
+
         for original_path, original_value in form_values.items():
-            migration_info = path_migration.get(original_path)
+            normalized_path = self._normalize_path_for_matching(original_path)
+            migration_info = normalized_migration.get(normalized_path)
+            if migration_info is None and "[]" in normalized_path:
+                # Try to match list item templates by inserting itemTemplate idShort
+                list_prefix = normalized_path.split("[]", 1)[0] + "[]"
+                suffix = normalized_path.split("[]", 1)[1]
+                candidate = None
+                for key, info in normalized_migration.items():
+                    if key.startswith(list_prefix) and key.endswith(suffix):
+                        candidate = info
+                        break
+                migration_info = candidate
             if migration_info:
                 migrated_path = migration_info["target_path"]
+                indices = [int(i) for i in re.findall(r"\[(\d+)\]", original_path)]
+                migrated_path = self._apply_list_indices(migrated_path, indices)
                 confidence = migration_info["confidence"]
                 match_reason = migration_info["match_reason"]
 
@@ -500,6 +520,24 @@ class MigrationService:
 
         return migration
 
+    def _normalize_path_for_matching(self, path: str) -> str:
+        """Normalize list indices to list markers for matching (A[0].B -> A[].B)."""
+        if not path:
+            return path
+        return re.sub(r"\[\d+\]", "[]", path)
+
+    def _apply_list_indices(self, path: str, indices: list[int]) -> str:
+        """Apply captured list indices to a normalized path (A[].B[] -> A[0].B[1])."""
+        if not indices:
+            return path
+        parts = path.split("[]")
+        rebuilt: list[str] = []
+        for idx, part in enumerate(parts):
+            rebuilt.append(part)
+            if idx < len(indices):
+                rebuilt.append(f"[{indices[idx]}]")
+        return "".join(rebuilt)
+
     def _build_semantic_index(
         self, index: dict[str, dict], exclude: set[str]
     ) -> dict[str, list[tuple[str, dict]]]:
@@ -638,13 +676,28 @@ class MigrationService:
             full_path = f"{prefix}.{path}" if prefix else path
 
             if isinstance(data, dict):
-                # Check for direct value
+                # Check for direct value and typed payloads
                 if "value" in data:
-                    values[full_path] = data["value"]
+                    values[full_path] = {"value": data.get("value")}
+                    if "contentType" in data:
+                        values[full_path]["contentType"] = data.get("contentType")
                 elif "langStrings" in data:
-                    values[full_path] = data["langStrings"]
+                    values[full_path] = {"langStrings": data.get("langStrings")}
                 elif "min" in data or "max" in data:
                     values[full_path] = {"min": data.get("min"), "max": data.get("max")}
+
+                if "first" in data or "second" in data or "annotations" in data:
+                    values[full_path] = {
+                        "first": data.get("first"),
+                        "second": data.get("second"),
+                        "annotations": data.get("annotations"),
+                    }
+
+                if "globalAssetId" in data or "statements" in data:
+                    values[full_path] = {
+                        "globalAssetId": data.get("globalAssetId"),
+                        "statements": data.get("statements"),
+                    }
 
                 # Check for nested elements
                 if "elements" in data:
@@ -657,7 +710,11 @@ class MigrationService:
                         item_path = f"{full_path}[{idx}]"
                         if isinstance(item, dict):
                             if "value" in item:
-                                values[item_path] = item["value"]
+                                values[item_path] = {"value": item.get("value")}
+                                if "contentType" in item:
+                                    values[item_path]["contentType"] = item.get(
+                                        "contentType"
+                                    )
                             elif "elements" in item:
                                 nested = self._extract_form_values(item, item_path)
                                 values.update(nested)
@@ -666,12 +723,61 @@ class MigrationService:
 
     def _set_form_value(self, form_data: dict, path: str, value: Any) -> None:
         """Set a value in form data at the given path."""
-        parts = path.replace("[", ".[").split(".")
+        parts = path.replace('[', '.[').split('.')
+
+        if len(parts) >= 2 and parts[1].startswith("["):
+            list_name = parts[0]
+            list_index = int(parts[1].strip("[]"))
+            tail = parts[2:]
+            list_container = form_data.setdefault("elements", {}).setdefault(
+                list_name, {}
+            )
+            items = list_container.setdefault("items", [])
+            while len(items) <= list_index:
+                items.append({})
+            current = items[list_index].setdefault("elements", {})
+
+            for part in tail[:-1]:
+                if part not in current:
+                    current[part] = {"elements": {}}
+                current = current[part].setdefault("elements", {})
+
+            final_part = tail[-1] if tail else "value"
+            if not isinstance(value, dict):
+                current[final_part] = {"value": value}
+                return
+
+            payload: dict[str, Any] = {}
+            if "value" in value:
+                payload["value"] = value.get("value")
+            if "contentType" in value:
+                payload["contentType"] = value.get("contentType")
+            if "langStrings" in value:
+                payload["langStrings"] = value.get("langStrings")
+            if "min" in value or "max" in value:
+                payload["min"] = value.get("min")
+                payload["max"] = value.get("max")
+            if "first" in value or "second" in value or "annotations" in value:
+                payload["first"] = value.get("first")
+                payload["second"] = value.get("second")
+                payload["annotations"] = value.get("annotations")
+            if "globalAssetId" in value or "statements" in value:
+                payload["globalAssetId"] = value.get("globalAssetId")
+                payload["statements"] = value.get("statements")
+
+            if payload:
+                current[final_part] = payload
+            return
+
         current = form_data.setdefault("elements", {})
 
-        for i, part in enumerate(parts[:-1]):
+        for part in parts[:-1]:
             if part.startswith("["):
-                # List index - skip for now (complex case)
+                index = int(part.strip("[]"))
+                items = current.setdefault("items", [])
+                while len(items) <= index:
+                    items.append({})
+                current = items[index].setdefault("elements", {})
                 continue
 
             if part not in current:
@@ -681,7 +787,34 @@ class MigrationService:
         # Set the final value
         final_part = parts[-1]
         if final_part.startswith("["):
-            # List item - would need more complex handling
-            pass
-        else:
+            index = int(final_part.strip("[]"))
+            items = current.setdefault("items", [])
+            while len(items) <= index:
+                items.append({})
+            current = items[index].setdefault("elements", {})
+            final_part = "value"
+
+        if not isinstance(value, dict):
             current[final_part] = {"value": value}
+            return
+
+        payload: dict[str, Any] = {}
+        if "value" in value:
+            payload["value"] = value.get("value")
+        if "contentType" in value:
+            payload["contentType"] = value.get("contentType")
+        if "langStrings" in value:
+            payload["langStrings"] = value.get("langStrings")
+        if "min" in value or "max" in value:
+            payload["min"] = value.get("min")
+            payload["max"] = value.get("max")
+        if "first" in value or "second" in value or "annotations" in value:
+            payload["first"] = value.get("first")
+            payload["second"] = value.get("second")
+            payload["annotations"] = value.get("annotations")
+        if "globalAssetId" in value or "statements" in value:
+            payload["globalAssetId"] = value.get("globalAssetId")
+            payload["statements"] = value.get("statements")
+
+        if payload:
+            current[final_part] = payload
