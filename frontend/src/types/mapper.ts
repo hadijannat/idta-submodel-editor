@@ -71,7 +71,7 @@ export interface MapperMode {
 export interface MapperTemplateRef {
   name: string;
   version?: string | null;
-  status: 'published' | 'deprecated';
+  status: 'published' | 'deprecated' | 'local';
   schema_digest?: string | null;
 }
 
@@ -103,7 +103,7 @@ export interface MapperDiagnostic {
 
 export interface MapperRunRequest {
   template_name: string;
-  status: 'published' | 'deprecated';
+  status: 'published' | 'deprecated' | 'local';
   version?: string | null;
   profile_id: string;
   recipe: MapperRecipe;
@@ -143,7 +143,7 @@ export interface MapperSuggestedMapping {
 
 export interface MapperAutoSuggestRequest {
   template_name: string;
-  status: 'published' | 'deprecated';
+  status: 'published' | 'deprecated' | 'local';
   version?: string | null;
   profile_id: string;
   use_semantics?: boolean;
