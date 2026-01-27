@@ -455,5 +455,253 @@ class LLMCandidateResponse(BaseModel):
     model: str
 
 
+# ============================================================================
+# Quality Metrics Schemas
+# ============================================================================
+
+
+class EvidenceQuality(str, Enum):
+    """Quality classification of evidence supporting an extraction."""
+
+    TABLE_STRUCTURED = "table_structured"  # Value from structured table cell
+    TABLE_KEY_VALUE = "table_key_value"  # Value from key-value table row
+    TEXT_GROUNDED = "text_grounded"  # Value with exact text match
+    TEXT_INFERRED = "text_inferred"  # Value inferred from surrounding text
+    OCR_HIGH = "ocr_high"  # OCR extraction with high confidence
+    OCR_LOW = "ocr_low"  # OCR extraction with low confidence
+    NONE = "none"  # No evidence found
+
+
+class FieldTypeCategory(str, Enum):
+    """Categorization of field types for metrics and analysis."""
+
+    IDENTIFIER = "identifier"  # IDs, codes, serial numbers
+    DATE_TIME = "date_time"  # Dates, times, timestamps
+    NUMERIC_UNIT = "numeric_unit"  # Numbers with units (e.g., "5.2 kg")
+    NUMERIC_PURE = "numeric_pure"  # Pure numbers without units
+    ENUM_CHOICE = "enum_choice"  # Enumerated/choice values
+    BOOLEAN = "boolean"  # True/false values
+    TEXT_SHORT = "text_short"  # Short text (< 100 chars)
+    TEXT_LONG = "text_long"  # Long text (>= 100 chars)
+    CONTACT = "contact"  # Email, phone, address
+    REFERENCE = "reference"  # References to other entities
+
+
+class FieldMetrics(BaseModel):
+    """Detailed metrics for a single extracted field."""
+
+    path: str = Field(description="idShortPath of the field")
+    field_type_category: FieldTypeCategory = Field(
+        description="Category of the field type"
+    )
+    is_required: bool = Field(description="Whether the field is required by template")
+    confidence: float = Field(ge=0.0, le=1.0, description="Extraction confidence score")
+    evidence_ratio: float = Field(
+        ge=0.0, le=1.0, description="Ratio of value supported by evidence"
+    )
+    evidence_quality: EvidenceQuality = Field(
+        description="Quality classification of the evidence"
+    )
+    source_table: bool = Field(
+        default=False, description="Whether value came from table extraction"
+    )
+    source_text: bool = Field(
+        default=False, description="Whether value came from text extraction"
+    )
+    source_ocr: bool = Field(
+        default=False, description="Whether value came from OCR extraction"
+    )
+    grounding_verified: bool = Field(
+        default=False, description="Whether evidence quote was verified in document"
+    )
+    llm_provider: str | None = Field(
+        default=None, description="LLM provider used for extraction"
+    )
+    llm_model: str | None = Field(
+        default=None, description="LLM model used for extraction"
+    )
+
+
+class TemplateMismatchMetrics(BaseModel):
+    """Metrics indicating potential template/document mismatch."""
+
+    keyword_match_ratio: float = Field(
+        ge=0.0, le=1.0, description="Ratio of template keywords found in document"
+    )
+    extraction_yield: float = Field(
+        ge=0.0, le=1.0, description="Ratio of fields with extracted values"
+    )
+    evidence_localization_rate: float = Field(
+        ge=0.0, le=1.0, description="Ratio of extractions with localized evidence"
+    )
+    mismatch_score: float = Field(
+        ge=0.0, le=1.0, description="Overall mismatch score (0=match, 1=mismatch)"
+    )
+    mismatch_indicators: list[str] = Field(
+        default_factory=list, description="Specific indicators of mismatch"
+    )
+    recommended_action: Literal["proceed", "warn", "abort"] = Field(
+        description="Recommended action based on mismatch analysis"
+    )
+
+
+class AutoApplyThresholds(BaseModel):
+    """Thresholds for automatic application of extractions."""
+
+    min_confidence: float = Field(
+        default=0.95,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence for auto-apply eligibility",
+    )
+    min_evidence_ratio: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description="Minimum evidence ratio for auto-apply eligibility",
+    )
+    require_grounding: bool = Field(
+        default=True, description="Whether verified grounding is required"
+    )
+    allowed_evidence_qualities: list[EvidenceQuality] = Field(
+        default_factory=lambda: [
+            EvidenceQuality.TABLE_STRUCTURED,
+            EvidenceQuality.TABLE_KEY_VALUE,
+            EvidenceQuality.TEXT_GROUNDED,
+            EvidenceQuality.OCR_HIGH,
+        ],
+        description="Evidence quality levels allowed for auto-apply",
+    )
+    blocked_field_types: list[FieldTypeCategory] = Field(
+        default_factory=list,
+        description="Field types blocked from auto-apply (require manual review)",
+    )
+
+
+class QualityMetrics(BaseModel):
+    """Comprehensive quality metrics for a Magic Import extraction job."""
+
+    job_id: str = Field(description="ID of the Magic Import job")
+    template_name: str = Field(description="Name of the template used")
+    computed_at: datetime = Field(description="When metrics were computed")
+
+    # Overall confidence metrics
+    overall_confidence: float = Field(
+        ge=0.0, le=1.0, description="Simple average confidence across all extractions"
+    )
+    weighted_confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Weighted confidence (required fields weighted higher)",
+    )
+
+    # Evidence metrics
+    evidence_ratio: float = Field(
+        ge=0.0, le=1.0, description="Ratio of extractions with any evidence"
+    )
+    table_evidence_ratio: float = Field(
+        ge=0.0, le=1.0, description="Ratio of extractions from table sources"
+    )
+    text_evidence_ratio: float = Field(
+        ge=0.0, le=1.0, description="Ratio of extractions from text sources"
+    )
+    high_confidence_no_evidence_count: int = Field(
+        ge=0, description="Count of high-confidence extractions lacking evidence"
+    )
+    grounding_rate: float = Field(
+        ge=0.0, le=1.0, description="Ratio of extractions with verified grounding"
+    )
+
+    # Field coverage metrics
+    required_field_total: int = Field(ge=0, description="Total required fields")
+    required_field_extracted: int = Field(
+        ge=0, description="Required fields with values"
+    )
+    required_field_coverage: float = Field(
+        ge=0.0, le=1.0, description="Ratio of required fields extracted"
+    )
+    optional_field_coverage: float = Field(
+        ge=0.0, le=1.0, description="Ratio of optional fields extracted"
+    )
+
+    # Per-field metrics
+    field_metrics: list[FieldMetrics] = Field(
+        default_factory=list, description="Detailed metrics for each field"
+    )
+
+    # Error analysis
+    error_rates_by_type: dict[str, float] = Field(
+        default_factory=dict,
+        description="Error rates grouped by field type category",
+    )
+
+    # Mismatch detection
+    mismatch_metrics: TemplateMismatchMetrics | None = Field(
+        default=None, description="Template/document mismatch metrics"
+    )
+
+    # LLM usage
+    llm_provider: str = Field(description="LLM provider used for extraction")
+    llm_model: str = Field(description="LLM model used for extraction")
+    llm_tokens_used: int | None = Field(
+        default=None, description="Total tokens consumed by LLM"
+    )
+
+    # Auto-apply metrics
+    auto_apply_eligible_count: int = Field(
+        ge=0, default=0, description="Number of fields eligible for auto-apply"
+    )
+    auto_apply_thresholds_used: AutoApplyThresholds | None = Field(
+        default=None, description="Thresholds used for auto-apply eligibility"
+    )
+
+    # Experiment tracking
+    experiment_id: str | None = Field(
+        default=None, description="A/B experiment identifier"
+    )
+    experiment_variant: str | None = Field(
+        default=None, description="A/B experiment variant (control/treatment)"
+    )
+
+
+class ExtractionOutcome(BaseModel):
+    """Tracks user corrections to extracted values for quality feedback loop."""
+
+    job_id: str = Field(description="ID of the Magic Import job")
+    recorded_at: datetime = Field(description="When the outcome was recorded")
+    field_path: str = Field(description="idShortPath of the field")
+
+    # Value tracking
+    original_value: str | None = Field(
+        description="Original extracted value (None if empty)"
+    )
+    final_value: str | None = Field(
+        description="Final value after user action (None if deleted)"
+    )
+    original_confidence: float = Field(
+        ge=0.0, le=1.0, description="Confidence of original extraction"
+    )
+
+    # User action
+    action: Literal["accepted", "edited", "deleted", "rejected"] = Field(
+        description="Action taken by user on extraction"
+    )
+    edit_distance: int = Field(
+        default=0, ge=0, description="Levenshtein distance between original and final"
+    )
+
+    # Evidence context
+    had_evidence: bool = Field(
+        description="Whether original extraction had evidence"
+    )
+    evidence_quality: EvidenceQuality = Field(
+        description="Quality of evidence for original extraction"
+    )
+
+    # Field context
+    field_type: FieldTypeCategory = Field(description="Category of the field type")
+    was_required: bool = Field(description="Whether the field was required")
+
+
 # Rebuild models with forward references
 MagicImportResult.model_rebuild()
