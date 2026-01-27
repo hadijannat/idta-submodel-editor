@@ -145,7 +145,8 @@ async def save_recipe(
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> MapperRecipe:
     try:
-        return mapper.save_recipe(recipe, user)
+        # Use async method to compute schema digest on save
+        return await mapper.save_recipe_with_digest(recipe, user)
     except APIError:
         raise
     except Exception as exc:
