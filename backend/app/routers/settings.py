@@ -140,8 +140,6 @@ async def update_llm_settings(
 
     If an API key is provided, it will be validated before storing.
     """
-    settings = settings_service.load_llm_settings()
-
     # Determine provider to update
     provider = request.provider or settings_service.get_effective_provider()
 
@@ -153,7 +151,7 @@ async def update_llm_settings(
         if not is_valid:
             raise HTTPException(status_code=400, detail=message)
 
-    # Update provider config
+    # Update provider config (handles its own load/save)
     settings_service.update_provider_config(
         provider=provider,
         api_key=request.api_key,
@@ -161,16 +159,18 @@ async def update_llm_settings(
         base_url=request.base_url,
     )
 
-    # Update active provider if specified
+    # Update active provider if specified (handles its own load/save)
     if request.provider:
         settings_service.set_active_provider(request.provider)
 
-    # Update other settings
-    if request.confidence_threshold is not None:
-        settings.confidence_threshold = request.confidence_threshold
-    if request.ocr_enabled is not None:
-        settings.ocr_enabled = request.ocr_enabled
-    settings_service.save_llm_settings(settings)
+    # Update other settings - RELOAD to get fresh state first
+    if request.confidence_threshold is not None or request.ocr_enabled is not None:
+        settings = settings_service.load_llm_settings()  # Fresh load after helper changes
+        if request.confidence_threshold is not None:
+            settings.confidence_threshold = request.confidence_threshold
+        if request.ocr_enabled is not None:
+            settings.ocr_enabled = request.ocr_enabled
+        settings_service.save_llm_settings(settings)
 
     logger.info("Updated LLM settings for provider: %s", provider)
 

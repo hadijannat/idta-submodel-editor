@@ -102,8 +102,16 @@ export function useLLMSettings(): UseLLMSettingsReturn {
 
         setValidationStatus('valid');
 
-        // Save if valid
-        const updated = await updateLLMSettings({ provider, api_key: apiKey });
+        // Get default model for this provider to include with the save
+        const modelsResponse = await getProviderModels(provider);
+        const defaultModel = modelsResponse.default_model || modelsResponse.models[0];
+
+        // Save with provider, API key, AND default model
+        const updated = await updateLLMSettings({
+          provider,
+          api_key: apiKey,
+          model: defaultModel,
+        });
         setSettings(updated);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to save API key');

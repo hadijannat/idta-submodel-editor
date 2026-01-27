@@ -285,7 +285,13 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
           <h4>Model</h4>
           <select
             className="llm-model-select"
-            value={settings?.model || ''}
+            value={
+              // If selected provider is the active provider, use settings.model
+              // Otherwise, use first model in list as default for the selected provider
+              selectedProvider === settings?.provider
+                ? settings?.model || ''
+                : models[0] || ''
+            }
             onChange={handleModelChange}
             disabled={saving}
           >
