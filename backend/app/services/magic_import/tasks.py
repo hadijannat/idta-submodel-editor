@@ -69,6 +69,24 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
     from app.services.magic_import.rules_engine import RulesEngine
 
     settings = get_settings()
+    from app.services import settings_service
+    llm_settings = (
+        settings_service.load_llm_settings()
+        if settings_service.has_llm_settings()
+        else None
+    )
+    confidence_threshold = (
+        llm_settings.confidence_threshold
+        if llm_settings is not None
+        else settings.magic_import_confidence_threshold
+    )
+    ocr_enabled = (
+        llm_settings.ocr_enabled
+        if llm_settings is not None
+        else settings.magic_import_ocr_enabled
+    )
+    active_provider = settings_service.get_effective_provider()
+    active_model = settings_service.get_effective_model(active_provider)
     job_manager = JobManager()
     start_time = time.time()
 
@@ -124,7 +142,7 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         # ================================================================
         # Step 2: OCR if needed
         # ================================================================
-        if index.info.pages_needing_ocr > 0 and settings.magic_import_ocr_enabled:
+        if index.info.pages_needing_ocr > 0 and ocr_enabled:
             job_manager.update_job_status(
                 job_id,
                 JobStatus.OCR,
@@ -428,7 +446,7 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         scored_extractions = scorer.score_all(
             extractions_with_evidence,
             index,
-            settings.magic_import_confidence_threshold,
+            confidence_threshold,
         )
 
         # ================================================================
@@ -514,8 +532,8 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             fields_extracted=len(final_extractions),
             fields_needing_review=fields_needing_review,
             average_confidence=avg_confidence,
-            llm_provider=settings.magic_import_llm_provider,
-            llm_model=settings.magic_import_llm_model,
+            llm_provider=active_provider,
+            llm_model=active_model,
             processing_time_seconds=processing_time,
             validation_result=validation_result,
             template_version_used=job.template_version,

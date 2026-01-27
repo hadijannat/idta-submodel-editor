@@ -134,6 +134,19 @@ def _get_settings_path() -> Path:
     return settings.settings_storage_dir / "llm_settings.json"
 
 
+def has_llm_settings(settings: object | None = None) -> bool:
+    """Return True if a settings file exists."""
+    if settings is not None and hasattr(settings, "settings_storage_dir"):
+        storage_dir = getattr(settings, "settings_storage_dir", None)
+        if isinstance(storage_dir, (str, Path)) or hasattr(storage_dir, "__fspath__"):
+            try:
+                return (Path(storage_dir) / "llm_settings.json").exists()
+            except Exception:
+                return False
+        return False
+    return _get_settings_path().exists()
+
+
 def load_llm_settings() -> LLMSettings:
     """Load LLM settings from storage."""
     path = _get_settings_path()
@@ -222,6 +235,21 @@ def get_active_provider() -> ProviderType:
     return settings.active_provider
 
 
+def get_effective_provider() -> ProviderType:
+    """
+    Get the effective provider selection.
+
+    Uses stored settings if present, otherwise falls back to environment defaults.
+    """
+    if has_llm_settings():
+        return get_active_provider()
+    env_settings = get_settings()
+    provider = getattr(env_settings, "magic_import_llm_provider", None)
+    if provider not in {"openai", "anthropic", "openrouter", "local"}:
+        provider = "openai"
+    return provider
+
+
 def get_decrypted_api_key(provider: ProviderType) -> str | None:
     """
     Get the decrypted API key for a provider.
@@ -247,6 +275,8 @@ def get_masked_api_key(provider: ProviderType) -> str | None:
     """
     api_key = get_decrypted_api_key(provider)
     if not api_key:
+        api_key = get_effective_api_key(provider)
+    if not api_key:
         return None
     return _mask_api_key(api_key)
 
@@ -261,11 +291,14 @@ def is_provider_configured(provider: ProviderType) -> bool:
     # Fall back to environment variables
     env_settings = get_settings()
     if provider == "openai":
-        return bool(env_settings.openai_api_key)
+        key = getattr(env_settings, "openai_api_key", None)
+        return isinstance(key, str) and bool(key)
     if provider == "anthropic":
-        return bool(env_settings.anthropic_api_key)
+        key = getattr(env_settings, "anthropic_api_key", None)
+        return isinstance(key, str) and bool(key)
     if provider == "openrouter":
-        return bool(env_settings.openrouter_api_key)
+        key = getattr(env_settings, "openrouter_api_key", None)
+        return isinstance(key, str) and bool(key)
     if provider == "local":
         # Local is always "configured" as it uses Ollama
         return True
@@ -287,11 +320,14 @@ def get_effective_api_key(provider: ProviderType) -> str | None:
     # Fall back to environment variables
     env_settings = get_settings()
     if provider == "openai":
-        return env_settings.openai_api_key
+        key = getattr(env_settings, "openai_api_key", None)
+        return key if isinstance(key, str) and key else None
     if provider == "anthropic":
-        return env_settings.anthropic_api_key
+        key = getattr(env_settings, "anthropic_api_key", None)
+        return key if isinstance(key, str) and key else None
     if provider == "openrouter":
-        return env_settings.openrouter_api_key
+        key = getattr(env_settings, "openrouter_api_key", None)
+        return key if isinstance(key, str) and key else None
 
     return None
 
@@ -306,7 +342,33 @@ def get_effective_model(provider: ProviderType) -> str:
     if config and config.model:
         return config.model
 
+    env_settings = get_settings()
+    if not has_llm_settings():
+        env_provider = get_effective_provider()
+        if provider == env_provider:
+            env_model = getattr(env_settings, "magic_import_llm_model", None)
+            if isinstance(env_model, str) and env_model:
+                return env_model
+            return _get_default_model(provider)
+
     return _get_default_model(provider)
+
+
+def get_effective_base_url(provider: ProviderType) -> str | None:
+    """
+    Get effective base URL for a provider.
+
+    Uses stored settings if present, otherwise falls back to environment defaults.
+    """
+    config = get_provider_config(provider)
+    if config and config.base_url:
+        return config.base_url
+
+    env_settings = get_settings()
+    if provider == "local":
+        return getattr(env_settings, "ollama_base_url", None)
+
+    return None
 
 
 def _get_default_model(provider: ProviderType) -> str:

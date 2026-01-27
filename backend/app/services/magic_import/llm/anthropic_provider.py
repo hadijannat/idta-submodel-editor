@@ -33,12 +33,13 @@ class AnthropicProvider(LLMProvider):
         "claude-3-opus": "claude-3-opus-20240229",
     }
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.settings = get_settings()
         self._client = None
         # Resolve model alias if needed
-        model = self.settings.magic_import_llm_model
-        self._model = self.MODEL_ALIASES.get(model, model)
+        model_name = model or self.settings.magic_import_llm_model
+        self._model = self.MODEL_ALIASES.get(model_name, model_name)
+        self._api_key = api_key or self.settings.anthropic_api_key
 
     @property
     def name(self) -> str:
@@ -50,7 +51,7 @@ class AnthropicProvider(LLMProvider):
 
     def is_available(self) -> bool:
         """Check if Anthropic API key is configured."""
-        return bool(self.settings.anthropic_api_key)
+        return bool(self._api_key)
 
     @property
     def client(self):
@@ -59,7 +60,7 @@ class AnthropicProvider(LLMProvider):
             try:
                 from anthropic import AsyncAnthropic
 
-                self._client = AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+                self._client = AsyncAnthropic(api_key=self._api_key)
             except ImportError:
                 raise RuntimeError("anthropic package not installed")
         return self._client

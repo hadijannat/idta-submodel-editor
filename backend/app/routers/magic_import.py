@@ -418,7 +418,7 @@ async def get_provider_status(
         }
 
     # Get active provider from settings service
-    active_provider = settings_service.get_active_provider()
+    active_provider = settings_service.get_effective_provider()
 
     # If active provider is not available, fall back to first available
     if active_provider not in available:

@@ -30,10 +30,11 @@ class LocalProvider(LLMProvider):
     # Default timeout for local inference (can be slow)
     DEFAULT_TIMEOUT = 120.0
 
-    def __init__(self) -> None:
+    def __init__(self, model: str | None = None, base_url: str | None = None) -> None:
         self.settings = get_settings()
-        self._model = self.settings.magic_import_llm_model
-        self._base_url = self.settings.ollama_base_url.rstrip("/")
+        self._model = model or self.settings.magic_import_llm_model
+        base = base_url or self.settings.ollama_base_url
+        self._base_url = base.rstrip("/")
 
     @property
     def name(self) -> str:

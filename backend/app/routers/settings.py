@@ -103,10 +103,10 @@ async def get_llm_settings(
     """
     settings = settings_service.load_llm_settings()
     env_settings = get_settings()
+    use_env_defaults = not settings_service.has_llm_settings()
 
     # Get active provider info
-    active_provider = settings.active_provider
-    active_config = settings.providers.get(active_provider)
+    active_provider = settings_service.get_effective_provider()
 
     # Build provider status for all providers
     providers_status: dict[str, ProviderStatus] = {}
@@ -123,9 +123,9 @@ async def get_llm_settings(
         model=settings_service.get_effective_model(active_provider),
         api_key_configured=settings_service.is_provider_configured(active_provider),
         api_key_masked=settings_service.get_masked_api_key(active_provider),
-        base_url=active_config.base_url if active_config else None,
-        confidence_threshold=settings.confidence_threshold,
-        ocr_enabled=settings.ocr_enabled,
+        base_url=settings_service.get_effective_base_url(active_provider),
+        confidence_threshold=env_settings.magic_import_confidence_threshold if use_env_defaults else settings.confidence_threshold,
+        ocr_enabled=env_settings.magic_import_ocr_enabled if use_env_defaults else settings.ocr_enabled,
         providers=providers_status,
     )
 
@@ -143,7 +143,7 @@ async def update_llm_settings(
     settings = settings_service.load_llm_settings()
 
     # Determine provider to update
-    provider = request.provider or settings.active_provider
+    provider = request.provider or settings_service.get_effective_provider()
 
     # Validate API key if provided
     if request.api_key:

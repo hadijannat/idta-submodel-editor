@@ -24,10 +24,11 @@ logger = logging.getLogger(__name__)
 class OpenAIProvider(LLMProvider):
     """OpenAI GPT provider for structured extraction."""
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.settings = get_settings()
         self._client = None
-        self._model = self.settings.magic_import_llm_model
+        self._api_key = api_key or self.settings.openai_api_key
+        self._model = model or self.settings.magic_import_llm_model
 
     @property
     def name(self) -> str:
@@ -39,7 +40,7 @@ class OpenAIProvider(LLMProvider):
 
     def is_available(self) -> bool:
         """Check if OpenAI API key is configured."""
-        return bool(self.settings.openai_api_key)
+        return bool(self._api_key)
 
     @property
     def client(self):
@@ -48,7 +49,7 @@ class OpenAIProvider(LLMProvider):
             try:
                 from openai import AsyncOpenAI
 
-                self._client = AsyncOpenAI(api_key=self.settings.openai_api_key)
+                self._client = AsyncOpenAI(api_key=self._api_key)
             except ImportError:
                 raise RuntimeError("openai package not installed")
         return self._client
