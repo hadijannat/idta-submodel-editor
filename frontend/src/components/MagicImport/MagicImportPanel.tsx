@@ -325,6 +325,24 @@ export default function MagicImportPanel({
             )}
           </div>
         )}
+        {result?.quality_metrics && (
+          <div className="magic-import-panel__quality-metrics">
+            <span className="magic-import-panel__metric-chip">
+              Quality: {Math.round(result.quality_metrics.weighted_confidence * 100)}%
+            </span>
+            <span className="magic-import-panel__metric-chip">
+              Evidence: {Math.round(result.quality_metrics.evidence_ratio * 100)}%
+            </span>
+            <span className="magic-import-panel__metric-chip">
+              Required: {Math.round(result.quality_metrics.required_field_coverage * 100)}%
+            </span>
+            {result.quality_metrics.auto_apply_eligible_count > 0 && (
+              <span className="magic-import-panel__metric-chip magic-import-panel__metric-chip--success">
+                {result.quality_metrics.auto_apply_eligible_count} auto-apply eligible
+              </span>
+            )}
+          </div>
+        )}
         {onClose && (
           <button
             type="button"
@@ -337,10 +355,10 @@ export default function MagicImportPanel({
       </div>
       {error && <div className="magic-import-panel__error">{error}</div>}
 
-      {/* Warning if mismatch is suspected */}
-      {result?.mismatch_suspected && (
+      {/* Warning if mismatch is suspected (legacy) */}
+      {result?.mismatch_suspected && !result?.quality_metrics?.mismatch_metrics && (
         <div className="magic-import-panel__warning">
-          <strong>⚠️ Possible template mismatch.</strong> The selected template may not
+          <strong>Possible template mismatch.</strong> The selected template may not
           match this document. Consider choosing a template that fits the PDF content.
           {result.mismatch_reasons && result.mismatch_reasons.length > 0 && (
             <ul className="magic-import-panel__warning-list">
@@ -351,6 +369,37 @@ export default function MagicImportPanel({
           )}
         </div>
       )}
+
+      {/* Detailed mismatch warning from quality metrics */}
+      {result?.quality_metrics?.mismatch_metrics &&
+        result.quality_metrics.mismatch_metrics.mismatch_score >= 0.4 && (
+          <div
+            className={`magic-import-panel__warning ${
+              result.quality_metrics.mismatch_metrics.recommended_action === 'abort'
+                ? 'magic-import-panel__warning--severe'
+                : ''
+            }`}
+          >
+            <strong>
+              {result.quality_metrics.mismatch_metrics.recommended_action === 'abort'
+                ? 'Template Mismatch Detected'
+                : 'Possible Template Mismatch'}
+            </strong>
+            <p>
+              Mismatch score:{' '}
+              {Math.round(result.quality_metrics.mismatch_metrics.mismatch_score * 100)}%
+            </p>
+            {result.quality_metrics.mismatch_metrics.mismatch_indicators.length > 0 && (
+              <ul className="magic-import-panel__warning-list">
+                {result.quality_metrics.mismatch_metrics.mismatch_indicators.map(
+                  (indicator, i) => (
+                    <li key={i}>{indicator}</li>
+                  )
+                )}
+              </ul>
+            )}
+          </div>
+        )}
 
       {/* Fallback warning if all fields empty */}
       {!result?.mismatch_suspected &&

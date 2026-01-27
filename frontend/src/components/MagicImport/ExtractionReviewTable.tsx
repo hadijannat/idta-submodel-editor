@@ -437,15 +437,28 @@ export default function ExtractionReviewTable({
                 </td>
                 <td className="extraction-table__confidence">
                   <div className="extraction-table__confidence-stack">
-                    <ConfidenceBadge
-                      confidence={extraction.confidence}
-                      needsReview={extraction.needs_review}
-                      userApproved={extraction.user_approved}
-                      userEdited={extraction.user_edited}
-                      confidenceBreakdown={extraction.confidence_breakdown}
-                      confidenceReasons={extraction.confidence_reasons}
-                      size="sm"
-                    />
+                    <div className="extraction-table__confidence-row">
+                      <ConfidenceBadge
+                        confidence={extraction.confidence}
+                        needsReview={extraction.needs_review}
+                        userApproved={extraction.user_approved}
+                        userEdited={extraction.user_edited}
+                        confidenceBreakdown={extraction.confidence_breakdown}
+                        confidenceReasons={extraction.confidence_reasons}
+                        size="sm"
+                      />
+                      {extraction.evidence && (
+                        <span
+                          className="extraction-table__evidence-source"
+                          title={`Source: ${extraction.evidence.method}${extraction.evidence.locator_score >= 0.9 ? ' (verified)' : ''}`}
+                        >
+                          {extraction.evidence.method === 'OCR' ? '🔍' : '📝'}
+                          {extraction.evidence.locator_score >= 0.9 && (
+                            <span className="extraction-table__evidence-verified">✓</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                     {extraction.confidence_reasons?.length > 0 && (
                       <span className="extraction-table__reason-subtitle">
                         {extraction.confidence_reasons[0].message.slice(0, 40)}

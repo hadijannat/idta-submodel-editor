@@ -172,6 +172,122 @@ export interface ValidationResult {
 }
 
 /**
+ * Evidence quality for Q4 classification.
+ */
+export type EvidenceQuality =
+  | 'table_structured'
+  | 'table_key_value'
+  | 'text_grounded'
+  | 'text_inferred'
+  | 'ocr_high'
+  | 'ocr_low'
+  | 'none';
+
+/**
+ * Field type category for Q10 classification.
+ */
+export type FieldTypeCategory =
+  | 'identifier'
+  | 'date_time'
+  | 'numeric_unit'
+  | 'numeric_pure'
+  | 'enum_choice'
+  | 'boolean'
+  | 'text_short'
+  | 'text_long'
+  | 'contact'
+  | 'reference';
+
+/**
+ * Per-field quality metrics.
+ */
+export interface FieldMetrics {
+  path: string;
+  field_type_category: FieldTypeCategory;
+  is_required: boolean;
+  confidence: number;
+  evidence_ratio: number;
+  evidence_quality: EvidenceQuality;
+  source_table: boolean;
+  source_text: boolean;
+  source_ocr: boolean;
+  grounding_verified: boolean;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+}
+
+/**
+ * Template mismatch metrics for Q6.
+ */
+export interface TemplateMismatchMetrics {
+  keyword_match_ratio: number;
+  extraction_yield: number;
+  evidence_localization_rate: number;
+  mismatch_score: number;
+  mismatch_indicators: string[];
+  recommended_action: 'proceed' | 'warn' | 'abort';
+}
+
+/**
+ * Auto-apply thresholds for Q8.
+ */
+export interface AutoApplyThresholds {
+  min_confidence: number;
+  min_evidence_ratio: number;
+  require_grounding: boolean;
+  allowed_evidence_qualities: EvidenceQuality[];
+  blocked_field_types: FieldTypeCategory[];
+}
+
+/**
+ * Comprehensive quality metrics.
+ */
+export interface QualityMetrics {
+  job_id: string;
+  template_name: string;
+  computed_at: string;
+  overall_confidence: number;
+  weighted_confidence: number;
+  evidence_ratio: number;
+  table_evidence_ratio: number;
+  text_evidence_ratio: number;
+  high_confidence_no_evidence_count: number;
+  grounding_rate: number;
+  required_field_total: number;
+  required_field_extracted: number;
+  required_field_coverage: number;
+  optional_field_coverage: number;
+  field_metrics: FieldMetrics[];
+  error_rates_by_type: Record<string, number>;
+  mismatch_metrics: TemplateMismatchMetrics | null;
+  llm_provider: string;
+  llm_model: string;
+  llm_tokens_used?: number | null;
+  auto_apply_eligible_count: number;
+  auto_apply_thresholds_used?: AutoApplyThresholds | null;
+  experiment_id?: string | null;
+  experiment_variant?: string | null;
+}
+
+/**
+ * User correction outcome for feedback loop.
+ */
+export interface ExtractionOutcome {
+  job_id: string;
+  recorded_at: string;
+  field_path: string;
+  original_value?: string | null;
+  final_value?: string | null;
+  original_confidence: number;
+  action: 'accepted' | 'edited' | 'deleted' | 'rejected';
+  edit_distance: number;
+  had_evidence: boolean;
+  evidence_quality: EvidenceQuality;
+  field_type: FieldTypeCategory;
+  was_required: boolean;
+}
+
+/**
  * Extraction result.
  */
 export interface MagicImportResult {
@@ -193,6 +309,7 @@ export interface MagicImportResult {
   validation_result: ValidationResult | null;
   template_version_used: string | null;
   unmapped_findings: UnmappedFinding[];
+  quality_metrics?: QualityMetrics | null;
 }
 
 /**
@@ -345,6 +462,41 @@ export async function reExtractFields(
   if (!response.ok) {
     const details = await response.json().catch(() => response.statusText);
     throw new ApiError('Failed to re-extract fields', response.status, details);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get quality metrics for a job.
+ */
+export async function getQualityMetrics(jobId: string): Promise<QualityMetrics> {
+  const response = await fetch(`${API_BASE_URL}/api/magic-import/jobs/${jobId}/quality-metrics`);
+
+  if (!response.ok) {
+    throw new ApiError('Failed to get quality metrics', response.status);
+  }
+
+  return response.json();
+}
+
+/**
+ * Record a user correction.
+ */
+export async function recordCorrection(
+  jobId: string,
+  path: string,
+  finalValue: string | null,
+  action: 'accepted' | 'edited' | 'deleted' | 'rejected'
+): Promise<ExtractionOutcome> {
+  const response = await fetch(`${API_BASE_URL}/api/magic-import/jobs/${jobId}/corrections`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, final_value: finalValue, action }),
+  });
+
+  if (!response.ok) {
+    throw new ApiError('Failed to record correction', response.status);
   }
 
   return response.json();
