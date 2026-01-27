@@ -299,10 +299,13 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         # ================================================================
         # Step 5: Field Extraction (Two-Pass or Legacy)
         # ================================================================
-        extractor = Extractor()
-        hints_by_path = {hint.path: hint for hint in hints}
+    extractor = Extractor()
+    hints_by_path = {hint.path: hint for hint in hints}
+    llm_tokens_used = 0
+    llm_prompt_tokens: int | None = None
+    llm_completion_tokens: int | None = None
 
-        if use_two_pass:
+    if use_two_pass:
             # ============================================================
             # Two-Pass Extraction: Generate Candidates → Verify
             # ============================================================
@@ -317,6 +320,9 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             # Pass A: Generate candidates
             candidate_response = extractor.generate_candidates(hints, snippets)
             job_manager.save_artifact(job_id, "candidates", candidate_response)
+            llm_tokens_used = candidate_response.tokens_used
+            llm_prompt_tokens = candidate_response.prompt_tokens
+            llm_completion_tokens = candidate_response.completion_tokens
 
             logger.info(
                 "Generated %d candidate sets (%d tokens)",
@@ -366,6 +372,9 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             )
 
             llm_extractions = extractor.extract_fields(hints, snippets)
+            llm_tokens_used = llm_extractions.tokens_used
+            llm_prompt_tokens = llm_extractions.prompt_tokens
+            llm_completion_tokens = llm_extractions.completion_tokens
             logger.info("LLM extracted %d fields", len(llm_extractions.extractions))
 
             # Localize evidence
@@ -475,6 +484,14 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
 
         final_extractions = scored_extractions
 
+        llm_called = llm_tokens_used > 0
+        mismatch_suspected, mismatch_reasons = _compute_mismatch_diagnostics(
+            hints=hints,
+            extractions=final_extractions,
+            retrieval_diagnostics=retrieval_diagnostics,
+            llm_called=llm_called,
+        )
+
         # ================================================================
         # Step 8: Validate against template schema
         # ================================================================
@@ -535,6 +552,12 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             llm_provider=active_provider,
             llm_model=active_model,
             processing_time_seconds=processing_time,
+            llm_tokens_used=llm_tokens_used,
+            llm_prompt_tokens=llm_prompt_tokens,
+            llm_completion_tokens=llm_completion_tokens,
+            llm_called=llm_called,
+            mismatch_suspected=mismatch_suspected,
+            mismatch_reasons=mismatch_reasons,
             validation_result=validation_result,
             template_version_used=job.template_version,
             unmapped_findings=unmapped_findings,
@@ -710,6 +733,43 @@ def _build_unmapped_findings(
                     )
 
     return findings
+
+
+def _compute_mismatch_diagnostics(
+    hints: list,
+    extractions: list[FieldExtraction],
+    retrieval_diagnostics: list[dict] | None,
+    llm_called: bool,
+) -> tuple[bool, list[str]]:
+    """Heuristically detect template/document mismatch."""
+    reasons: list[str] = []
+
+    if llm_called:
+        if not extractions:
+            reasons.append("llm_returned_no_fields")
+        else:
+            non_empty = [e for e in extractions if str(e.value_raw).strip()]
+            if not non_empty:
+                reasons.append("all_fields_empty")
+
+        if extractions and all(e.evidence is None for e in extractions):
+            reasons.append("no_evidence_localized")
+
+    if retrieval_diagnostics:
+        total = len(retrieval_diagnostics)
+        matched = 0
+        for diag in retrieval_diagnostics:
+            if diag.get("match_count", 0) > 0 or diag.get("anchor_match_count", 0) > 0:
+                matched += 1
+        if total > 0:
+            match_rate = matched / total
+            if matched == 0:
+                reasons.append("no_keyword_matches")
+            elif match_rate < 0.15:
+                reasons.append("low_keyword_match_rate")
+
+    mismatch_suspected = llm_called and bool(reasons)
+    return mismatch_suspected, reasons
 
 
 @shared_task(name="magic_import.cleanup_expired")

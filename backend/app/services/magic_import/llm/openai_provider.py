@@ -82,7 +82,13 @@ class OpenAIProvider(LLMProvider):
 
             # Parse response
             content = response.choices[0].message.content
-            tokens_used = response.usage.total_tokens if response.usage else 0
+            prompt_tokens = response.usage.prompt_tokens if response.usage else 0
+            completion_tokens = response.usage.completion_tokens if response.usage else 0
+            tokens_used = (
+                response.usage.total_tokens
+                if response.usage and response.usage.total_tokens is not None
+                else prompt_tokens + completion_tokens
+            )
 
             extractions = self._parse_response(content)
 
@@ -95,6 +101,8 @@ class OpenAIProvider(LLMProvider):
             return LLMExtractionResponse(
                 extractions=extractions,
                 tokens_used=tokens_used,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 model=self._model,
             )
 

@@ -112,6 +112,8 @@ class Extractor:
         # Otherwise, batch by hints
         all_extractions: list[LLMFieldExtraction] = []
         total_tokens = 0
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
 
         # Sort snippets by relevance score
         sorted_snippets = sorted(snippets, key=lambda s: s.score, reverse=True)
@@ -125,6 +127,10 @@ class Extractor:
                 response = await self._extract_batch(batch_hints, top_snippets)
                 all_extractions.extend(response.extractions)
                 total_tokens += response.tokens_used
+                if response.prompt_tokens is not None:
+                    total_prompt_tokens += response.prompt_tokens
+                if response.completion_tokens is not None:
+                    total_completion_tokens += response.completion_tokens
             except Exception as e:
                 logger.warning("Batch extraction failed: %s", e)
                 continue
@@ -135,6 +141,8 @@ class Extractor:
         return LLMExtractionResponse(
             extractions=unique_extractions,
             tokens_used=total_tokens,
+            prompt_tokens=total_prompt_tokens or None,
+            completion_tokens=total_completion_tokens or None,
             model=self.provider.model,
         )
 
@@ -166,6 +174,8 @@ class Extractor:
         return LLMExtractionResponse(
             extractions=valid_extractions,
             tokens_used=response.tokens_used,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
             model=response.model,
         )
 
@@ -247,6 +257,8 @@ class Extractor:
         # Otherwise, batch by hints
         all_candidate_sets: list[CandidateSet] = []
         total_tokens = 0
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
 
         for i in range(0, len(hints), self.MAX_HINTS_PER_BATCH):
             batch_hints = hints[i : i + self.MAX_HINTS_PER_BATCH]
@@ -255,6 +267,10 @@ class Extractor:
                 response = await self._generate_candidates_batch(batch_hints, top_snippets)
                 all_candidate_sets.extend(response.candidate_sets)
                 total_tokens += response.tokens_used
+                if response.prompt_tokens is not None:
+                    total_prompt_tokens += response.prompt_tokens
+                if response.completion_tokens is not None:
+                    total_completion_tokens += response.completion_tokens
             except Exception as e:
                 logger.warning("Batch candidate generation failed: %s", e)
                 # Add NOT_FOUND candidates for failed batch
@@ -278,6 +294,8 @@ class Extractor:
         return LLMCandidateResponse(
             candidate_sets=all_candidate_sets,
             tokens_used=total_tokens,
+            prompt_tokens=total_prompt_tokens or None,
+            completion_tokens=total_completion_tokens or None,
             model=self.provider.model,
         )
 
@@ -309,6 +327,8 @@ class Extractor:
         return LLMCandidateResponse(
             candidate_sets=valid_sets,
             tokens_used=response.tokens_used,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
             model=response.model,
         )
 

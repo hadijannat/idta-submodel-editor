@@ -236,6 +236,26 @@ class MagicImportResult(BaseModel):
     llm_provider: str
     llm_model: str
     processing_time_seconds: float
+    llm_tokens_used: int | None = Field(
+        default=None, description="Total tokens used by the LLM for this job"
+    )
+    llm_prompt_tokens: int | None = Field(
+        default=None, description="Prompt tokens used by the LLM (if available)"
+    )
+    llm_completion_tokens: int | None = Field(
+        default=None, description="Completion tokens used by the LLM (if available)"
+    )
+    llm_called: bool | None = Field(
+        default=None, description="Whether the LLM was actually called"
+    )
+    mismatch_suspected: bool = Field(
+        default=False,
+        description="Heuristic flag indicating template/document mismatch",
+    )
+    mismatch_reasons: list[str] = Field(
+        default_factory=list,
+        description="Heuristic reasons for possible template/document mismatch",
+    )
     validation_result: ValidationResult | None = Field(
         default=None, description="Template schema validation result"
     )
@@ -386,6 +406,8 @@ class LLMExtractionResponse(BaseModel):
 
     extractions: list[LLMFieldExtraction]
     tokens_used: int = 0
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
     model: str
 
 
@@ -428,6 +450,8 @@ class LLMCandidateResponse(BaseModel):
 
     candidate_sets: list[CandidateSet]
     tokens_used: int = 0
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
     model: str
 
 

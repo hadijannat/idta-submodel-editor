@@ -184,6 +184,12 @@ export interface MagicImportResult {
   llm_provider: string;
   llm_model: string;
   processing_time_seconds: number;
+  llm_tokens_used?: number | null;
+  llm_prompt_tokens?: number | null;
+  llm_completion_tokens?: number | null;
+  llm_called?: boolean | null;
+  mismatch_suspected?: boolean;
+  mismatch_reasons?: string[];
   validation_result: ValidationResult | null;
   template_version_used: string | null;
   unmapped_findings: UnmappedFinding[];

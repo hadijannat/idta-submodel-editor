@@ -100,11 +100,9 @@ class AnthropicProvider(LLMProvider):
                     content += block.text
 
             # Calculate tokens
-            tokens_used = (
-                response.usage.input_tokens + response.usage.output_tokens
-                if response.usage
-                else 0
-            )
+            prompt_tokens = response.usage.input_tokens if response.usage else 0
+            completion_tokens = response.usage.output_tokens if response.usage else 0
+            tokens_used = prompt_tokens + completion_tokens
 
             extractions = self._parse_response(content)
 
@@ -117,6 +115,8 @@ class AnthropicProvider(LLMProvider):
             return LLMExtractionResponse(
                 extractions=extractions,
                 tokens_used=tokens_used,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 model=self._model,
             )
 

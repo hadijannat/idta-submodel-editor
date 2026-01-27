@@ -358,5 +358,7 @@ Return ONLY a JSON object with "candidate_sets" array."""
         return LLMCandidateResponse(
             candidate_sets=candidate_sets,
             tokens_used=response.tokens_used,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
             model=response.model,
         )

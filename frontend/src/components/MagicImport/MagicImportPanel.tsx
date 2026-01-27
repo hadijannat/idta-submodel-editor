@@ -337,13 +337,30 @@ export default function MagicImportPanel({
       </div>
       {error && <div className="magic-import-panel__error">{error}</div>}
 
-      {/* Warning if all fields empty */}
-      {extractions.length > 0 && extractions.every(e => e.status === 'empty') && (
+      {/* Warning if mismatch is suspected */}
+      {result?.mismatch_suspected && (
         <div className="magic-import-panel__warning">
-          ⚠️ All fields returned empty. The selected template may not match this document.
-          Consider using a different template that matches your document content.
+          <strong>⚠️ Possible template mismatch.</strong> The selected template may not
+          match this document. Consider choosing a template that fits the PDF content.
+          {result.mismatch_reasons && result.mismatch_reasons.length > 0 && (
+            <ul className="magic-import-panel__warning-list">
+              {result.mismatch_reasons.map((reason) => (
+                <li key={reason}>{formatMismatchReason(reason)}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
+
+      {/* Fallback warning if all fields empty */}
+      {!result?.mismatch_suspected &&
+        extractions.length > 0 &&
+        extractions.every((e) => e.status === 'empty') && (
+          <div className="magic-import-panel__warning">
+            ⚠️ All fields returned empty. The selected template may not match this document.
+            Consider using a different template that matches your document content.
+          </div>
+        )}
 
       <div className="magic-import-panel__content">
         {/* PDF Viewer (left side) */}
@@ -445,4 +462,21 @@ export default function MagicImportPanel({
       </div>
     </div>
   );
+}
+
+function formatMismatchReason(reason: string): string {
+  switch (reason) {
+    case 'llm_returned_no_fields':
+      return 'LLM returned no candidate fields from the document.';
+    case 'all_fields_empty':
+      return 'All extracted fields were empty.';
+    case 'no_evidence_localized':
+      return 'No evidence could be localized in the document.';
+    case 'no_keyword_matches':
+      return 'Template keywords did not appear in the document text.';
+    case 'low_keyword_match_rate':
+      return 'Only a small fraction of template keywords appear in the document.';
+    default:
+      return reason.replace(/_/g, ' ');
+  }
 }

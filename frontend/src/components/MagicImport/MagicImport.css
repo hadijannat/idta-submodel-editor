@@ -64,6 +64,16 @@
   font-size: 0.9rem;
 }
 
+.magic-import-panel__warning-list {
+  margin: 8px 0 0 18px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.magic-import-panel__warning-list li {
+  margin: 4px 0;
+}
+
 .magic-import-panel__close {
   padding: 4px 8px;
   background: none;

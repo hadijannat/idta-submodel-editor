@@ -121,6 +121,8 @@ class LocalProvider(LLMProvider):
                 return LLMExtractionResponse(
                     extractions=extractions,
                     tokens_used=tokens_used,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=response_tokens,
                     model=self._model,
                 )
 
