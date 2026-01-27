@@ -105,13 +105,16 @@ class SnippetRetriever:
                 hint, page_scores, index, page_docs
             )[:max_snippets_per_field]
 
-            # Contact-aware anchor snippets
+            # Contact-aware anchor snippets - boosted score to survive deduplication
             if self._is_contact_hint(hint) and contact_anchors:
                 anchor_snippets = self._extract_snippets_for_anchors(
                     index,
                     contact_anchors,
                     limit=max_snippets_per_field,
                 )
+                # Boost scores to ensure contact snippets survive deduplication
+                for snippet in anchor_snippets:
+                    snippet.score = max(snippet.score, 1.5)
                 hint_snippets.extend(anchor_snippets)
 
             # Tag snippets with field path
@@ -311,15 +314,29 @@ class SnippetRetriever:
         page: int,
         score: float,
         index: PDFIndex,
+        extra_before: int = 0,
+        extra_after: int = 0,
     ) -> Snippet | None:
-        """Extract a snippet centered at a match position."""
+        """Extract a snippet centered at a match position.
+
+        Args:
+            page_words: List of (global_idx, PDFWord) tuples for the page
+            center_idx: Local index of the center word
+            page: Page number
+            score: Relevance score
+            index: PDF index (for metadata)
+            extra_before: Additional words to include before center (for clusters)
+            extra_after: Additional words to include after center (for clusters)
+        """
         n_words = len(page_words)
         if n_words == 0:
             return None
 
-        # Calculate window bounds
-        start_idx = max(0, center_idx - self.CONTEXT_WORDS)
-        end_idx = min(n_words, center_idx + self.CONTEXT_WORDS + 1)
+        # Calculate window bounds - expand for anchor clusters
+        context_before = self.CONTEXT_WORDS + extra_before
+        context_after = self.CONTEXT_WORDS + extra_after
+        start_idx = max(0, center_idx - context_before)
+        end_idx = min(n_words, center_idx + context_after + 1)
 
         # Ensure minimum size
         if end_idx - start_idx < self.MIN_SNIPPET_WORDS:
@@ -554,51 +571,108 @@ class SnippetRetriever:
                 anchors.append((word.page, idx))
         return anchors
 
+    def _cluster_indices(self, indices: list[int], max_gap: int = 20) -> list[list[int]]:
+        """Group indices into clusters where consecutive items are within max_gap.
+
+        Contact blocks often have multiple anchors (email, tel, fax, www) close together.
+        Clustering ensures we capture the entire block in one snippet.
+
+        Args:
+            indices: List of word indices to cluster
+            max_gap: Maximum gap between consecutive indices in a cluster
+
+        Returns:
+            List of clusters, each cluster is a list of indices
+        """
+        if not indices:
+            return []
+
+        sorted_indices = sorted(indices)
+        clusters: list[list[int]] = [[sorted_indices[0]]]
+
+        for idx in sorted_indices[1:]:
+            if idx - clusters[-1][-1] <= max_gap:
+                clusters[-1].append(idx)
+            else:
+                clusters.append([idx])
+
+        return clusters
+
     def _extract_snippets_for_anchors(
         self,
         index: PDFIndex,
         anchors: list[tuple[int, int]],
-        limit: int = 3,
+        limit: int = 5,
     ) -> list[Snippet]:
-        """Extract snippets around anchor positions."""
+        """Extract snippets covering contact anchor clusters.
+
+        Groups nearby anchors (email, tel, fax, www) into clusters and extracts
+        snippets that span the entire cluster, ensuring complete contact blocks
+        are captured in a single snippet.
+
+        Args:
+            index: PDF word index
+            anchors: List of (page, global_word_idx) for contact anchors
+            limit: Maximum number of snippets to return
+
+        Returns:
+            List of snippets covering contact anchor clusters
+        """
         if not anchors:
             return []
 
+        # Build page words lookup
         words_by_page: dict[int, list[tuple[int, PDFWord]]] = {}
         for idx, word in enumerate(index.words):
             words_by_page.setdefault(word.page, []).append((idx, word))
 
+        # Group anchors by page
         anchors_by_page: dict[int, list[int]] = {}
         for page, global_idx in anchors:
             anchors_by_page.setdefault(page, []).append(global_idx)
 
         snippets: list[Snippet] = []
+
         for page, page_words in words_by_page.items():
             if page not in anchors_by_page:
                 continue
 
-            anchor_indices = set(anchors_by_page[page])
+            # Map global indices to local indices
+            anchor_global_indices = set(anchors_by_page[page])
             local_indices: list[int] = []
             for li, (gi, _word) in enumerate(page_words):
-                if gi in anchor_indices:
+                if gi in anchor_global_indices:
                     local_indices.append(li)
 
             if not local_indices:
                 continue
 
-            # Pick the earliest anchor to capture compact contact blocks (page headers/footers)
-            center = min(local_indices)
-            snippet = self._extract_snippet_at(
-                page_words,
-                center,
-                page,
-                score=1.2,
-                index=index,
-            )
-            if snippet:
-                snippets.append(snippet)
-            if len(snippets) >= limit:
-                break
+            # Cluster nearby anchors (within 20 words of each other)
+            clusters = self._cluster_indices(local_indices, max_gap=20)
+
+            for cluster in clusters:
+                # Extract snippet spanning the entire cluster
+                cluster_min = min(cluster)
+                cluster_max = max(cluster)
+                center = (cluster_min + cluster_max) // 2
+
+                # Calculate extra context to cover the full cluster
+                extra_before = center - cluster_min
+                extra_after = cluster_max - center
+
+                snippet = self._extract_snippet_at(
+                    page_words,
+                    center,
+                    page,
+                    score=1.2,
+                    index=index,
+                    extra_before=extra_before,
+                    extra_after=extra_after,
+                )
+                if snippet:
+                    snippets.append(snippet)
+                if len(snippets) >= limit:
+                    return snippets
 
         return snippets
 

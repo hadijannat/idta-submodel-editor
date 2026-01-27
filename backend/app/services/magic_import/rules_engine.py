@@ -1,11 +1,14 @@
 """
-Rules Engine - Cross-field consistency validation for Magic Import.
+Rules Engine - Cross-field consistency validation and rule-based extraction for Magic Import.
 
 Detects inconsistencies between related extracted fields:
 - Unit compatibility checks
 - Range plausibility validation
 - Coupled field relationships (e.g., P = U × I)
 - Cardinality compliance
+
+Also provides deterministic rule-based extraction for:
+- Contact information (email, phone, fax, website)
 """
 
 from __future__ import annotations
@@ -17,10 +20,13 @@ from typing import Callable, Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.magic_import import (
+    BBox,
     ConfidenceReason,
     ConfidenceReasonCode,
+    EvidenceRef,
     ExtractionHint,
     FieldExtraction,
+    PDFIndex,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +41,18 @@ class ConsistencyWarning(BaseModel):
     severity: Literal["info", "warning", "error"] = Field(default="warning")
     expected: str | None = Field(default=None, description="Expected value/relationship")
     actual: str | None = Field(default=None, description="Actual value/relationship")
+
+
+class RuleExtraction(BaseModel):
+    """A value extracted by deterministic rule-based pattern matching."""
+
+    path: str = Field(description="idShortPath of target field")
+    value: str = Field(description="Extracted value")
+    evidence_quote: str = Field(description="Exact text matched by pattern")
+    page: int = Field(ge=0, description="0-indexed page number")
+    confidence: float = Field(ge=0.0, le=1.0, default=0.92, description="Confidence score")
+    source: Literal["rule"] = "rule"
+    pattern_name: str = Field(description="Name of the pattern that matched")
 
 
 # Type alias for rule functions
@@ -450,3 +468,234 @@ class RulesEngine:
             )
 
         return updated
+
+
+# =============================================================================
+# Contact Information Rule-Based Extraction
+# =============================================================================
+
+# Regex patterns for deterministic contact info extraction
+CONTACT_PATTERNS: dict[str, re.Pattern] = {
+    "Email": re.compile(
+        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+        re.IGNORECASE,
+    ),
+    "Phone": re.compile(
+        r"(?:Tel\.?|Phone:?|Telephone:?)\s*(\+?[\d\-\s().]{7,})",
+        re.IGNORECASE,
+    ),
+    "Fax": re.compile(
+        r"(?:Fax\.?:?)\s*(\+?[\d\-\s().]{7,})",
+        re.IGNORECASE,
+    ),
+    "Website": re.compile(
+        r"\b(?:www\.[A-Za-z0-9.-]+\.[A-Za-z]{2,}|https?://[^\s<>\"']+)\b",
+        re.IGNORECASE,
+    ),
+}
+
+# Mapping from pattern names to common ContactInformation field suffixes
+CONTACT_FIELD_MAPPING: dict[str, list[str]] = {
+    "Email": ["EmailAddress", "Email", "EMail", "E-Mail"],
+    "Phone": ["TelephoneNumber", "Telephone", "Phone", "PhoneNumber", "Tel"],
+    "Fax": ["FaxNumber", "Fax"],
+    "Website": ["Website", "WWW", "URL", "Homepage"],
+}
+
+
+def extract_contact_by_rules(
+    index: PDFIndex,
+    hints: list[ExtractionHint] | None = None,
+) -> list[RuleExtraction]:
+    """
+    Extract contact information using regex patterns.
+
+    Provides deterministic backup extraction for email, phone, fax, and website
+    when LLM fails to extract contact info from PDF headers/footers.
+
+    Args:
+        index: PDF word index with page text
+        hints: Optional extraction hints to filter which fields to extract
+
+    Returns:
+        List of rule-based extractions with evidence
+    """
+    extractions: list[RuleExtraction] = []
+    seen_values: set[str] = set()  # Deduplicate across pages
+
+    # Build page text from words
+    page_texts: dict[int, str] = {}
+    for word in index.words:
+        if word.page not in page_texts:
+            page_texts[word.page] = ""
+        page_texts[word.page] += word.text + " "
+
+    # Determine which contact fields to extract based on hints
+    target_fields: set[str] = set()
+    if hints:
+        for hint in hints:
+            path_lower = hint.path.lower()
+            if "contactinformation" in path_lower:
+                for pattern_name, field_suffixes in CONTACT_FIELD_MAPPING.items():
+                    for suffix in field_suffixes:
+                        if suffix.lower() in path_lower:
+                            target_fields.add(pattern_name)
+                            break
+    else:
+        # If no hints, extract all contact fields
+        target_fields = set(CONTACT_PATTERNS.keys())
+
+    # Extract from each page
+    for page_num, page_text in page_texts.items():
+        for pattern_name, pattern in CONTACT_PATTERNS.items():
+            if target_fields and pattern_name not in target_fields:
+                continue
+
+            for match in pattern.finditer(page_text):
+                # Get the captured group if exists, otherwise full match
+                value = match.group(1) if match.lastindex else match.group()
+                value = value.strip()
+
+                # Skip if already seen (dedup across pages)
+                value_key = f"{pattern_name}:{value.lower()}"
+                if value_key in seen_values:
+                    continue
+                seen_values.add(value_key)
+
+                # Skip invalid values
+                if not value or len(value) < 5:
+                    continue
+
+                # Determine the best matching path from hints
+                best_path = _find_best_contact_path(pattern_name, hints)
+
+                extractions.append(
+                    RuleExtraction(
+                        path=best_path,
+                        value=value,
+                        evidence_quote=match.group(),
+                        page=page_num,
+                        confidence=0.92,
+                        pattern_name=pattern_name,
+                    )
+                )
+
+    logger.info(
+        "Rule-based extraction found %d contact values from %d pages",
+        len(extractions),
+        len(page_texts),
+    )
+
+    return extractions
+
+
+def _find_best_contact_path(
+    pattern_name: str,
+    hints: list[ExtractionHint] | None,
+) -> str:
+    """Find the best matching path for a contact field from hints."""
+    if not hints:
+        return f"ContactInformation.{pattern_name}"
+
+    field_suffixes = CONTACT_FIELD_MAPPING.get(pattern_name, [pattern_name])
+
+    for hint in hints:
+        path_lower = hint.path.lower()
+        if "contactinformation" not in path_lower:
+            continue
+        for suffix in field_suffixes:
+            if suffix.lower() in path_lower:
+                return hint.path
+
+    # Fallback to generic path
+    return f"ContactInformation.{pattern_name}"
+
+
+def merge_rule_extractions_with_llm(
+    llm_extractions: list[FieldExtraction],
+    rule_extractions: list[RuleExtraction],
+) -> list[FieldExtraction]:
+    """
+    Merge rule-based extractions with LLM extractions.
+
+    Rule extractions are used as fallback when LLM returns empty for a field.
+
+    Args:
+        llm_extractions: Extractions from LLM
+        rule_extractions: Extractions from rule-based patterns
+
+    Returns:
+        Merged list of extractions
+    """
+    from app.schemas.magic_import import (
+        ConfidenceBreakdown,
+        ExtractionStatus,
+    )
+
+    # Build lookup of LLM extractions by path
+    llm_by_path: dict[str, FieldExtraction] = {}
+    for ext in llm_extractions:
+        llm_by_path[ext.path] = ext
+
+    merged: list[FieldExtraction] = list(llm_extractions)
+    rule_additions = 0
+
+    for rule_ext in rule_extractions:
+        existing = llm_by_path.get(rule_ext.path)
+
+        # Only add rule extraction if LLM returned empty or has very low confidence
+        if existing is None or (
+            not existing.value_raw and existing.status == ExtractionStatus.EMPTY
+        ):
+            # Create FieldExtraction from RuleExtraction
+            field_ext = FieldExtraction(
+                path=rule_ext.path,
+                value_raw=rule_ext.value,
+                value_normalized=rule_ext.value,
+                status=ExtractionStatus.FILLED,
+                confidence=rule_ext.confidence,
+                confidence_breakdown=ConfidenceBreakdown(
+                    llm=0.0,  # Not from LLM
+                    localizer=1.0,  # Perfect match (it's from the document)
+                    ocr=1.0,
+                    rules=rule_ext.confidence,
+                ),
+                confidence_reasons=[
+                    ConfidenceReason(
+                        code=ConfidenceReasonCode.NO_EVIDENCE_FOUND,
+                        message=f"Extracted via {rule_ext.pattern_name} pattern matching (fallback)",
+                        severity="info",
+                    )
+                ],
+                evidence=EvidenceRef(
+                    page=rule_ext.page,
+                    quote=rule_ext.evidence_quote,
+                    boxes=[],  # Will be localized later
+                    method="TEXT",
+                    locator_score=1.0,
+                ),
+                needs_review=False,
+            )
+
+            # Add or replace
+            if existing is None:
+                merged.append(field_ext)
+            else:
+                # Replace empty LLM extraction with rule extraction
+                merged = [e for e in merged if e.path != rule_ext.path]
+                merged.append(field_ext)
+
+            rule_additions += 1
+            logger.debug(
+                "Rule extraction added for %s: %s",
+                rule_ext.path,
+                rule_ext.value,
+            )
+
+    if rule_additions > 0:
+        logger.info(
+            "Merged %d rule-based extractions with LLM results",
+            rule_additions,
+        )
+
+    return merged

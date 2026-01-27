@@ -573,3 +573,271 @@ class TestConsistencyWarning:
                 severity=severity,
             )
             assert warning.severity == severity
+
+
+class TestContactRulesExtraction:
+    """Tests for rule-based contact information extraction."""
+
+    @pytest.fixture
+    def contact_index(self):
+        """Create a PDF index with contact information in header/footer."""
+        from app.schemas.magic_import import (
+            BBox,
+            PDFIndex,
+            PDFIndexInfo,
+            PDFPageInfo,
+            PDFWord,
+        )
+
+        words = []
+        # Simulates a header with contact info
+        contact_text = [
+            "info@lenntech.com",
+            "Tel.",
+            "+31-152-610-900",
+            "www.lenntech.com",
+            "Fax.",
+            "+31-152-616-289",
+        ]
+        for i, text in enumerate(contact_text):
+            words.append(
+                PDFWord(
+                    text=text,
+                    page=0,
+                    bbox=BBox(
+                        x0=0.1 + i * 0.1,
+                        y0=0.05,
+                        x1=0.15 + i * 0.1,
+                        y1=0.08,
+                    ),
+                    confidence=1.0,
+                    method="TEXT",
+                )
+            )
+
+        return PDFIndex(
+            job_id="contact-rules-test",
+            pdf_path="contact.pdf",
+            info=PDFIndexInfo(
+                total_pages=1,
+                pages_with_text=1,
+                pages_needing_ocr=0,
+                total_words=len(words),
+                language_detected=None,
+            ),
+            pages=[
+                PDFPageInfo(
+                    page_number=0,
+                    width=612,
+                    height=792,
+                    has_text=True,
+                    needs_ocr=False,
+                    word_count=len(words),
+                )
+            ],
+            words=words,
+        )
+
+    def test_extract_email_pattern(self, contact_index):
+        """Test email extraction via regex pattern."""
+        from app.services.magic_import.rules_engine import extract_contact_by_rules
+
+        extractions = extract_contact_by_rules(contact_index)
+
+        email_extractions = [e for e in extractions if e.pattern_name == "Email"]
+        assert len(email_extractions) >= 1
+        assert email_extractions[0].value == "info@lenntech.com"
+        assert email_extractions[0].page == 0
+        assert email_extractions[0].confidence == 0.92
+
+    def test_extract_phone_pattern(self, contact_index):
+        """Test phone extraction via regex pattern."""
+        from app.services.magic_import.rules_engine import extract_contact_by_rules
+
+        extractions = extract_contact_by_rules(contact_index)
+
+        phone_extractions = [e for e in extractions if e.pattern_name == "Phone"]
+        assert len(phone_extractions) >= 1
+        assert "+31-152-610-900" in phone_extractions[0].value
+
+    def test_extract_fax_pattern(self, contact_index):
+        """Test fax extraction via regex pattern."""
+        from app.services.magic_import.rules_engine import extract_contact_by_rules
+
+        extractions = extract_contact_by_rules(contact_index)
+
+        fax_extractions = [e for e in extractions if e.pattern_name == "Fax"]
+        assert len(fax_extractions) >= 1
+        assert "+31-152-616-289" in fax_extractions[0].value
+
+    def test_extract_website_pattern(self, contact_index):
+        """Test website extraction via regex pattern."""
+        from app.services.magic_import.rules_engine import extract_contact_by_rules
+
+        extractions = extract_contact_by_rules(contact_index)
+
+        website_extractions = [e for e in extractions if e.pattern_name == "Website"]
+        assert len(website_extractions) >= 1
+        assert "www.lenntech.com" in website_extractions[0].value
+
+    def test_extract_with_hints_filters_fields(self, contact_index):
+        """Test that hints filter which fields to extract."""
+        from app.services.magic_import.rules_engine import extract_contact_by_rules
+
+        hints = [
+            ExtractionHint(
+                path="ContactInformation/EmailAddress",
+                label="Email Address",
+                element_type="Property",
+                keywords=["email"],
+            ),
+        ]
+
+        extractions = extract_contact_by_rules(contact_index, hints)
+
+        # Should only extract email when hints filter to email
+        assert len(extractions) >= 1
+        assert all(e.pattern_name == "Email" for e in extractions)
+
+    def test_extract_deduplicates_across_pages(self):
+        """Test that duplicate values on multiple pages are deduplicated."""
+        from app.schemas.magic_import import (
+            BBox,
+            PDFIndex,
+            PDFIndexInfo,
+            PDFPageInfo,
+            PDFWord,
+        )
+        from app.services.magic_import.rules_engine import extract_contact_by_rules
+
+        words = []
+        # Same email on page 0 and page 1 (header/footer)
+        for page in [0, 1]:
+            words.append(
+                PDFWord(
+                    text="info@example.com",
+                    page=page,
+                    bbox=BBox(x0=0.1, y0=0.05, x1=0.3, y1=0.08),
+                    confidence=1.0,
+                    method="TEXT",
+                )
+            )
+
+        index = PDFIndex(
+            job_id="dedup-test",
+            pdf_path="dedup.pdf",
+            info=PDFIndexInfo(
+                total_pages=2,
+                pages_with_text=2,
+                pages_needing_ocr=0,
+                total_words=len(words),
+            ),
+            pages=[
+                PDFPageInfo(
+                    page_number=0,
+                    width=612,
+                    height=792,
+                    has_text=True,
+                    needs_ocr=False,
+                    word_count=1,
+                ),
+                PDFPageInfo(
+                    page_number=1,
+                    width=612,
+                    height=792,
+                    has_text=True,
+                    needs_ocr=False,
+                    word_count=1,
+                ),
+            ],
+            words=words,
+        )
+
+        extractions = extract_contact_by_rules(index)
+
+        # Should only have 1 email extraction (deduplicated)
+        email_extractions = [e for e in extractions if e.pattern_name == "Email"]
+        assert len(email_extractions) == 1
+
+    def test_merge_rule_extractions_with_llm(self):
+        """Test merging rule extractions with LLM extractions."""
+        from app.services.magic_import.rules_engine import (
+            RuleExtraction,
+            merge_rule_extractions_with_llm,
+        )
+
+        llm_extractions = [
+            FieldExtraction(
+                path="ContactInformation/EmailAddress",
+                value_raw="",  # Empty - LLM failed to extract
+                status=ExtractionStatus.EMPTY,
+                confidence=0.0,
+            ),
+            FieldExtraction(
+                path="ManufacturerName",
+                value_raw="Siemens",
+                status=ExtractionStatus.FILLED,
+                confidence=0.9,
+            ),
+        ]
+
+        rule_extractions = [
+            RuleExtraction(
+                path="ContactInformation/EmailAddress",
+                value="info@example.com",
+                evidence_quote="info@example.com",
+                page=0,
+                confidence=0.92,
+                pattern_name="Email",
+            ),
+        ]
+
+        merged = merge_rule_extractions_with_llm(llm_extractions, rule_extractions)
+
+        # Should have 2 extractions
+        assert len(merged) == 2
+
+        # Email should now be filled from rule extraction
+        email_ext = next(e for e in merged if "EmailAddress" in e.path)
+        assert email_ext.value_raw == "info@example.com"
+        assert email_ext.status == ExtractionStatus.FILLED
+        assert email_ext.confidence == 0.92
+        assert email_ext.evidence is not None
+        assert email_ext.evidence.page == 0
+
+        # ManufacturerName should be unchanged
+        mfr_ext = next(e for e in merged if "ManufacturerName" in e.path)
+        assert mfr_ext.value_raw == "Siemens"
+
+    def test_merge_does_not_overwrite_filled_extractions(self):
+        """Test that rule extractions don't overwrite LLM values."""
+        from app.services.magic_import.rules_engine import (
+            RuleExtraction,
+            merge_rule_extractions_with_llm,
+        )
+
+        llm_extractions = [
+            FieldExtraction(
+                path="ContactInformation/EmailAddress",
+                value_raw="support@company.com",  # LLM found a value
+                status=ExtractionStatus.FILLED,
+                confidence=0.85,
+            ),
+        ]
+
+        rule_extractions = [
+            RuleExtraction(
+                path="ContactInformation/EmailAddress",
+                value="info@example.com",  # Different value from rules
+                evidence_quote="info@example.com",
+                page=0,
+                confidence=0.92,
+                pattern_name="Email",
+            ),
+        ]
+
+        merged = merge_rule_extractions_with_llm(llm_extractions, rule_extractions)
+
+        # Should keep LLM value since it's filled
+        assert len(merged) == 1
+        assert merged[0].value_raw == "support@company.com"

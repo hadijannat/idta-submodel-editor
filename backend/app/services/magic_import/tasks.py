@@ -387,6 +387,33 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             )
 
         # ================================================================
+        # Step 6.5: Rule-based contact extraction (fallback for headers/footers)
+        # ================================================================
+        job_manager.update_job_status(
+            job_id,
+            JobStatus.LOCALIZING,
+            progress=0.70,
+            progress_message="Applying rule-based contact extraction...",
+        )
+
+        from app.services.magic_import.rules_engine import (
+            extract_contact_by_rules,
+            merge_rule_extractions_with_llm,
+        )
+
+        rule_extractions = extract_contact_by_rules(index, hints)
+        if rule_extractions:
+            logger.info("Found %d contact values via rule-based extraction", len(rule_extractions))
+            extractions_with_evidence = merge_rule_extractions_with_llm(
+                extractions_with_evidence,
+                rule_extractions,
+            )
+            job_manager.append_to_audit_log(
+                job_id, "rule_extraction_complete",
+                {"rule_extractions_added": len(rule_extractions)}
+            )
+
+        # ================================================================
         # Step 7: Score confidence (with evidence rule enforcement)
         # ================================================================
         job_manager.update_job_status(

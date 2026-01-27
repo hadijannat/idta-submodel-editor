@@ -328,3 +328,123 @@ class TestSnippetRetriever:
 
         assert anchors, "Expected contact anchors"
         assert snippets, "Expected anchor snippets"
+
+    def test_cluster_indices_empty(self):
+        """Test clustering with empty list."""
+        retriever = SnippetRetriever()
+        clusters = retriever._cluster_indices([])
+        assert clusters == []
+
+    def test_cluster_indices_single(self):
+        """Test clustering with single index."""
+        retriever = SnippetRetriever()
+        clusters = retriever._cluster_indices([5])
+        assert clusters == [[5]]
+
+    def test_cluster_indices_close_together(self):
+        """Test that indices within max_gap are clustered together."""
+        retriever = SnippetRetriever()
+        # Indices 5, 10, 15 are all within 20 of each other
+        clusters = retriever._cluster_indices([5, 10, 15], max_gap=20)
+        assert len(clusters) == 1
+        assert clusters[0] == [5, 10, 15]
+
+    def test_cluster_indices_far_apart(self):
+        """Test that indices beyond max_gap form separate clusters."""
+        retriever = SnippetRetriever()
+        # Index 5 and 50 are more than 20 apart
+        clusters = retriever._cluster_indices([5, 50], max_gap=20)
+        assert len(clusters) == 2
+        assert clusters[0] == [5]
+        assert clusters[1] == [50]
+
+    def test_cluster_indices_mixed(self):
+        """Test mixed clustering with multiple groups."""
+        retriever = SnippetRetriever()
+        # [5, 10, 20] forms one cluster, [100, 110] forms another
+        clusters = retriever._cluster_indices([5, 10, 20, 100, 110], max_gap=20)
+        assert len(clusters) == 2
+        assert clusters[0] == [5, 10, 20]
+        assert clusters[1] == [100, 110]
+
+    def test_cluster_indices_unsorted_input(self):
+        """Test that clustering works with unsorted input."""
+        retriever = SnippetRetriever()
+        clusters = retriever._cluster_indices([100, 5, 110, 10], max_gap=20)
+        assert len(clusters) == 2
+        # First cluster should be sorted
+        assert clusters[0] == [5, 10]
+        assert clusters[1] == [100, 110]
+
+    def test_contact_block_clustering(self):
+        """Test that full contact blocks with multiple anchors are captured."""
+        retriever = SnippetRetriever()
+
+        # Simulates a header like:
+        # "info@lenntech.com  Tel. +31-152-610-900  www.lenntech.com  Fax. +31-152-616-289"
+        words = []
+        contact_text = [
+            "Lenntech",
+            "Water",
+            "Treatment",
+            "info@lenntech.com",
+            "Tel.",
+            "+31-152-610-900",
+            "www.lenntech.com",
+            "Fax.",
+            "+31-152-616-289",
+        ]
+        for i, text in enumerate(contact_text):
+            words.append(
+                PDFWord(
+                    text=text,
+                    page=0,
+                    bbox=BBox(
+                        x0=0.1 + i * 0.05,
+                        y0=0.05,
+                        x1=0.14 + i * 0.05,
+                        y1=0.08,
+                    ),
+                    confidence=1.0,
+                    method="TEXT",
+                )
+            )
+
+        index = PDFIndex(
+            job_id="contact-block-test",
+            pdf_path="contact.pdf",
+            info=PDFIndexInfo(
+                total_pages=1,
+                pages_with_text=1,
+                pages_needing_ocr=0,
+                total_words=len(words),
+                language_detected=None,
+            ),
+            pages=[
+                PDFPageInfo(
+                    page_number=0,
+                    width=612,
+                    height=792,
+                    has_text=True,
+                    needs_ocr=False,
+                    word_count=len(words),
+                )
+            ],
+            words=words,
+        )
+
+        anchors = retriever._collect_contact_anchor_positions(index)
+        snippets = retriever._extract_snippets_for_anchors(index, anchors, limit=5)
+
+        # Should find 4 anchors: email (@), Tel., www, Fax.
+        assert len(anchors) >= 4, f"Expected at least 4 anchors, got {len(anchors)}"
+
+        # Should create 1 snippet covering the entire cluster
+        assert len(snippets) >= 1, "Expected at least 1 snippet for contact block"
+
+        # The snippet should contain all contact info
+        snippet_text = snippets[0].text
+        assert "info@lenntech.com" in snippet_text
+        assert "Tel." in snippet_text
+        assert "www.lenntech.com" in snippet_text
+        assert "Fax." in snippet_text
