@@ -38,7 +38,8 @@ function App() {
   const templateStatus = selectedTemplate?.status ?? 'published';
 
   // Load tool registry
-  const { wizardSteps, isToolEnabled } = useTools();
+  const { wizardSteps, isToolEnabled, utilityTools } = useTools();
+  const [activeUtilityTool, setActiveUtilityTool] = useState<string | null>(null);
 
   // Load public settings on mount
   useEffect(() => {
@@ -745,6 +746,26 @@ function App() {
               </div>
             </div>
           )}
+
+          {utilityTools.length > 0 && canEdit && (
+            <div className="wizard-card utility-tools-card">
+              <h4>Utility Tools</h4>
+              <div className="utility-tool-list">
+                {utilityTools.map((tool) => (
+                  <button
+                    key={tool.metadata.id}
+                    type="button"
+                    className="utility-tool-btn"
+                    onClick={() => setActiveUtilityTool(tool.metadata.id)}
+                    disabled={!tool.metadata.enabled}
+                  >
+                    <span className="utility-tool-name">{tool.metadata.name}</span>
+                    <span className="utility-tool-desc">{tool.metadata.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </aside>
 
         <main className="app-main wizard-main">
@@ -788,6 +809,55 @@ function App() {
           </a>
         </p>
       </footer>
+
+      {activeUtilityTool && (
+        <div
+          className="utility-tool-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveUtilityTool(null);
+            }
+          }}
+        >
+          <div className="utility-tool-modal">
+            <div className="utility-tool-modal-header">
+              <h2>
+                {utilityTools.find((t) => t.metadata.id === activeUtilityTool)?.metadata.name}
+              </h2>
+              <button
+                type="button"
+                className="utility-tool-close-btn"
+                onClick={() => setActiveUtilityTool(null)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="utility-tool-modal-content">
+              <Suspense
+                fallback={
+                  <div className="app-loading">
+                    <span className="spinner" />
+                    <p>Loading tool...</p>
+                  </div>
+                }
+              >
+                {(() => {
+                  const tool = toolRegistry.getTool(activeUtilityTool);
+                  if (!tool) return <p>Tool not found</p>;
+                  const ToolComponent = tool.component;
+                  return (
+                    <ToolComponent
+                      {...toolProps}
+                      onComplete={() => setActiveUtilityTool(null)}
+                    />
+                  );
+                })()}
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

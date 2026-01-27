@@ -36,7 +36,7 @@ interface SmartMapperPageProps {
   templateStatus: 'published' | 'deprecated';
   templateVersion: string | null;
   form: UseFormReturn<SubmodelFormData>;
-  onContinue: () => void;
+  onComplete?: () => void;
 }
 
 export default function SmartMapperPage({
@@ -45,7 +45,7 @@ export default function SmartMapperPage({
   templateStatus,
   templateVersion,
   form,
-  onContinue,
+  onComplete,
 }: SmartMapperPageProps) {
   const [file, setFile] = useState<File | null>(null);
   const [profile, setProfile] = useState<DatasetProfile | null>(null);
@@ -582,8 +582,8 @@ export default function SmartMapperPage({
     );
     const nextValues = { ...current, elements: mergedElements } as SubmodelFormData;
     form.reset(nextValues);
-    onContinue();
-  }, [mappedFormData, form, onContinue]);
+    onComplete?.();
+  }, [mappedFormData, form, onComplete]);
 
   return (
     <div className="wizard-panel smart-mapper">
