@@ -135,7 +135,7 @@ class SnippetRetriever:
             if page not in page_docs:
                 page_docs[page] = []
             # Normalize token
-            token = word.text.lower().strip()
+            token = self._normalize_token(word.text)
             if token and len(token) > 1:
                 page_docs[page].append(token)
 
@@ -271,14 +271,23 @@ class SnippetRetriever:
     ) -> list[int]:
         """Find positions of keyword matches on a page."""
         matches: list[int] = []
-        keyword_set = {kw.lower() for kw in keywords}
+        keyword_set = set()
+        for kw in keywords:
+            keyword_set.update(self._keyword_variants(kw))
 
         for local_idx, (global_idx, word) in enumerate(page_words):
             word_lower = word.text.lower()
+            word_norm = self._normalize_token(word.text)
             # Check for exact match or substring match
-            if word_lower in keyword_set or any(
-                kw in word_lower or word_lower in kw
-                for kw in keyword_set
+            if (
+                word_lower in keyword_set
+                or word_norm in keyword_set
+                or any(
+                    kw in word_lower
+                    or word_lower in kw
+                    or (word_norm and (kw in word_norm or word_norm in kw))
+                    for kw in keyword_set
+                )
             ):
                 matches.append(local_idx)
 
@@ -428,6 +437,76 @@ class SnippetRetriever:
             a.end_word_idx < b.start_word_idx or
             b.end_word_idx < a.start_word_idx
         )
+
+    def collect_retrieval_diagnostics(
+        self,
+        index: PDFIndex,
+        hints: list[ExtractionHint],
+        top_pages: int = 3,
+    ) -> list[dict]:
+        """Collect retrieval diagnostics for each hint."""
+        if not index.words or not hints:
+            return []
+
+        page_docs = self._build_page_documents(index)
+        token_stats = self._compute_token_stats(page_docs)
+
+        words_by_page: dict[int, list[tuple[int, PDFWord]]] = {}
+        for idx, word in enumerate(index.words):
+            words_by_page.setdefault(word.page, []).append((idx, word))
+
+        diagnostics: list[dict] = []
+        for hint in hints:
+            if not hint.keywords:
+                continue
+
+            page_scores = self._score_pages(hint.keywords, page_docs, token_stats)
+            top_page_scores = page_scores[:top_pages]
+
+            match_count = 0
+            for page, _score in top_page_scores:
+                page_words = words_by_page.get(page, [])
+                match_count += len(self._find_keyword_matches(hint.keywords, page_words))
+
+            diagnostics.append(
+                {
+                    "path": hint.path,
+                    "keyword_count": len(hint.keywords),
+                    "match_count": match_count,
+                    "top_pages": [
+                        {"page": page, "score": score}
+                        for page, score in top_page_scores
+                    ],
+                }
+            )
+
+        return diagnostics
+
+    @staticmethod
+    def _normalize_token(text: str) -> str:
+        """Normalize tokens for robust matching (e.g., E-mail -> email)."""
+        if not text:
+            return ""
+        token = text.lower().strip()
+        # Normalize unicode hyphens to ASCII hyphen
+        token = re.sub(r"[‐‑‒–—−]", "-", token)
+        # Remove punctuation while keeping alphanumerics
+        token = re.sub(r"[^a-z0-9]+", "", token)
+        return token
+
+    def _keyword_variants(self, keyword: str) -> set[str]:
+        """Generate normalized variants for keyword matching."""
+        variants = set()
+        if not keyword:
+            return variants
+        kw = keyword.lower().strip()
+        variants.add(kw)
+        norm = self._normalize_token(keyword)
+        if norm:
+            variants.add(norm)
+        # Remove trailing punctuation variants
+        variants.add(kw.rstrip(":."))
+        return {v for v in variants if v}
 
     def retrieve_for_single_hint(
         self,

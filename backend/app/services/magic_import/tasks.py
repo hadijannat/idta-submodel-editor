@@ -249,6 +249,14 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             max_snippets_per_field=3,
         )
 
+        retrieval_diagnostics = retriever.collect_retrieval_diagnostics(index, hints)
+        if retrieval_diagnostics:
+            job_manager.save_artifact(
+                job_id,
+                "retrieval_diagnostics",
+                retrieval_diagnostics,
+            )
+
         # Add table-derived snippets for better coverage
         table_extractor = TableExtractor()
         for table in table_result.tables:

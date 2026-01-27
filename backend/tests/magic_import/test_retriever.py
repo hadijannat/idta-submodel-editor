@@ -222,3 +222,52 @@ class TestSnippetRetriever:
         assert len(deduped) == 2
         assert deduped[0].score == 0.9
         assert deduped[1].score == 0.7
+
+    def test_keyword_normalization_matches_punctuated_terms(self):
+        """Ensure keyword matching handles punctuation like E-mail -> email."""
+        retriever = SnippetRetriever()
+
+        words = [
+            PDFWord(
+                text="E-mail",
+                page=0,
+                bbox=BBox(x0=0.1, y0=0.1, x1=0.2, y1=0.2),
+                confidence=1.0,
+                method="TEXT",
+            ),
+            PDFWord(
+                text="support@example.com",
+                page=0,
+                bbox=BBox(x0=0.21, y0=0.1, x1=0.5, y1=0.2),
+                confidence=1.0,
+                method="TEXT",
+            ),
+        ]
+
+        index = PDFIndex(
+            job_id="email-test",
+            pdf_path="email.pdf",
+            info=PDFIndexInfo(
+                total_pages=1,
+                pages_with_text=1,
+                pages_needing_ocr=0,
+                total_words=len(words),
+                language_detected=None,
+            ),
+            pages=[
+                PDFPageInfo(
+                    page_number=0,
+                    width=612,
+                    height=792,
+                    has_text=True,
+                    needs_ocr=False,
+                    word_count=len(words),
+                )
+            ],
+            words=words,
+        )
+
+        page_words = [(idx, word) for idx, word in enumerate(index.words)]
+        matches = retriever._find_keyword_matches(["email"], page_words)
+
+        assert matches, "Expected keyword match for punctuated 'E-mail'"

@@ -34,13 +34,15 @@ class SchemaResolver:
     # This prevents confusion between manufacturer vs supplier/vendor
     CONTEXT_SYNONYMS: dict[str, dict[str, list[str]]] = {
         "ContactInformation": {
-            "email": ["email", "e-mail", "electronic mail", "mail"],
-            "phone": ["phone", "telephone", "tel", "fax"],
+            "email": ["email", "e-mail", "electronic mail", "email address", "mail"],
+            "phone": ["phone", "telephone", "tel", "tel.", "mobile", "cell", "phone number"],
             "fax": ["fax", "telefax"],
-            "street": ["street", "address", "road"],
-            "zipcode": ["zip", "postal", "postcode", "plz"],
+            "website": ["website", "web", "homepage", "url", "www"],
+            "street": ["street", "address", "road", "addr", "address line"],
+            "zipcode": ["zip", "postal", "postcode", "plz", "zip code"],
             "citytown": ["city", "town", "location", "place"],
             "nationalcode": ["country", "nation", "country code"],
+            "po_box": ["po box", "p.o. box", "post box"],
         },
         "Nameplate": {
             # Manufacturer fields - do NOT include vendor/supplier
@@ -89,6 +91,10 @@ class SchemaResolver:
         "street": ["address", "street address"],
         "zipcode": ["postal", "zip", "postcode", "plz"],
         "citytown": ["city", "town", "location"],
+        "email": ["email", "e-mail", "mail"],
+        "phone": ["phone", "telephone", "tel", "tel."],
+        "fax": ["fax", "telefax"],
+        "website": ["website", "web", "homepage", "url", "www"],
         "weight": ["mass", "kg"],
         "voltage": ["v", "volt"],
         "current": ["a", "amp", "ampere"],
@@ -227,6 +233,7 @@ class SchemaResolver:
         id_short = element.get("idShort", path[-1] if path else "")
         cardinality = element.get("cardinality", "") or "[1]"
         required = self._min_cardinality(cardinality) >= 1
+        description = element.get("description")
 
         value_type = element.get("valueType")
         if isinstance(value_type, str) and value_type.startswith("xsd:"):
@@ -251,6 +258,7 @@ class SchemaResolver:
             path=path,
             semantic_label=semantic_label,
             semantic_id=semantic_id,
+            description=description,
         )
 
         return ExtractionHint(
@@ -270,6 +278,7 @@ class SchemaResolver:
         path: list[str],
         semantic_label: str | None,
         semantic_id: str | None,
+        description: dict | list | str | None,
     ) -> list[str]:
         """
         Generate search keywords for a field.
@@ -291,6 +300,11 @@ class SchemaResolver:
         if semantic_label:
             keywords.extend(self._tokenize(semantic_label))
 
+        # Add description tokens (if any)
+        description_texts = self._collect_description_texts(description)
+        for text in description_texts:
+            keywords.extend(self._tokenize(text))
+
         # Extract meaningful parts from semantic ID
         if semantic_id:
             # ECLASS format: 0173-1#01-AAA123#001
@@ -311,6 +325,25 @@ class SchemaResolver:
                 unique_keywords.append(kw_lower)
 
         return unique_keywords[:20]  # Limit to top 20 keywords
+
+    @staticmethod
+    def _collect_description_texts(description: dict | list | str | None) -> list[str]:
+        """Extract description strings from UI-schema description fields."""
+        if not description:
+            return []
+        if isinstance(description, str):
+            return [description]
+        if isinstance(description, dict):
+            return [str(v) for v in description.values() if v]
+        if isinstance(description, list):
+            texts: list[str] = []
+            for item in description:
+                if isinstance(item, dict) and "text" in item:
+                    texts.append(str(item["text"]))
+                elif isinstance(item, str):
+                    texts.append(item)
+            return texts
+        return []
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
