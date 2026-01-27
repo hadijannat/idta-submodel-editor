@@ -6,6 +6,7 @@ Bridges the Magic Import pipeline with the existing form validation infrastructu
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Literal
 
@@ -66,18 +67,12 @@ class ExtractionValidator:
         warnings: list[MagicImportValidationError] = []
 
         try:
-            # Fetch template AASX bytes (async -> sync)
-            import asyncio
-
-            loop = asyncio.new_event_loop()
-            try:
-                template_bytes = loop.run_until_complete(
-                    self._fetch_template(template_name, template_status, template_version)
-                )
-            finally:
-                loop.close()
-
-            if not template_bytes:
+            schema = self._load_schema(
+                template_name,
+                template_status,
+                template_version,
+            )
+            if not schema:
                 errors.append(
                     MagicImportValidationError(
                         path="",
@@ -87,7 +82,6 @@ class ExtractionValidator:
                 )
                 return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
-            schema = self.parser.parse_aasx_to_ui_schema(template_bytes)
             schema_elements = schema.get("elements", [])
 
             # Build lookup of schema elements by path
@@ -162,6 +156,47 @@ class ExtractionValidator:
         if template_version:
             template_path = f"{template_path}/{template_version}"
         return await self.fetcher.fetch_template_aasx(template_path)
+
+    def _load_schema(
+        self,
+        template_name: str,
+        template_status: str,
+        template_version: str | None,
+    ) -> dict[str, Any] | None:
+        """Load schema using legacy sync fetcher or async AASX fetcher."""
+        # Legacy path for tests/mocks
+        if self._fetcher is not None and hasattr(self._fetcher, "get_template"):
+            template = self._fetcher.get_template(
+                template_name, template_status, template_version
+            )
+            if template is None:
+                return None
+            parser = self._parser or self.parser
+            if hasattr(parser, "parse_template"):
+                return parser.parse_template(template)
+            return parser.parse_aasx_to_ui_schema(template)
+
+        template_bytes = self._run_async_fetch(
+            template_name, template_status, template_version
+        )
+        if not template_bytes:
+            return None
+        return self.parser.parse_aasx_to_ui_schema(template_bytes)
+
+    def _run_async_fetch(
+        self,
+        template_name: str,
+        template_status: str,
+        template_version: str | None,
+    ) -> bytes:
+        """Run async fetch in sync context; accept non-awaitable return for tests."""
+        result = self.fetcher.fetch_template_aasx(
+            f"{template_status}/{template_name}"
+            + (f"/{template_version}" if template_version else "")
+        )
+        if hasattr(result, "__await__"):
+            return asyncio.run(result)
+        return result
 
     def _build_schema_lookup(
         self,
