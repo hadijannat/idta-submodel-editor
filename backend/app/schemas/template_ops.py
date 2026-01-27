@@ -6,9 +6,123 @@ Provides import, diff, migrate, and validate operations for templates.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+# -----------------------------------------------------------------------------
+# Schema Digest (for change detection)
+# -----------------------------------------------------------------------------
+
+
+class SchemaDigest(BaseModel):
+    """Cryptographic fingerprint for schema change detection."""
+
+    digest: str  # SHA-256
+    element_count: int
+    computed_at: str  # ISO timestamp
+
+
+# -----------------------------------------------------------------------------
+# Recipe Migration
+# -----------------------------------------------------------------------------
+
+
+class RecipeMigrationRequest(BaseModel):
+    """Request to migrate a mapper recipe to a new template version."""
+
+    recipe: dict  # MapperRecipe as dict to avoid circular import
+    target_template: str
+    target_version: str | None = None
+    target_status: Literal["published", "deprecated", "local"] = "published"
+    min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    preserve_transforms: bool = True
+
+
+class MappingMigrationItem(BaseModel):
+    """Describes migration of a single mapping in a recipe."""
+
+    original_path: str
+    migrated_path: str | None
+    confidence: float = Field(ge=0.0, le=1.0)
+    match_reason: Literal["exact_path", "semantic_id", "fuzzy", "unmapped"]
+    breaking_change: bool = False
+    details: dict | None = None
+
+
+class RecipeMigrationResult(BaseModel):
+    """Result of recipe migration operation."""
+
+    migrated_recipe: dict | None  # MapperRecipe as dict
+    mapping_migrations: list[MappingMigrationItem] = Field(default_factory=list)
+    breaking_changes: list[str] = Field(default_factory=list)
+    migration_coverage: float = Field(ge=0.0, le=1.0, default=0.0)
+    warnings: list[str] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# Form Data Migration
+# -----------------------------------------------------------------------------
+
+
+class ValueMigrationItem(BaseModel):
+    """Describes migration of a single form value."""
+
+    original_path: str
+    migrated_path: str | None
+    original_value: Any = None
+    migrated_value: Any = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    match_reason: Literal["exact_path", "semantic_id", "fuzzy", "unmapped"]
+
+
+class FormDataMigrationRequest(BaseModel):
+    """Request to migrate form data to a new template version."""
+
+    form_data: dict
+    source_template: str
+    source_version: str | None = None
+    source_status: Literal["published", "deprecated", "local"] = "published"
+    target_template: str
+    target_version: str | None = None
+    target_status: Literal["published", "deprecated", "local"] = "published"
+    min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class FormDataMigrationResult(BaseModel):
+    """Result of form data migration operation."""
+
+    migrated_form_data: dict | None
+    value_migrations: list[ValueMigrationItem] = Field(default_factory=list)
+    migration_coverage: float = Field(ge=0.0, le=1.0, default=0.0)
+    warnings: list[str] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
+# Version Mismatch Check
+# -----------------------------------------------------------------------------
+
+
+class VersionMismatchRequest(BaseModel):
+    """Request to check for version mismatch."""
+
+    artifact_type: Literal["recipe", "form_data"]
+    created_for_digest: str | None
+    template_name: str
+    template_version: str | None = None
+    template_status: Literal["published", "deprecated", "local"] = "published"
+
+
+class VersionMismatchCheck(BaseModel):
+    """Result of version mismatch check."""
+
+    artifact_type: Literal["recipe", "form_data"]
+    created_for_digest: str | None
+    current_digest: str
+    has_mismatch: bool
+    breaking_changes_detected: bool = False
+    affected_paths: list[str] = Field(default_factory=list)
 
 
 class TemplateImportRequest(BaseModel):

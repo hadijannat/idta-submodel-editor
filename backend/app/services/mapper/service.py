@@ -781,6 +781,46 @@ class MapperService:
         recipe_path.write_text(recipe.model_dump_json(indent=2))
         return recipe
 
+    async def save_recipe_with_digest(
+        self, recipe: MapperRecipe, user: dict | None
+    ) -> MapperRecipe:
+        """
+        Save a recipe, computing and storing schema digest if not present.
+
+        This enables version mismatch detection when the recipe is loaded later.
+        """
+        # Compute schema digest if not already set
+        if recipe.template.schema_digest is None:
+            try:
+                template_bytes = await self._fetch_template_bytes(
+                    recipe.template.name,
+                    recipe.template.status,
+                    recipe.template.version,
+                )
+                schema = self.parser.parse_aasx_to_ui_schema(template_bytes)
+
+                # Compute digest inline (same algorithm as MigrationService)
+                from app.services.template_ops.migration_service import MigrationService
+
+                migration_svc = MigrationService(self.fetcher, self.parser)
+                digest = migration_svc.compute_schema_digest(schema)
+
+                # Update recipe with digest
+                recipe = MapperRecipe(
+                    **{
+                        **recipe.model_dump(),
+                        "template": {
+                            **recipe.template.model_dump(),
+                            "schema_digest": digest.digest,
+                        },
+                    }
+                )
+            except Exception as e:
+                logger.warning("Failed to compute schema digest for recipe: %s", e)
+                # Continue saving without digest
+
+        return self.save_recipe(recipe, user)
+
     def delete_recipe(self, name: str, user: dict | None) -> None:
         recipe_path = self._recipe_path(name, user)
         if not recipe_path.exists():

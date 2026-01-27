@@ -81,6 +81,7 @@ class MapperTemplateRef(BaseModel):
     name: str
     version: str | None = None
     status: Literal["published", "deprecated"] = "published"
+    schema_digest: str | None = None  # SHA-256 for schema change detection
 
 
 class MapperSourceProfileRef(BaseModel):

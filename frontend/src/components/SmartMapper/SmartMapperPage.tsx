@@ -19,6 +19,7 @@ import {
   runMapper,
   saveMapperRecipe,
 } from '../../services/mapperApi';
+import { checkVersionMismatch, type VersionMismatchCheck } from '../../services/templateOpsApi';
 import type { TargetField } from './types';
 import {
   flattenTargets,
@@ -67,6 +68,9 @@ export default function SmartMapperPage({
   const [selectedRecipe, setSelectedRecipe] = useState<string>('');
   const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
+  const [mismatchDetails, setMismatchDetails] = useState<VersionMismatchCheck | null>(null);
+  const [pendingRecipe, setPendingRecipe] = useState<MapperRecipe | null>(null);
 
   const targetFields = useMemo(
     () => (schema ? flattenTargets(schema.elements) : []),
@@ -402,50 +406,119 @@ export default function SmartMapperPage({
     }
   }, [buildRecipe, formatRecipeId]);
 
-  const handleApplyRecipe = useCallback(() => {
-    if (!selectedRecipe) return;
+  // Helper function to apply a recipe to the current mappings
+  const applyRecipeToMappings = useCallback(
+    (recipe: MapperRecipe) => {
+      if (!profile) return;
+
+      setMode(recipe.mode.type);
+      setGroupBy(recipe.mode.group_by ?? []);
+      const columnIndexByName = new Map(
+        profile.columns.map((col) => [col.name_original, col.index])
+      );
+      const applied: MappingItem[] = recipe.mappings
+        .map((mapping) => {
+          const columnIndex = columnIndexByName.get(mapping.source.column_name);
+          if (columnIndex === undefined) return null;
+          return {
+            ...mapping,
+            source: {
+              column_name: mapping.source.column_name,
+              column_index: columnIndex,
+            },
+          };
+        })
+        .filter(Boolean) as MappingItem[];
+      setMappings(applied);
+    },
+    [profile]
+  );
+
+  const handleApplyRecipe = useCallback(async () => {
+    if (!selectedRecipe || !templateName) return;
     const parsed = parseRecipeId(selectedRecipe);
     const source = parsed.source === 'server' ? serverRecipes : recipes;
     const recipe = source.find((r) => r.name === parsed.name);
     if (!recipe || !profile) return;
 
-    // Check for template version mismatch
+    // Reset warnings
     setRecipeVersionWarning(null);
+    setShowMigrationPrompt(false);
+    setMismatchDetails(null);
+    setPendingRecipe(null);
+
+    // Check for schema digest mismatch (more precise than version check)
+    if (recipe.template.schema_digest) {
+      try {
+        const check = await checkVersionMismatch({
+          artifact_type: 'recipe',
+          created_for_digest: recipe.template.schema_digest,
+          template_name: templateName,
+          template_version: templateVersion ?? undefined,
+          template_status: templateStatus,
+        });
+
+        if (check.has_mismatch) {
+          // Show migration prompt dialog
+          setMismatchDetails(check);
+          setPendingRecipe(recipe);
+          setShowMigrationPrompt(true);
+          return; // Don't apply yet - wait for user decision
+        }
+      } catch (err) {
+        // If check fails, fall through to version-based warning
+        console.warn('Schema digest check failed:', err);
+      }
+    }
+
+    // Fallback: Check for template version mismatch (legacy behavior)
     if (recipe.template.version && templateVersion) {
       if (recipe.template.version !== templateVersion) {
         setRecipeVersionWarning(
           `Recipe was created for template version "${recipe.template.version}" ` +
-          `but current version is "${templateVersion}". ` +
-          `Field paths may have changed.`
+            `but current version is "${templateVersion}". ` +
+            `Field paths may have changed.`
         );
       }
     } else if (recipe.template.version && !templateVersion) {
       setRecipeVersionWarning(
         `Recipe was created for template version "${recipe.template.version}" ` +
-        `but current template version is unknown.`
+          `but current template version is unknown.`
       );
     }
 
-    setMode(recipe.mode.type);
-    setGroupBy(recipe.mode.group_by ?? []);
-    const columnIndexByName = new Map(
-      profile.columns.map((col) => [col.name_original, col.index])
-    );
-    const applied: MappingItem[] = recipe.mappings
-      .map((mapping) => {
-        const columnIndex = columnIndexByName.get(mapping.source.column_name);
-        if (columnIndex === undefined) return null;
-        return {
-          ...mapping,
-          source: {
-            column_name: mapping.source.column_name,
-            column_index: columnIndex,
-          },
-        };
-      })
-      .filter(Boolean) as MappingItem[];
-    setMappings(applied);
-  }, [recipes, serverRecipes, selectedRecipe, profile, parseRecipeId, templateVersion]);
+    applyRecipeToMappings(recipe);
+  }, [
+    recipes,
+    serverRecipes,
+    selectedRecipe,
+    profile,
+    parseRecipeId,
+    templateName,
+    templateVersion,
+    templateStatus,
+    applyRecipeToMappings,
+  ]);
+
+  // Handler for when user chooses to apply recipe anyway despite mismatch
+  const handleApplyAnyway = useCallback(() => {
+    if (pendingRecipe) {
+      setRecipeVersionWarning(
+        'Recipe was created for a different template schema. Some mappings may be invalid.'
+      );
+      applyRecipeToMappings(pendingRecipe);
+    }
+    setShowMigrationPrompt(false);
+    setMismatchDetails(null);
+    setPendingRecipe(null);
+  }, [pendingRecipe, applyRecipeToMappings]);
+
+  // Handler for when user dismisses the mismatch dialog
+  const handleDismissMismatch = useCallback(() => {
+    setShowMigrationPrompt(false);
+    setMismatchDetails(null);
+    setPendingRecipe(null);
+  }, []);
 
   const handleRun = useCallback(async () => {
     if (!profile || !templateName) return;
@@ -626,6 +699,63 @@ export default function SmartMapperPage({
           </div>
         </div>
       </div>
+
+      {/* Schema Mismatch Warning Dialog */}
+      {showMigrationPrompt && mismatchDetails && (
+        <div className="smart-mapper-dialog-overlay">
+          <div className="smart-mapper-dialog">
+            <div className="smart-mapper-dialog-header">
+              <h3>Template Schema Changed</h3>
+            </div>
+            <div className="smart-mapper-dialog-content">
+              <p>
+                This recipe was created for a different version of the template schema.
+                Some field mappings may no longer be valid.
+              </p>
+              {mismatchDetails.breaking_changes_detected && (
+                <div className="smart-mapper-warning">
+                  <strong>Breaking changes detected.</strong> Some fields may have been
+                  renamed, removed, or changed type.
+                </div>
+              )}
+              {mismatchDetails.affected_paths.length > 0 && (
+                <div className="smart-mapper-affected-paths">
+                  <strong>Affected fields:</strong>
+                  <ul>
+                    {mismatchDetails.affected_paths.slice(0, 5).map((path) => (
+                      <li key={path}>{path}</li>
+                    ))}
+                    {mismatchDetails.affected_paths.length > 5 && (
+                      <li>...and {mismatchDetails.affected_paths.length - 5} more</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+              <p className="smart-mapper-hint">
+                You can apply the recipe anyway, but some mappings may fail.
+                Consider using the Template Operations tool to migrate the recipe
+                to the new schema.
+              </p>
+            </div>
+            <div className="smart-mapper-dialog-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleDismissMismatch}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleApplyAnyway}
+              >
+                Apply Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {profile && (
         <div className="smart-mapper-layout">

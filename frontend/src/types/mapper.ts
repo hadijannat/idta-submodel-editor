@@ -72,6 +72,7 @@ export interface MapperTemplateRef {
   name: string;
   version?: string | null;
   status: 'published' | 'deprecated';
+  schema_digest?: string | null;
 }
 
 export interface MapperSourceProfileRef {

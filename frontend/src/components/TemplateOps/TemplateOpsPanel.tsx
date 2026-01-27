@@ -5,6 +5,7 @@
  * - Template diff between versions
  * - Template validation diagnostics
  * - Migration planning
+ * - Recipe/Form migration wizard
  */
 
 import { useState, useCallback } from 'react';
@@ -17,15 +18,22 @@ import {
   type ValidationDiagnostics,
   type MigrationPlan,
 } from '../../services/api';
+import type { RecipeMigrationResult, FormDataMigrationResult } from '../../services/templateOpsApi';
+import MigrationWizard from './MigrationWizard';
 import './TemplateOps.css';
 
-type TabId = 'diff' | 'validate' | 'migrate';
+type TabId = 'diff' | 'validate' | 'migrate' | 'recipe-migrate';
 
 interface TemplateOpsProps {
   templates: TemplateInfo[];
   selectedTemplate?: string;
   selectedVersion?: string;
   selectedStatus?: 'published' | 'deprecated' | 'local';
+  availableVersions?: Array<{ version: string; status: string }>;
+  recipes?: Array<{ name: string; template: { name: string; version?: string | null } }>;
+  currentFormData?: Record<string, unknown>;
+  onRecipeMigrated?: (result: RecipeMigrationResult) => void;
+  onFormMigrated?: (result: FormDataMigrationResult) => void;
   onClose?: () => void;
 }
 
@@ -34,6 +42,11 @@ export default function TemplateOpsPanel({
   selectedTemplate,
   selectedVersion,
   selectedStatus = 'published',
+  availableVersions = [],
+  recipes = [],
+  currentFormData,
+  onRecipeMigrated,
+  onFormMigrated,
   onClose,
 }: TemplateOpsProps) {
   const [activeTab, setActiveTab] = useState<TabId>('validate');
@@ -142,7 +155,14 @@ export default function TemplateOpsPanel({
           className={`tab-btn ${activeTab === 'migrate' ? 'active' : ''}`}
           onClick={() => setActiveTab('migrate')}
         >
-          Migrate
+          Plan
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === 'recipe-migrate' ? 'active' : ''}`}
+          onClick={() => setActiveTab('recipe-migrate')}
+        >
+          Migrate Artifacts
         </button>
       </div>
 
@@ -186,6 +206,30 @@ export default function TemplateOpsPanel({
             isLoading={isMigrating}
             onMigrate={handleMigrate}
           />
+        )}
+        {activeTab === 'recipe-migrate' && selectedTemplate && (
+          <div className="template-ops-tab">
+            <MigrationWizard
+              templateName={selectedTemplate}
+              templateVersion={selectedVersion}
+              templateStatus={selectedStatus}
+              availableVersions={availableVersions}
+              recipes={recipes}
+              currentFormData={currentFormData}
+              onMigrationComplete={(result) => {
+                if ('migrated_recipe' in result && onRecipeMigrated) {
+                  onRecipeMigrated(result as RecipeMigrationResult);
+                } else if ('migrated_form_data' in result && onFormMigrated) {
+                  onFormMigrated(result as FormDataMigrationResult);
+                }
+              }}
+            />
+          </div>
+        )}
+        {activeTab === 'recipe-migrate' && !selectedTemplate && (
+          <div className="template-ops-tab template-ops-tab--empty">
+            <p>Select a template first to access artifact migration.</p>
+          </div>
         )}
       </div>
     </div>

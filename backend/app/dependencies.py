@@ -16,6 +16,7 @@ from app.services.hydrator import HydratorService, PDFExportService
 from app.services.parser import ParserService
 from app.services.semantic import SemanticService
 from app.services.mapper import MapperService
+from app.services.template_ops import MigrationService
 from app.services.tools.registry import ToolRegistry
 from app.services.tools.registry import get_tool_registry as _get_tool_registry
 
@@ -61,6 +62,15 @@ def get_mapper_service() -> MapperService:
         hydrator=get_hydrator(),
         pdf_service=get_pdf_service(),
         semantic_service=get_semantic_service(),
+    )
+
+
+@lru_cache
+def get_migration_service() -> MigrationService:
+    """Get cached migration service instance."""
+    return MigrationService(
+        fetcher=get_fetcher(),
+        parser=get_parser(),
     )
 
 def get_pdf_service() -> PDFExportService | None:

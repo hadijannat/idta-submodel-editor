@@ -10,14 +10,19 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 
-from app.dependencies import get_fetcher, get_parser
+from app.dependencies import get_fetcher, get_migration_service, get_parser
 from app.errors import APIError, ErrorCode
 from app.schemas.template_ops import (
     CardinalityChange,
     ElementChange,
+    FormDataMigrationRequest,
+    FormDataMigrationResult,
     MigrationMappingItem,
     MigrationPlan,
     MigrationPlanRequest,
+    RecipeMigrationRequest,
+    RecipeMigrationResult,
+    SchemaDigest,
     SemanticChange,
     TemplateDiffRequest,
     TemplateDiffResult,
@@ -25,9 +30,12 @@ from app.schemas.template_ops import (
     TemplateValidateRequest,
     ValidationDiagnostic,
     ValidationDiagnostics,
+    VersionMismatchCheck,
+    VersionMismatchRequest,
 )
 from app.services.fetcher import TemplateFetcherService
 from app.services.parser import ParserService
+from app.services.template_ops import MigrationService
 from app.utils.upload_security import FileType, UploadValidator, read_upload_file
 from app.config import get_settings
 
@@ -756,3 +764,119 @@ def _is_valid_value_type(value_type: str) -> bool:
     # Normalize
     normalized = value_type.lower().replace("xsd:", "xs:")
     return normalized in valid_types or value_type in valid_types
+
+
+# -----------------------------------------------------------------------------
+# Migration Endpoints
+# -----------------------------------------------------------------------------
+
+
+from pydantic import BaseModel as PydanticBaseModel
+
+
+class SchemaDigestRequest(PydanticBaseModel):
+    """Request to compute schema digest for a template."""
+
+    template_name: str
+    template_version: str | None = None
+    template_status: Literal["published", "deprecated", "local"] = "published"
+
+
+@router.post("/schema-digest", response_model=SchemaDigest)
+async def compute_schema_digest(
+    request: SchemaDigestRequest,
+    migration_service: Annotated[MigrationService, Depends(get_migration_service)],
+) -> SchemaDigest:
+    """
+    Compute the schema digest for a template.
+
+    The digest is a SHA-256 hash of the normalized schema structure,
+    used for detecting template changes.
+    """
+    try:
+        return await migration_service.compute_schema_digest_for_template(
+            template_name=request.template_name,
+            template_version=request.template_version,
+            template_status=request.template_status,
+        )
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to compute schema digest")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to compute schema digest",
+            detail={"error": str(e)},
+        )
+
+
+@router.post("/migrate-recipe", response_model=RecipeMigrationResult)
+async def migrate_recipe(
+    request: RecipeMigrationRequest,
+    migration_service: Annotated[MigrationService, Depends(get_migration_service)],
+) -> RecipeMigrationResult:
+    """
+    Migrate a mapper recipe to a new template version.
+
+    Updates all mapping target paths to match the new template schema,
+    preserving transforms where possible.
+    """
+    try:
+        return await migration_service.migrate_recipe(request)
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to migrate recipe")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to migrate recipe",
+            detail={"error": str(e)},
+        )
+
+
+@router.post("/migrate-form", response_model=FormDataMigrationResult)
+async def migrate_form_data(
+    request: FormDataMigrationRequest,
+    migration_service: Annotated[MigrationService, Depends(get_migration_service)],
+) -> FormDataMigrationResult:
+    """
+    Migrate form data to a new template version.
+
+    Moves values from their original paths to the corresponding paths
+    in the new template schema.
+    """
+    try:
+        return await migration_service.migrate_form_data(request)
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to migrate form data")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to migrate form data",
+            detail={"error": str(e)},
+        )
+
+
+@router.post("/check-mismatch", response_model=VersionMismatchCheck)
+async def check_version_mismatch(
+    request: VersionMismatchRequest,
+    migration_service: Annotated[MigrationService, Depends(get_migration_service)],
+) -> VersionMismatchCheck:
+    """
+    Check if an artifact's schema digest mismatches the current template.
+
+    Use this to detect when a recipe or form data was created for a
+    different version of the template.
+    """
+    try:
+        return await migration_service.check_version_mismatch(request)
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to check version mismatch")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to check version mismatch",
+            detail={"error": str(e)},
+        )

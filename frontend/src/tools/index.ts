@@ -39,6 +39,11 @@ const TOOL_COMPONENTS: Record<string, LazyExoticComponent<ToolComponent>> = {
       default: m.DataspaceConnectorPanel as ToolComponent,
     }))
   ),
+  'template-ops': lazy(() =>
+    import('../components/TemplateOps').then((m) => ({
+      default: m.TemplateOpsToolWrapper as ToolComponent,
+    }))
+  ),
 };
 
 const createPlaceholderComponent = (

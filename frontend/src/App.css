@@ -2032,6 +2032,82 @@ body {
   }
 }
 
+/* Smart Mapper Dialog */
+.smart-mapper-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.smart-mapper-dialog {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.smart-mapper-dialog-header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.smart-mapper-dialog-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.smart-mapper-dialog-content {
+  padding: var(--spacing-md);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.smart-mapper-dialog-content p {
+  margin: 0 0 var(--spacing-sm);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.smart-mapper-affected-paths {
+  margin: var(--spacing-sm) 0;
+  padding: var(--spacing-sm);
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.smart-mapper-affected-paths ul {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-md);
+}
+
+.smart-mapper-affected-paths li {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+}
+
+.smart-mapper-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  background: rgba(0, 0, 0, 0.02);
+}
+
 /* ============================================================================
    PCF Panel Container
    ============================================================================ */
