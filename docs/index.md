@@ -23,29 +23,81 @@ docker-compose up
 | Frontend | http://localhost:8080 |
 | Backend API | http://localhost:8000 |
 | API Docs (Swagger) | http://localhost:8000/api/docs |
+| AAS Browser (Mnestix) | http://localhost:3000 |
+
+### Minimal Reproducible Demo
+
+The core template editing functionality works **without external API keys**:
+
+```bash
+# 1. Start the application
+docker-compose up
+
+# 2. Open the editor
+open http://localhost:8080
+
+# 3. Complete a sample workflow:
+#    - Select "Digital Nameplate" template
+#    - Fill in manufacturer name and product designation
+#    - Click "Export" → Download AASX file
+#    - Validate: the downloaded .aasx contains your data
+```
+
+**Optional features requiring setup:**
+
+- **Magic Import** (PDF extraction): Requires `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
+- **Dataspace Publishing**: Requires Manufacturing-X infrastructure
+- **Online Semantic Lookup**: Requires ECLASS webservice credentials
+- **PLC4X Bridge**: Requires industrial PLC connectivity
 
 ---
 
 ## Features
 
-- **[Semantic Lookup](features/semantic-lookup.md)** — Search ECLASS/IEC CDD dictionaries and attach semantic identifiers
-- **[Smart Mapper](features/smart-mapper.md)** — CSV/XLSX bulk import with column profiling and reusable recipes
-- **[PCF Calculator](features/pcf-calculator.md)** — Carbon footprint calculation with IDTA 02023 validation
-- **[Passport Mode](features/passport-mode.md)** — Digital Product Passport visualization
-- **[Magic Import](features/magic-import.md)** — PDF-to-AAS extraction with LLM and OCR support
-    - **Confidence Scoring** — 4-signal hybrid scoring (LLM, Localizer, OCR, Rules) with structured reason codes
-    - **Document Intelligence** — Auto-detection of text/scanned/mixed PDFs with 70+ engineering unit normalization
-    - **Validation & Provenance** — Schema validation, field evidence display, batch approve/reject operations
-    - **Visual Feedback** — Color-coded PDF highlights (green/yellow/red) based on extraction confidence
-- **[Dataspace Publishing](features/dataspace-publishing.md)** — Manufacturing-X / Catena-X connectivity
-
-### Core Capabilities
+### Core Editing
 
 - **Universal Editing** — Edit any IDTA template through the same interface
 - **Metadata Preservation** — Qualifiers, EmbeddedDataSpecifications, and semantic IDs preserved
 - **Multiple Export Formats** — AASX packages, JSON files, or PDF reports
 - **Recursive Rendering** — Handles nested SubmodelElementCollections and Lists
 - **Validation** — Client-side and server-side validation with cardinality enforcement
+
+### Data Import
+
+- **[Smart Mapper](features/smart-mapper.md)** — CSV/XLSX bulk import with column profiling and reusable recipes
+- **[Magic Import](features/magic-import.md)** — PDF-to-AAS extraction with LLM and OCR support
+    - **Confidence Scoring** — 4-signal hybrid scoring (LLM, Localizer, OCR, Rules) with structured reason codes
+    - **Document Intelligence** — Auto-detection of text/scanned/mixed PDFs with 70+ engineering unit normalization
+    - **Validation & Provenance** — Schema validation, field evidence display, batch approve/reject operations
+    - **Visual Feedback** — Color-coded PDF highlights (green/yellow/red) based on extraction confidence
+
+### Template Management
+
+- **[Template Operations](features/template-ops.md)** — Import, diff, migrate, and validate templates
+    - **Version Comparison** — Structural diff between template versions with breaking change detection
+    - **Recipe Migration** — Auto-migrate Smart Mapper recipes when templates change
+    - **Form Data Migration** — Migrate in-progress form data to new template versions
+    - **Three-Phase Algorithm** — Exact path match → Semantic ID match → Fuzzy matching with confidence scores
+
+### Visualization
+
+- **[Passport Mode](features/passport-mode.md)** — Digital Product Passport visualization with template-specific cards
+- **AAS Browser** — Embedded Mnestix integration for exploring published AAS instances
+
+### Industry Integration
+
+- **[Semantic Lookup](features/semantic-lookup.md)** — Search ECLASS/IEC CDD dictionaries and attach semantic identifiers
+- **[PCF Calculator](features/pcf-calculator.md)** — Carbon footprint calculation with IDTA 02023 validation
+- **[PLC4X Bridge](features/plc4x-bridge.md)** — Real-time shopfloor data integration via Apache PLC4X (30+ industrial protocols)
+
+### Dataspace Publishing
+
+- **[Dataspace Connector](features/dataspace-publishing.md)** — Manufacturing-X / Catena-X connectivity
+    - **Policy Builder** — Visual ODRL policy construction with pre-built templates
+    - **Multiple Environments** — Sandbox, Catena-X Test, Catena-X Production
+    - **EDC Modes** — Tractus-X EDC or AAS Extension mode
+    - **Contract Negotiation** — Full EDC contract workflow with asset/policy/agreement management
+    - **Audit Logging** — Track all dataspace operations
 
 ---
 
@@ -55,10 +107,95 @@ docker-compose up
 Fetcher → Parser → Hydrator → Validation
 ```
 
-1. **Fetcher** — Discovers and caches IDTA templates from GitHub
+1. **Fetcher** — Discovers and caches IDTA templates from GitHub and local directories
 2. **Parser** — Transforms AAS structures into UI-agnostic JSON schema
 3. **Hydrator** — Reconstitutes complete AAS objects from form data
 4. **Validation** — Enforces constraints on hydrate/export endpoints
+
+### Tool Registry
+
+The application uses a pluggable **Tool Registry** system for extensibility:
+
+```
+app.services.tools/
+├── registry.py       # Auto-discovery and lifecycle management
+├── base.py           # BaseTool interface with metadata
+├── context.py        # Shared context for all tools
+├── capabilities.py   # Dependency graph validation
+└── builtin/          # Built-in tool implementations
+```
+
+**Key Features:**
+
+- **Auto-Discovery** — Tools discovered at startup from Python packages
+- **Lazy Loading** — Frontend components loaded on demand
+- **Feature Flags** — Enable/disable tools via configuration
+- **Health Checking** — Per-tool health status monitoring
+- **Dependency Management** — Tools can declare dependencies on other tools
+- **Categories** — `core`, `import`, `export`, `integration`, `analytics`
+
+---
+
+## Deployment
+
+### Docker Compose Profiles
+
+```bash
+# Core stack
+docker-compose up
+
+# With authentication (Keycloak)
+docker-compose --profile auth up
+
+# With Magic Import (Celery + Redis for background jobs)
+docker-compose --profile magic-import up
+
+# With Dataspace (BaSyx, EDC, DTR, Vault, Mnestix)
+docker-compose --profile dataspace up
+
+# With Dataspace + PLC4X Bridge
+docker-compose --profile dataspace --profile plc up
+
+# Full stack (all features)
+docker-compose --profile auth --profile magic-import --profile dataspace --profile plc up
+```
+
+### Kubernetes
+
+```bash
+# Base deployment
+kubectl apply -k kubernetes/overlays/development
+
+# With dataspace components
+kubectl apply -k kubernetes/base/dataspace
+kubectl apply -k kubernetes/overlays/production
+```
+
+---
+
+## Configuration
+
+Key environment variables (see [full reference](reference/configuration.md)):
+
+### Core Settings
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ENV` | Environment (development/staging/production) | development |
+| `GITHUB_TOKEN` | GitHub API token (higher rate limits) | - |
+| `VITE_API_URL` | Backend URL for frontend | http://localhost:8000 |
+| `OIDC_ENABLED` | Enable authentication | false |
+| `LOCAL_TEMPLATES_ENABLED` | Enable custom local templates | true |
+| `LOCAL_TEMPLATES_DIR` | Directory for local AASX templates | ./templates/local |
+
+### Feature Toggles
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAGIC_IMPORT_ENABLED` | Enable PDF extraction feature | true |
+| `DATASPACE_ENABLED` | Enable dataspace features | false |
+| `PLC4X_BRIDGE_ENABLED` | Enable PLC bridge feature | false |
+| `MNESTIX_ENABLED` | Enable AAS Browser integration | true |
 
 ---
 
@@ -78,6 +215,11 @@ uvicorn app.main:app --reload --port 8000
 
 # Test
 PYTHONPATH=backend pytest backend/tests
+
+# Test specific subsystems
+PYTHONPATH=backend pytest backend/tests/dataspace/
+PYTHONPATH=backend pytest backend/tests/mapper/
+PYTHONPATH=backend pytest backend/tests/magic_import/
 ```
 
 ### Frontend
@@ -98,55 +240,17 @@ npm run test:unit
 
 ---
 
-## Deployment
-
-### Docker Compose Profiles
-
-```bash
-# Core stack
-docker-compose up
-
-# With authentication (Keycloak)
-docker-compose --profile auth up
-
-# With Magic Import (Celery + Redis)
-docker-compose --profile magic-import up
-
-# With Dataspace (BaSyx, EDC, DTR, Vault)
-docker-compose --profile dataspace up
-```
-
-### Kubernetes
-
-```bash
-kubectl apply -k kubernetes/overlays/production
-```
-
----
-
-## Configuration
-
-Key environment variables (see [full reference](reference/configuration.md)):
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ENV` | development / staging / production | development |
-| `GITHUB_TOKEN` | GitHub API token (higher rate limits) | - |
-| `VITE_API_URL` | Backend URL for frontend | http://localhost:8000 |
-| `OIDC_ENABLED` | Enable authentication | false |
-| `DATASPACE_ENABLED` | Enable dataspace features | false |
-| `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai/anthropic/local) | openai |
-| `MAGIC_IMPORT_VALIDATION_MODE` | Validation strictness (strict/warn/off) | warn |
-
----
-
 ## Technology Stack
 
 **Backend**: Python 3.11+ · FastAPI · Eclipse BaSyx SDK 2.0.0 · Pydantic v2 · Celery + Redis
 
-**Frontend**: React 18 · TypeScript · React Hook Form · Zod · Vite
+**Frontend**: React 18 · TypeScript · React Hook Form · Zod · Vite · TanStack Query
 
-**Infrastructure**: Docker · Kubernetes · Redis · Keycloak
+**Dataspace**: Eclipse BaSyx · Tractus-X EDC · HashiCorp Vault · Mnestix
+
+**PLC Bridge**: Java 17 · Spring Boot 3.2 · Apache PLC4X
+
+**Infrastructure**: Docker · Kubernetes · Redis · Keycloak · PostgreSQL
 
 ---
 
@@ -156,27 +260,40 @@ Key environment variables (see [full reference](reference/configuration.md)):
 idta-submodel-editor/
 ├── backend/
 │   ├── app/
-│   │   ├── services/          # Core: fetcher, parser, hydrator, validation
-│   │   │   ├── pcf/           # Carbon footprint calculator
-│   │   │   ├── semantic/      # Dictionary lookup
-│   │   │   ├── mapper/        # CSV/XLSX import
-│   │   │   ├── magic_import/  # PDF extraction
-│   │   │   └── dataspace/     # Catena-X connector
-│   │   └── routers/           # API endpoints
+│   │   ├── services/
+│   │   │   ├── fetcher.py            # Template discovery
+│   │   │   ├── parser.py             # AAS → UI schema
+│   │   │   ├── hydrator.py           # Form data → AAS
+│   │   │   ├── validation.py         # Constraint enforcement
+│   │   │   ├── tools/                # Tool Registry system
+│   │   │   ├── template_ops/         # Template operations
+│   │   │   ├── mapper/               # Smart Mapper
+│   │   │   ├── magic_import/         # PDF extraction
+│   │   │   ├── semantic/             # Dictionary lookup
+│   │   │   ├── pcf/                  # Carbon footprint
+│   │   │   └── dataspace/            # Catena-X connector
+│   │   ├── routers/                  # API endpoints
+│   │   └── schemas/                  # Pydantic models
 │   └── tests/
 ├── frontend/
 │   └── src/
-│       ├── components/        # React components
-│       │   ├── AASRenderer/   # Form renderer
-│       │   ├── PassportMode/  # DPP visualization
-│       │   ├── MagicImport/   # PDF extraction UI
-│       │   └── SmartMapper/   # Bulk import
-│       └── hooks/             # useSubmodelForm, etc.
+│       ├── components/
+│       │   ├── AASRenderer/          # Form renderer
+│       │   ├── PassportMode/         # DPP visualization
+│       │   ├── MagicImport/          # PDF extraction UI
+│       │   ├── SmartMapper/          # Bulk import
+│       │   ├── TemplateOps/          # Template operations UI
+│       │   ├── DataspaceConnector/   # Dataspace UI
+│       │   └── PolicyBuilder/        # ODRL policy UI
+│       ├── tools/                    # Frontend tool registry
+│       └── hooks/                    # useSubmodelForm, etc.
+├── plc4x-bridge/                     # PLC integration microservice
 ├── docs/
-│   ├── features/              # Feature documentation
-│   └── reference/             # Configuration, API, element types
+│   ├── features/                     # Feature documentation
+│   └── reference/                    # Configuration, API, element types
 ├── kubernetes/
 │   ├── base/
+│   │   └── dataspace/                # Dataspace component manifests
 │   └── overlays/
 └── docker-compose.yaml
 ```
@@ -214,3 +331,6 @@ MIT License
 - [IDTA](https://industrialdigitaltwin.org/) — Submodel template specifications
 - [Eclipse BaSyx](https://www.eclipse.org/basyx/) — AAS SDK
 - [admin-shell-io](https://github.com/admin-shell-io/submodel-templates) — Template repository
+- [Tractus-X](https://eclipse-tractusx.github.io/) — EDC connector
+- [Mnestix](https://github.com/eclipse-mnestix/mnestix-browser) — AAS Browser
+- [Apache PLC4X](https://plc4x.apache.org/) — Industrial protocol library

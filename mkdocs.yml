@@ -35,6 +35,8 @@ nav:
       - PCF Calculator: features/pcf-calculator.md
       - Passport Mode: features/passport-mode.md
       - Magic Import: features/magic-import.md
+      - Template Operations: features/template-ops.md
+      - PLC4X Bridge: features/plc4x-bridge.md
       - Dataspace Publishing: features/dataspace-publishing.md
   - Reference:
       - Configuration: reference/configuration.md
