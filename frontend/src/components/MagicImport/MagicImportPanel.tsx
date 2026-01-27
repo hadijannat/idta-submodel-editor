@@ -313,6 +313,16 @@ export default function MagicImportPanel({
             </span>
             <span className="magic-import-panel__separator">|</span>
             <span>Avg confidence: {avgConfidence}%</span>
+            {result.llm_provider && (
+              <>
+                <span className="magic-import-panel__separator">|</span>
+                <span className="magic-import-panel__llm-info">
+                  {result.llm_provider}/{result.llm_model}
+                </span>
+                <span className="magic-import-panel__separator">|</span>
+                <span>{result.processing_time_seconds.toFixed(1)}s</span>
+              </>
+            )}
           </div>
         )}
         {onClose && (
@@ -326,6 +336,14 @@ export default function MagicImportPanel({
         )}
       </div>
       {error && <div className="magic-import-panel__error">{error}</div>}
+
+      {/* Warning if all fields empty */}
+      {extractions.length > 0 && extractions.every(e => e.status === 'empty') && (
+        <div className="magic-import-panel__warning">
+          ⚠️ All fields returned empty. The selected template may not match this document.
+          Consider using a different template that matches your document content.
+        </div>
+      )}
 
       <div className="magic-import-panel__content">
         {/* PDF Viewer (left side) */}

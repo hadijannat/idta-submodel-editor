@@ -48,6 +48,22 @@
   color: var(--color-border, #e5e7eb);
 }
 
+.magic-import-panel__llm-info {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.magic-import-panel__warning {
+  background: var(--color-warning-bg, #fef3c7);
+  border: 1px solid var(--color-warning-border, #f59e0b);
+  color: var(--color-warning-text, #92400e);
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin: 8px 20px;
+  font-size: 0.9rem;
+}
+
 .magic-import-panel__close {
   padding: 4px 8px;
   background: none;
