@@ -8,6 +8,7 @@ This module provides:
 - Multi-provider LLM extraction (OpenAI, Anthropic, Local)
 - Evidence localization for source highlighting
 - Confidence scoring for human review
+- Quality metrics computation for extraction analysis
 """
 
 from app.services.magic_import.job_manager import JobManager
@@ -17,6 +18,7 @@ from app.services.magic_import.retriever import SnippetRetriever
 from app.services.magic_import.extractor import Extractor
 from app.services.magic_import.localizer import EvidenceLocalizer
 from app.services.magic_import.scorer import ConfidenceScorer
+from app.services.magic_import.metrics_calculator import MetricsCalculator
 
 __all__ = [
     "JobManager",
@@ -26,4 +28,5 @@ __all__ = [
     "Extractor",
     "EvidenceLocalizer",
     "ConfidenceScorer",
+    "MetricsCalculator",
 ]
