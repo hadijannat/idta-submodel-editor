@@ -34,6 +34,7 @@ frontend/test-results/
 # Caches/runtime
 .cache/
 cache/
+tmp/
 
 # Env files
 .env
