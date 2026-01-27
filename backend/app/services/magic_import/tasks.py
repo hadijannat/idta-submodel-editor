@@ -510,7 +510,7 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             job.template_name,
             job.template_status,
             job.template_version,
-            mode="strict",
+            mode="warn",
         )
 
         logger.info(
