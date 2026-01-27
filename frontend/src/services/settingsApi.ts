@@ -63,6 +63,15 @@ export interface ProviderQuickStatus {
   available_providers?: string[];
 }
 
+export interface FeatureFlagsSettings {
+  dataspace_enabled: boolean;
+  source: 'settings' | 'env';
+}
+
+export interface FeatureFlagsUpdate {
+  dataspace_enabled?: boolean;
+}
+
 // ============================================================================
 // Provider Info
 // ============================================================================
@@ -221,6 +230,40 @@ export async function getProviderQuickStatus(): Promise<ProviderQuickStatus> {
       healthy: false,
       message: 'Could not check provider status',
     };
+  }
+
+  return response.json();
+}
+
+/**
+ * Get runtime feature flags.
+ */
+export async function getFeatureFlags(): Promise<FeatureFlagsSettings> {
+  const response = await fetch(`${API_BASE_URL}/api/settings/features`);
+
+  if (!response.ok) {
+    const details = await response.json().catch(() => response.statusText);
+    throw new ApiError('Failed to load feature flags', response.status, details);
+  }
+
+  return response.json();
+}
+
+/**
+ * Update runtime feature flags.
+ */
+export async function updateFeatureFlags(
+  update: FeatureFlagsUpdate
+): Promise<FeatureFlagsSettings> {
+  const response = await fetch(`${API_BASE_URL}/api/settings/features`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(update),
+  });
+
+  if (!response.ok) {
+    const details = await response.json().catch(() => response.statusText);
+    throw new ApiError('Failed to update feature flags', response.status, details);
   }
 
   return response.json();

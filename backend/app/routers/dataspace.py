@@ -126,12 +126,13 @@ def get_audit_service() -> AuditService:
 
 def _check_dataspace_enabled() -> None:
     """Check if dataspace feature is enabled, raise error if not."""
-    settings = get_settings()
-    if not settings.dataspace_enabled:
+    from app.services import settings_service
+
+    if not settings_service.get_effective_feature_flag("dataspace_enabled"):
         raise APIError(
             code=ErrorCode.FEATURE_DISABLED,
             message="Dataspace integration is disabled",
-            detail={"hint": "Set DATASPACE_ENABLED=true to enable"},
+            detail={"hint": "Enable Dataspace in Settings or set DATASPACE_ENABLED=true"},
         )
 
 
@@ -218,6 +219,9 @@ def _map_dataspace_type(env: str) -> DataspaceType:
 def _connection_to_response(conn) -> DataspaceConnection:
     """Convert internal connection state to API response model."""
     settings = get_settings()
+    from app.services import settings_service
+
+    dataspace_enabled = settings_service.get_effective_feature_flag("dataspace_enabled")
     return DataspaceConnection(
         connection_id=conn.connection_id,
         status=_map_internal_status(conn.status),
@@ -1444,13 +1448,15 @@ async def check_health(
     # General health check (no specific connection)
     return HealthCheckResponse(
         connection_id="system",
-        overall_healthy=settings.dataspace_enabled,
+        overall_healthy=dataspace_enabled,
         status=DataspaceConnectionStatus.NOT_CONNECTED,
         checks=[
             HealthCheckResult(
                 component="dataspace_enabled",
-                healthy=settings.dataspace_enabled,
-                message="Dataspace integration is enabled" if settings.dataspace_enabled else "Dataspace integration is disabled",
+                healthy=dataspace_enabled,
+                message="Dataspace integration is enabled"
+                if dataspace_enabled
+                else "Dataspace integration is disabled",
                 checked_at=now,
             ),
         ],

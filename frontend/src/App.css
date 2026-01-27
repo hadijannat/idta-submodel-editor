@@ -2137,6 +2137,34 @@ body {
    Utility Tools
    ============================================================================ */
 
+.dataspace-toggle-card h4 {
+  margin: 0 0 var(--spacing-sm);
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.dataspace-toggle-card p {
+  margin: 0 0 var(--spacing-sm);
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+}
+
+.dataspace-toggle-card .btn {
+  width: 100%;
+}
+
+.dataspace-toggle-hint {
+  margin-top: var(--spacing-sm);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.dataspace-toggle-error {
+  margin: var(--spacing-xs) 0 0;
+  font-size: 0.75rem;
+  color: #c53030;
+}
+
 .utility-tools-card h4 {
   margin: 0 0 var(--spacing-sm);
   font-size: 0.9rem;

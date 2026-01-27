@@ -17,6 +17,7 @@ import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
 import { PassportView } from './components/PassportMode';
 import { MnestixBrowser } from './components/MnestixBrowser';
 import { getTemplateVersions, getPublicSettings, type PublicSettings } from './services/api';
+import { updateFeatureFlags } from './services/settingsApi';
 import { computeCompletion } from './utils/completion';
 import { useTools } from './tools/hooks/useTools';
 import { toolRegistry } from './tools';
@@ -38,8 +39,16 @@ function App() {
   const templateStatus = selectedTemplate?.status ?? 'published';
 
   // Load tool registry
-  const { wizardSteps, isToolEnabled, utilityTools } = useTools();
+  const {
+    wizardSteps,
+    isToolEnabled,
+    utilityTools,
+    refresh: refreshTools,
+    loading: toolsLoading,
+  } = useTools();
   const [activeUtilityTool, setActiveUtilityTool] = useState<string | null>(null);
+  const [dataspaceToggleLoading, setDataspaceToggleLoading] = useState(false);
+  const [dataspaceToggleError, setDataspaceToggleError] = useState<string | null>(null);
   const activeUtilityToolTitleId = activeUtilityTool
     ? `utility-tool-title-${activeUtilityTool}`
     : undefined;
@@ -116,6 +125,23 @@ function App() {
     },
     [canConfigure, canEdit, wizardSteps]
   );
+
+  const handleDataspaceToggle = useCallback(async () => {
+    const nextValue = !isToolEnabled('dataspace-connector');
+    setDataspaceToggleLoading(true);
+    setDataspaceToggleError(null);
+
+    try {
+      await updateFeatureFlags({ dataspace_enabled: nextValue });
+      await refreshTools();
+    } catch (err) {
+      setDataspaceToggleError(
+        err instanceof Error ? err.message : 'Failed to update dataspace setting'
+      );
+    } finally {
+      setDataspaceToggleLoading(false);
+    }
+  }, [isToolEnabled, refreshTools]);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -665,6 +691,8 @@ function App() {
     );
   }
 
+  const dataspaceEnabled = isToolEnabled('dataspace-connector');
+
   return (
     <div className="app">
       <header className="app-header">
@@ -745,6 +773,34 @@ function App() {
                 <span className="template-status template-status-deprecated">
                   Deprecated
                 </span>
+              )}
+            </div>
+          )}
+
+          {selectedTemplate && (
+            <div className="wizard-card dataspace-toggle-card">
+              <h4>Dataspace Publishing</h4>
+              <p>
+                Enable dataspace integration to publish submodels to Manufacturing-X /
+                Catena-X.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleDataspaceToggle}
+                disabled={dataspaceToggleLoading || toolsLoading}
+              >
+                {dataspaceToggleLoading
+                  ? 'Updating...'
+                  : dataspaceEnabled
+                    ? 'Disable'
+                    : 'Enable'}
+              </button>
+              <p className="dataspace-toggle-hint">
+                Requires dataspace services to be configured on the backend.
+              </p>
+              {dataspaceToggleError && (
+                <p className="dataspace-toggle-error">{dataspaceToggleError}</p>
               )}
             </div>
           )}

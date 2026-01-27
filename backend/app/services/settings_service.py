@@ -46,6 +46,12 @@ class LLMSettings(BaseModel):
     ocr_enabled: bool = True
 
 
+class FeatureFlags(BaseModel):
+    """Runtime feature flag overrides."""
+
+    dataspace_enabled: bool | None = None
+
+
 def _get_encryption_key() -> bytes:
     """
     Get or generate the encryption key for API keys.
@@ -134,6 +140,13 @@ def _get_settings_path() -> Path:
     return settings.settings_storage_dir / "llm_settings.json"
 
 
+def _get_feature_flags_path() -> Path:
+    """Get the path to the feature flags JSON file."""
+    settings = get_settings()
+    settings.settings_storage_dir.mkdir(parents=True, exist_ok=True)
+    return settings.settings_storage_dir / "feature_flags.json"
+
+
 def has_llm_settings(settings: object | None = None) -> bool:
     """Return True if a settings file exists."""
     if settings is not None and hasattr(settings, "settings_storage_dir"):
@@ -173,6 +186,63 @@ def save_llm_settings(settings: LLMSettings) -> None:
     except Exception as e:
         logger.error("Failed to save LLM settings: %s", e)
         raise
+
+
+def load_feature_flags() -> FeatureFlags:
+    """Load runtime feature flags from storage."""
+    path = _get_feature_flags_path()
+
+    if not path.exists():
+        return FeatureFlags()
+
+    try:
+        data = json.loads(path.read_text())
+        return FeatureFlags.model_validate(data)
+    except Exception as e:
+        logger.warning("Failed to load feature flags: %s", e)
+        return FeatureFlags()
+
+
+def save_feature_flags(flags: FeatureFlags) -> None:
+    """Save runtime feature flags to storage."""
+    path = _get_feature_flags_path()
+
+    try:
+        path.write_text(flags.model_dump_json(indent=2))
+        os.chmod(path, 0o600)
+    except Exception as e:
+        logger.error("Failed to save feature flags: %s", e)
+        raise
+
+
+def update_feature_flags(
+    dataspace_enabled: bool | None = None,
+) -> FeatureFlags:
+    """Update runtime feature flags and persist to storage."""
+    flags = load_feature_flags()
+
+    if dataspace_enabled is not None:
+        flags.dataspace_enabled = dataspace_enabled
+
+    save_feature_flags(flags)
+    return flags
+
+
+def get_effective_feature_flag(flag_name: str) -> bool:
+    """
+    Resolve a feature flag using stored overrides with env fallback.
+
+    If a stored value exists, it takes precedence. Otherwise, fall back
+    to application settings or default to True.
+    """
+    flags = load_feature_flags()
+    if hasattr(flags, flag_name):
+        value = getattr(flags, flag_name)
+        if value is not None:
+            return value
+
+    settings = get_settings()
+    return getattr(settings, flag_name, True)
 
 
 def get_provider_config(provider: ProviderType) -> LLMProviderConfig | None:

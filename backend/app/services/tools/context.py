@@ -150,7 +150,9 @@ class ToolContext:
         Returns:
             True if the feature is enabled, False otherwise
         """
-        return getattr(self._settings, flag, True)
+        from app.services import settings_service
+
+        return settings_service.get_effective_feature_flag(flag)
 
     def get_setting(self, name: str, default: object = None) -> object:
         """

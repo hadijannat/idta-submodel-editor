@@ -87,6 +87,21 @@ class ModelsResponse(BaseModel):
     default_model: str
 
 
+class FeatureFlagsResponse(BaseModel):
+    """Response for GET /api/settings/features."""
+
+    dataspace_enabled: bool
+    source: Literal["settings", "env"]
+
+
+class FeatureFlagsUpdate(BaseModel):
+    """Request for PUT /api/settings/features."""
+
+    dataspace_enabled: bool | None = Field(
+        default=None, description="Enable or disable dataspace integration"
+    )
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -176,6 +191,37 @@ async def update_llm_settings(
 
     # Return updated settings
     return await get_llm_settings(user)
+
+
+@router.get("/features", response_model=FeatureFlagsResponse)
+async def get_feature_flags(
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> FeatureFlagsResponse:
+    """Get effective runtime feature flags."""
+    flags = settings_service.load_feature_flags()
+    effective = settings_service.get_effective_feature_flag("dataspace_enabled")
+    source: Literal["settings", "env"] = (
+        "settings" if flags.dataspace_enabled is not None else "env"
+    )
+
+    return FeatureFlagsResponse(
+        dataspace_enabled=effective,
+        source=source,
+    )
+
+
+@router.put("/features", response_model=FeatureFlagsResponse)
+async def update_feature_flags(
+    request: FeatureFlagsUpdate,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> FeatureFlagsResponse:
+    """Update runtime feature flags."""
+    if request.dataspace_enabled is not None:
+        settings_service.update_feature_flags(
+            dataspace_enabled=request.dataspace_enabled,
+        )
+
+    return await get_feature_flags(user)
 
 
 @router.post("/llm/validate", response_model=ProviderValidationResponse)
