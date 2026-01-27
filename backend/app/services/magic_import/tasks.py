@@ -299,13 +299,13 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         # ================================================================
         # Step 5: Field Extraction (Two-Pass or Legacy)
         # ================================================================
-    extractor = Extractor()
-    hints_by_path = {hint.path: hint for hint in hints}
-    llm_tokens_used = 0
-    llm_prompt_tokens: int | None = None
-    llm_completion_tokens: int | None = None
+        extractor = Extractor()
+        hints_by_path = {hint.path: hint for hint in hints}
+        llm_tokens_used = 0
+        llm_prompt_tokens: int | None = None
+        llm_completion_tokens: int | None = None
 
-    if use_two_pass:
+        if use_two_pass:
             # ============================================================
             # Two-Pass Extraction: Generate Candidates → Verify
             # ============================================================

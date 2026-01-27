@@ -24,8 +24,22 @@ class ExtractionValidator:
     """Validate extracted fields against template schema."""
 
     def __init__(self) -> None:
-        self._fetcher = TemplateFetcherService()
-        self._parser = ParserService()
+        self._fetcher = None
+        self._parser = None
+
+    @property
+    def fetcher(self) -> TemplateFetcherService:
+        if self._fetcher is None:
+            from app.dependencies import get_fetcher
+            self._fetcher = get_fetcher()
+        return self._fetcher
+
+    @property
+    def parser(self) -> ParserService:
+        if self._parser is None:
+            from app.dependencies import get_parser
+            self._parser = get_parser()
+        return self._parser
 
     def validate_extractions(
         self,
@@ -52,11 +66,18 @@ class ExtractionValidator:
         warnings: list[MagicImportValidationError] = []
 
         try:
-            # Get template schema
-            template = self._fetcher.get_template(
-                template_name, template_status, template_version
-            )
-            if template is None:
+            # Fetch template AASX bytes (async -> sync)
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            try:
+                template_bytes = loop.run_until_complete(
+                    self._fetch_template(template_name, template_status, template_version)
+                )
+            finally:
+                loop.close()
+
+            if not template_bytes:
                 errors.append(
                     MagicImportValidationError(
                         path="",
@@ -66,7 +87,7 @@ class ExtractionValidator:
                 )
                 return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
-            schema = self._parser.parse_template(template)
+            schema = self.parser.parse_aasx_to_ui_schema(template_bytes)
             schema_elements = schema.get("elements", [])
 
             # Build lookup of schema elements by path
@@ -129,6 +150,18 @@ class ExtractionValidator:
                 )
             )
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+
+    async def _fetch_template(
+        self,
+        template_name: str,
+        template_status: str,
+        template_version: str | None,
+    ) -> bytes:
+        """Fetch template AASX bytes."""
+        template_path = f"{template_status}/{template_name}"
+        if template_version:
+            template_path = f"{template_path}/{template_version}"
+        return await self.fetcher.fetch_template_aasx(template_path)
 
     def _build_schema_lookup(
         self,

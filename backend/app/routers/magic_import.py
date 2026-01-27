@@ -77,6 +77,20 @@ async def create_job(
                 existing.job_id,
                 idempotency_key[:8],
             )
+
+            # If the job never advanced beyond UPLOADED, re-queue it to avoid stuck states
+            if existing.status == JobStatus.UPLOADED:
+                try:
+                    from app.services.magic_import.tasks import process_magic_import_job
+
+                    process_magic_import_job.delay(existing.job_id)
+                    logger.info("Re-queued stale uploaded job %s", existing.job_id)
+                except Exception as e:
+                    logger.warning("Celery unavailable, processing synchronously: %s", e)
+                    from app.services.magic_import.tasks import process_magic_import_job
+
+                    process_magic_import_job(existing.job_id)
+
             return existing
 
         # Create job
