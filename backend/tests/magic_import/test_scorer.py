@@ -83,10 +83,12 @@ class TestConfidenceScorer:
     def test_init(self):
         """Test scorer initialization."""
         scorer = ConfidenceScorer()
-        assert scorer.WEIGHT_LLM == 0.35
-        assert scorer.WEIGHT_LOCALIZER == 0.40
+        # LLM has semantic understanding; localizer is purely positional
+        assert scorer.WEIGHT_LLM == 0.45
+        assert scorer.WEIGHT_LOCALIZER == 0.30
         assert scorer.WEIGHT_OCR == 0.15
         assert scorer.WEIGHT_RULES == 0.10
+        assert scorer.GROUNDING_BONUS == 0.05
 
     def test_score_high_confidence(
         self, sample_index, high_confidence_extraction

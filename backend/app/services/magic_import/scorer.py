@@ -23,10 +23,14 @@ class ConfidenceScorer:
     """Compute confidence scores for extracted fields."""
 
     # Weight for each signal in the final confidence score
-    WEIGHT_LLM = 0.35
-    WEIGHT_LOCALIZER = 0.40
+    # LLM has semantic understanding; localizer is purely positional
+    WEIGHT_LLM = 0.45
+    WEIGHT_LOCALIZER = 0.30
     WEIGHT_OCR = 0.15
     WEIGHT_RULES = 0.10
+
+    # Bonus for evidence grounding (value appears in evidence quote)
+    GROUNDING_BONUS = 0.05
 
     def __init__(self) -> None:
         pass
@@ -509,6 +513,13 @@ class ConfidenceScorer:
                 + self.WEIGHT_OCR * ocr_score
                 + self.WEIGHT_RULES * rules_score
             )
+
+            # Evidence grounding bonus: value verified in evidence quote
+            if (
+                extraction.evidence is not None
+                and self._value_in_evidence(extraction.value_raw, extraction.evidence.quote)
+            ):
+                overall = min(1.0, overall + self.GROUNDING_BONUS)
 
             breakdown = ConfidenceBreakdown(
                 llm=llm_score,

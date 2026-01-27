@@ -464,18 +464,26 @@ class Extractor:
                     needs_review=False,
                 )
             else:
-                # No candidates could be verified - needs review
-                # Use the first candidate's value but mark as ungrounded
+                # No candidates could be verified - return empty value
+                # Enforce "no verified evidence = empty value" invariant
                 fallback = candidate_set.candidates[0] if candidate_set.candidates else None
                 return FieldExtraction(
                     path=path,
                     value_type=hint.value_type if hint else None,
-                    value_raw=fallback.value if fallback else "",
+                    value_raw="",  # No evidence = no value
                     value_normalized=None,
                     status=ExtractionStatus.NEEDS_REVIEW,
-                    confidence=0.3,  # Low confidence for ungrounded
+                    confidence=0.0,
                     evidence=None,
                     needs_review=True,
+                    confidence_reasons=[
+                        ConfidenceReason(
+                            code=ConfidenceReasonCode.NO_EVIDENCE_FOUND,
+                            message=f"No candidate verified for '{path}'",
+                            severity="error",
+                            detail={"best_candidate": fallback.value if fallback else None},
+                        )
+                    ],
                 )
 
         unique_values = {candidate.value.strip() for candidate, _ in verified if candidate.value}

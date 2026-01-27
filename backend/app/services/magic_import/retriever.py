@@ -32,6 +32,14 @@ class TokenStats:
     avg_doc_len: float
 
 
+@dataclass
+class TaggedSnippet:
+    """Snippet with associated field paths for field-aware deduplication."""
+
+    snippet: Snippet
+    field_paths: set[str]  # Which fields need this snippet
+
+
 class SnippetRetriever:
     """Retrieve relevant text snippets from PDF index."""
 
@@ -54,14 +62,19 @@ class SnippetRetriever:
         index: PDFIndex,
         hints: list[ExtractionHint],
         max_total_snippets: int = 50,
+        max_snippets_per_field: int = 5,
     ) -> list[Snippet]:
         """
         Retrieve relevant snippets for all extraction hints.
+
+        Uses field-aware deduplication: overlapping snippets are allowed
+        when they serve different fields.
 
         Args:
             index: PDF word index
             hints: Extraction hints with keywords
             max_total_snippets: Maximum total snippets to return
+            max_snippets_per_field: Maximum snippets per field (default: 5)
 
         Returns:
             List of snippets with relevance scores
@@ -73,7 +86,8 @@ class SnippetRetriever:
         page_docs = self._build_page_documents(index)
         token_stats = self._compute_token_stats(page_docs)
 
-        all_snippets: list[Snippet] = []
+        # Track snippets with their associated fields
+        tagged_snippets: list[TaggedSnippet] = []
 
         for hint in hints:
             if not hint.keywords:
@@ -84,15 +98,19 @@ class SnippetRetriever:
                 hint.keywords, page_docs, token_stats
             )
 
-            # Extract snippets from top pages
+            # Extract snippets from top pages (limited per field)
             hint_snippets = self._extract_snippets_for_hint(
                 hint, page_scores, index, page_docs
-            )
+            )[:max_snippets_per_field]
 
-            all_snippets.extend(hint_snippets)
+            # Tag snippets with field path
+            for snippet in hint_snippets:
+                tagged_snippets.append(
+                    TaggedSnippet(snippet=snippet, field_paths={hint.path})
+                )
 
-        # Deduplicate overlapping snippets
-        all_snippets = self._deduplicate_snippets(all_snippets)
+        # Field-aware deduplication
+        all_snippets = self._deduplicate_snippets_field_aware(tagged_snippets)
 
         # Sort by score and limit
         all_snippets.sort(key=lambda s: s.score, reverse=True)
@@ -323,10 +341,62 @@ class SnippetRetriever:
             context_after=context_after,
         )
 
+    def _deduplicate_snippets_field_aware(
+        self, tagged_snippets: list[TaggedSnippet]
+    ) -> list[Snippet]:
+        """
+        Field-aware deduplication: merge overlapping snippets that serve different fields.
+
+        Unlike the legacy deduplication, this allows overlapping snippets when they
+        serve different extraction hints. Only exact duplicates are removed.
+        """
+        if not tagged_snippets:
+            return []
+
+        # Sort by score descending
+        sorted_tagged = sorted(
+            tagged_snippets, key=lambda ts: ts.snippet.score, reverse=True
+        )
+        result: list[TaggedSnippet] = []
+
+        for tagged in sorted_tagged:
+            snippet = tagged.snippet
+            merged = False
+
+            for existing in result:
+                # Check for exact duplicate (same page and word range)
+                if (
+                    snippet.page == existing.snippet.page
+                    and snippet.start_word_idx == existing.snippet.start_word_idx
+                    and snippet.end_word_idx == existing.snippet.end_word_idx
+                ):
+                    # Merge field paths into existing
+                    existing.field_paths.update(tagged.field_paths)
+                    merged = True
+                    break
+
+                # Check for overlap - if fields are different, keep both
+                if self._snippets_overlap(snippet, existing.snippet):
+                    # If same fields, skip (deduplicate)
+                    if tagged.field_paths == existing.field_paths:
+                        merged = True
+                        break
+                    # Different fields: don't deduplicate, but merge paths
+                    # into existing if it has significantly better coverage
+                    if existing.snippet.score >= snippet.score * 1.2:
+                        existing.field_paths.update(tagged.field_paths)
+                        merged = True
+                        break
+
+            if not merged:
+                result.append(tagged)
+
+        return [ts.snippet for ts in result]
+
     def _deduplicate_snippets(
         self, snippets: list[Snippet]
     ) -> list[Snippet]:
-        """Remove overlapping snippets, keeping higher-scored ones."""
+        """Remove overlapping snippets, keeping higher-scored ones (legacy method)."""
         if not snippets:
             return []
 

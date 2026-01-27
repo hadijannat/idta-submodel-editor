@@ -239,7 +239,15 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         )
 
         retriever = SnippetRetriever()
-        snippets = retriever.retrieve_snippets(index, hints)
+        # Dynamic budget: scale based on template complexity
+        # At least 1 snippet per field, max 200 to avoid overwhelming LLM context
+        max_total_snippets = min(200, max(50, len(hints)))
+        snippets = retriever.retrieve_snippets(
+            index,
+            hints,
+            max_total_snippets=max_total_snippets,
+            max_snippets_per_field=3,
+        )
 
         # Add table-derived snippets for better coverage
         table_extractor = TableExtractor()

@@ -30,6 +30,73 @@ class SchemaResolver:
         "ReferenceElement",
     }
 
+    # Context-aware synonyms: parent context → field → keywords
+    # This prevents confusion between manufacturer vs supplier/vendor
+    CONTEXT_SYNONYMS: dict[str, dict[str, list[str]]] = {
+        "ContactInformation": {
+            "email": ["email", "e-mail", "electronic mail", "mail"],
+            "phone": ["phone", "telephone", "tel", "fax"],
+            "fax": ["fax", "telefax"],
+            "street": ["street", "address", "road"],
+            "zipcode": ["zip", "postal", "postcode", "plz"],
+            "citytown": ["city", "town", "location", "place"],
+            "nationalcode": ["country", "nation", "country code"],
+        },
+        "Nameplate": {
+            # Manufacturer fields - do NOT include vendor/supplier
+            "manufacturername": ["manufacturer", "producer", "made by", "hersteller"],
+            "manufacturerproductdesignation": ["product name", "product", "designation", "model name"],
+            "manufacturerproductfamily": ["product family", "family", "series"],
+            "serialnumber": ["serial", "s/n", "serial no", "sn", "serial number"],
+            "batchnumber": ["batch", "lot", "batch no", "lot no"],
+            "yearconstruction": ["year", "manufactured", "production year", "built", "construction year"],
+        },
+        "TechnicalData": {
+            "weight": ["weight", "mass", "kg", "gross weight", "net weight"],
+            "height": ["height", "h", "tall"],
+            "width": ["width", "w", "wide"],
+            "length": ["length", "l", "long", "depth"],
+            "voltage": ["voltage", "v", "volt", "rated voltage"],
+            "current": ["current", "a", "amp", "ampere", "rated current"],
+            "power": ["power", "w", "watt", "kw", "rated power"],
+            "frequency": ["frequency", "hz", "hertz"],
+        },
+        "ProductCarbonFootprint": {
+            "pcfcalculationmethod": ["calculation method", "pcf method", "methodology"],
+            "co2footprinttotal": ["carbon footprint", "co2", "emissions", "ghg", "co2e"],
+            "biogeniccarbon": ["biogenic", "bio carbon", "biogenic carbon content"],
+        },
+    }
+
+    # Semantic ID to keyword mapping (ECLASS/IEC CDD IRDIs)
+    SEMANTIC_ID_KEYWORDS: dict[str, list[str]] = {
+        # Nameplate semantic IDs (ECLASS)
+        "0173-1#01-AAS001#001": ["manufacturer", "producer"],
+        "0173-1#02-AAO677#002": ["manufacturer", "company name"],
+        "0173-1#02-AAW338#001": ["product designation", "product name"],
+        "0173-1#02-AAO676#002": ["serial number", "serial", "s/n"],
+        # Contact semantic IDs
+        "0173-1#02-AAQ832#002": ["email", "e-mail"],
+        "0173-1#02-AAO133#002": ["phone", "telephone"],
+        "0173-1#02-AAO132#002": ["fax", "telefax"],
+    }
+
+    # Global synonyms - used as fallback, reduced scope (no vendor/supplier for manufacturer)
+    GLOBAL_SYNONYMS: dict[str, list[str]] = {
+        "serialnumber": ["serial", "s/n", "serial no", "sn"],
+        "yearconstruction": ["year", "manufactured", "production year"],
+        "countrycode": ["country", "origin", "made in"],
+        "street": ["address", "street address"],
+        "zipcode": ["postal", "zip", "postcode", "plz"],
+        "citytown": ["city", "town", "location"],
+        "weight": ["mass", "kg"],
+        "voltage": ["v", "volt"],
+        "current": ["a", "amp", "ampere"],
+        "power": ["w", "watt", "kw"],
+        "frequency": ["hz", "hertz"],
+        "temperature": ["temp", "celsius", "fahrenheit"],
+    }
+
     def __init__(
         self,
         fetcher: TemplateFetcherService | None = None,
@@ -208,6 +275,7 @@ class SchemaResolver:
         Generate search keywords for a field.
 
         Keywords are used for BM25-style retrieval of relevant snippets.
+        Uses priority: semantic ID > context-aware > global synonyms.
         """
         keywords: list[str] = []
 
@@ -230,8 +298,8 @@ class SchemaResolver:
             # Extract the property name if embedded
             keywords.extend(self._extract_semantic_id_tokens(semantic_id))
 
-        # Add common synonyms for known field types
-        keywords.extend(self._get_field_synonyms(id_short))
+        # Add context-aware synonyms (priority: semantic ID > context > global)
+        keywords.extend(self._get_field_synonyms(id_short, path, semantic_id))
 
         # Deduplicate while preserving order
         seen = set()
@@ -303,38 +371,50 @@ class SchemaResolver:
 
         return tokens
 
-    @staticmethod
-    def _get_field_synonyms(id_short: str) -> list[str]:
-        """Get common synonyms for known field types."""
-        synonyms_map = {
-            # Nameplate fields
-            "manufacturername": ["manufacturer", "company", "vendor", "supplier", "made by"],
-            "manufacturerproductdesignation": ["product name", "product", "designation", "model"],
-            "serialnumber": ["serial", "s/n", "serial no", "sn"],
-            "yearconstruction": ["year", "manufactured", "production year", "built"],
-            "countrycode": ["country", "origin", "made in"],
-            "street": ["address", "street address"],
-            "zipcode": ["postal", "zip", "postcode", "plz"],
-            "citytown": ["city", "town", "location"],
-            # Technical data
-            "weight": ["mass", "kg", "weight"],
-            "height": ["h", "height", "tall"],
-            "width": ["w", "width", "wide"],
-            "length": ["l", "length", "long"],
-            "voltage": ["v", "volt", "voltage"],
-            "current": ["a", "amp", "ampere", "current"],
-            "power": ["w", "watt", "power", "kw"],
-            "frequency": ["hz", "hertz", "frequency"],
-            "temperature": ["temp", "temperature", "celsius", "fahrenheit"],
-            # PCF fields
-            "pcfcalculationmethod": ["calculation method", "pcf method", "carbon method"],
-            "co2footprinttotal": ["carbon footprint", "co2", "emissions", "ghg"],
-            "biogeniccarbon": ["biogenic", "bio carbon"],
-        }
+    def _get_field_synonyms(
+        self,
+        id_short: str,
+        path: list[str],
+        semantic_id: str | None,
+    ) -> list[str]:
+        """
+        Get context-aware synonyms for a field.
 
+        Priority order:
+        1. Semantic ID specific (most precise)
+        2. Context-aware (based on parent element)
+        3. Global synonyms (fallback, reduced scope)
+
+        This prevents confusion like manufacturer vs vendor/supplier.
+        """
+        synonyms: list[str] = []
+
+        # 1. Check semantic ID first (most precise)
+        if semantic_id:
+            for sem_id, keywords in self.SEMANTIC_ID_KEYWORDS.items():
+                if sem_id in semantic_id:
+                    synonyms.extend(keywords)
+                    return synonyms  # Semantic ID match is authoritative
+
+        # 2. Check context-aware synonyms based on path
         id_lower = id_short.lower()
-        for key, syns in synonyms_map.items():
+        for context_name, field_synonyms in self.CONTEXT_SYNONYMS.items():
+            # Check if any path segment matches the context
+            context_lower = context_name.lower()
+            path_matches_context = any(
+                context_lower in segment.lower() for segment in path
+            )
+            if path_matches_context:
+                # Look for matching field in this context
+                for field_key, syns in field_synonyms.items():
+                    if field_key in id_lower or id_lower in field_key:
+                        synonyms.extend(syns)
+                        return synonyms  # Context match found
+
+        # 3. Fallback to global synonyms (reduced scope)
+        for key, syns in self.GLOBAL_SYNONYMS.items():
             if key in id_lower or id_lower in key:
-                return syns
+                synonyms.extend(syns)
+                return synonyms
 
         return []
