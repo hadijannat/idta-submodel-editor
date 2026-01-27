@@ -19,6 +19,7 @@ from app.services.magic_import.extractor import Extractor
 from app.services.magic_import.localizer import EvidenceLocalizer
 from app.services.magic_import.scorer import ConfidenceScorer
 from app.services.magic_import.metrics_calculator import MetricsCalculator
+from app.services.magic_import.outcome_tracker import OutcomeTracker
 
 __all__ = [
     "JobManager",
@@ -29,4 +30,5 @@ __all__ = [
     "EvidenceLocalizer",
     "ConfidenceScorer",
     "MetricsCalculator",
+    "OutcomeTracker",
 ]
