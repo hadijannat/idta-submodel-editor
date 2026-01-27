@@ -25,6 +25,12 @@ venv/
 .mypy_cache/
 .hypothesis/
 
+# Test artifacts
+coverage/
+frontend/coverage/
+test-results/
+frontend/test-results/
+
 # Caches/runtime
 .cache/
 cache/
