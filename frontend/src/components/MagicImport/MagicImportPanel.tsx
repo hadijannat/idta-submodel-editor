@@ -16,6 +16,8 @@ import { useMagicImport } from './useMagicImport';
 import PdfViewer from './PdfViewer';
 import ExtractionReviewTable from './ExtractionReviewTable';
 import ProvenancePanel from './ProvenancePanel';
+import ProviderQuickStatus from './ProviderQuickStatus';
+import { LLMSettingsPanel } from '../LLMSettings';
 import './MagicImport.css';
 
 interface MagicImportPanelProps {
@@ -66,6 +68,7 @@ export default function MagicImportPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
   const [focusToken, setFocusToken] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Handle file selection
   const handleFileSelect = useCallback(
@@ -156,6 +159,9 @@ export default function MagicImportPanel({
           )}
         </div>
 
+        {/* Provider Status */}
+        <ProviderQuickStatus onConfigureClick={() => setShowSettings(true)} />
+
         <label
           htmlFor={inputId}
           className="magic-import-panel__dropzone"
@@ -183,6 +189,22 @@ export default function MagicImportPanel({
         </label>
 
         {error && <div className="magic-import-panel__error">{error}</div>}
+
+        {/* Settings Modal */}
+        {showSettings && (
+          <div
+            className="magic-import-panel__settings-overlay"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowSettings(false);
+              }
+            }}
+          >
+            <div className="magic-import-panel__settings-modal">
+              <LLMSettingsPanel onClose={() => setShowSettings(false)} />
+            </div>
+          </div>
+        )}
       </div>
     );
   }

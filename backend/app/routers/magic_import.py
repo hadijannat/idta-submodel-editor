@@ -391,6 +391,66 @@ async def list_jobs(
     return job_manager.list_jobs(limit=limit, status=status)
 
 
+@router.get("/provider-status")
+async def get_provider_status(
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> dict:
+    """
+    Quick status check for Magic Import panel.
+
+    Returns current provider configuration and health status.
+    """
+    from app.services import settings_service
+    from app.services.magic_import.llm.factory import get_available_providers
+
+    settings = get_settings()
+
+    # Check if any provider is configured
+    available = get_available_providers()
+
+    if not available:
+        return {
+            "configured": False,
+            "provider": None,
+            "model": None,
+            "healthy": False,
+            "message": "No LLM provider configured",
+        }
+
+    # Get active provider from settings service
+    active_provider = settings_service.get_active_provider()
+
+    # If active provider is not available, fall back to first available
+    if active_provider not in available:
+        active_provider = available[0]
+
+    model = settings_service.get_effective_model(active_provider)
+
+    # Quick health check
+    healthy = True
+    message = "Ready"
+
+    try:
+        from app.services.magic_import.llm.factory import get_provider
+
+        provider = get_provider()
+        if not provider.is_available():
+            healthy = False
+            message = f"{active_provider.title()} API key not configured"
+    except Exception as e:
+        healthy = False
+        message = str(e)[:100]
+
+    return {
+        "configured": True,
+        "provider": active_provider,
+        "model": model,
+        "healthy": healthy,
+        "message": message,
+        "available_providers": available,
+    }
+
+
 @router.post("/health")
 async def health_check() -> dict:
     """Check if Magic Import service is healthy."""

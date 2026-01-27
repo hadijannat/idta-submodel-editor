@@ -52,6 +52,16 @@ def get_provider(settings: Settings | None = None) -> LLMProvider:
             )
         return provider
 
+    if provider_name == "openrouter":
+        from app.services.magic_import.llm.openrouter_provider import OpenRouterProvider
+
+        provider = OpenRouterProvider()
+        if not provider.is_available():
+            raise RuntimeError(
+                "OpenRouter provider selected but OPENROUTER_API_KEY not configured"
+            )
+        return provider
+
     if provider_name == "local":
         from app.services.magic_import.llm.local_provider import LocalProvider
 
@@ -79,6 +89,10 @@ def get_available_providers() -> list[str]:
     # Check Anthropic
     if settings.anthropic_api_key:
         available.append("anthropic")
+
+    # Check OpenRouter
+    if settings.openrouter_api_key:
+        available.append("openrouter")
 
     # Check Local (Ollama)
     try:

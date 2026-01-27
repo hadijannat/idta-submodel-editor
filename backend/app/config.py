@@ -96,12 +96,18 @@ class Settings(BaseSettings):
     magic_import_max_pdf_size_mb: int = 50
     magic_import_job_ttl_hours: int = 24
 
-    # Magic Import - LLM Provider (supports openai, anthropic, local)
-    magic_import_llm_provider: Literal["openai", "anthropic", "local"] = "openai"
+    # Magic Import - LLM Provider (supports openai, anthropic, openrouter, local)
+    magic_import_llm_provider: Literal["openai", "anthropic", "openrouter", "local"] = "openai"
     magic_import_llm_model: str = "gpt-4o-mini"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    openrouter_api_key: str | None = None
     ollama_base_url: str = "http://localhost:11434"
+
+    # Settings encryption key (for storing API keys securely)
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    settings_encryption_key: str | None = None
+    settings_storage_dir: Path = Path("./cache/settings")
 
     # Magic Import - OCR (Tesseract)
     magic_import_ocr_enabled: bool = True
@@ -188,6 +194,7 @@ class Settings(BaseSettings):
         "local_templates_dir",
         "magic_import_cache_dir",
         "dataspace_cache_dir",
+        "settings_storage_dir",
         mode="before",
     )
     @classmethod
