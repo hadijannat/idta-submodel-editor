@@ -139,15 +139,24 @@ class MetricsCalculator:
         blocked_field_types=[],
     )
 
-    def __init__(self, thresholds: AutoApplyThresholds | None = None) -> None:
+    def __init__(
+        self,
+        thresholds: AutoApplyThresholds | None = None,
+        experiment_id: str | None = None,
+        experiment_variant: str | None = None,
+    ) -> None:
         """
         Initialize the MetricsCalculator.
 
         Args:
             thresholds: Optional custom thresholds for auto-apply eligibility.
                         If None, uses default thresholds.
+            experiment_id: Optional A/B experiment identifier for tracking.
+            experiment_variant: Optional A/B experiment variant (e.g., model name).
         """
         self.thresholds = thresholds or self.DEFAULT_THRESHOLDS
+        self.experiment_id = experiment_id
+        self.experiment_variant = experiment_variant
 
     def calculate(
         self,
@@ -254,6 +263,9 @@ class MetricsCalculator:
             # Auto-apply
             auto_apply_eligible_count=auto_apply_eligible,
             auto_apply_thresholds_used=self.thresholds,
+            # Experiment tracking
+            experiment_id=self.experiment_id,
+            experiment_variant=self.experiment_variant,
         )
 
     def _compute_field_metrics(

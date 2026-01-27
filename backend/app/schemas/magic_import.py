@@ -266,6 +266,9 @@ class MagicImportResult(BaseModel):
         default_factory=list,
         description="Values found in document that don't map to template fields",
     )
+    quality_metrics: "QualityMetrics | None" = Field(
+        default=None, description="Comprehensive quality metrics for extraction"
+    )
 
 
 class MagicImportApplyRequest(BaseModel):

@@ -493,6 +493,39 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         )
 
         # ================================================================
+        # Step 7.7: Calculate Quality Metrics
+        # ================================================================
+        job_manager.update_job_status(
+            job_id,
+            JobStatus.SCORING,
+            progress=0.82,
+            progress_message="Computing quality metrics...",
+        )
+
+        from app.services.magic_import.metrics_calculator import MetricsCalculator
+
+        metrics_calculator = MetricsCalculator(
+            experiment_id=getattr(settings, "magic_import_experiment_id", None),
+            experiment_variant=active_model,
+        )
+
+        quality_metrics = metrics_calculator.calculate(
+            job_id=job_id,
+            template_name=job.template_name,
+            extractions=scored_extractions,
+            hints=hints,
+            index=index,
+            tables=table_result,
+            llm_provider=active_provider,
+            llm_model=active_model,
+            llm_tokens=llm_tokens_used,
+            llm_latency_ms=int((time.time() - start_time) * 1000),
+            retrieval_diagnostics=retrieval_diagnostics,
+        )
+
+        job_manager.save_artifact(job_id, "quality_metrics", quality_metrics)
+
+        # ================================================================
         # Step 8: Validate against template schema
         # ================================================================
         job_manager.update_job_status(
@@ -561,6 +594,7 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             validation_result=validation_result,
             template_version_used=job.template_version,
             unmapped_findings=unmapped_findings,
+            quality_metrics=quality_metrics,
         )
         job_manager.save_result(result)
 
