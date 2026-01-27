@@ -93,7 +93,7 @@ export default function TemplateOpsToolWrapper({
     }
 
     loadData();
-  }, [templateName]);
+  }, [templateName, templateStatus]);
 
   if (loading) {
     return (
