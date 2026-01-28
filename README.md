@@ -82,6 +82,7 @@ MAGIC_IMPORT_ENABLED=false DATASPACE_ENABLED=false docker-compose up
   - **Document Intelligence** — Auto-detection of text/scanned/mixed PDFs with 70+ engineering unit normalization
   - **Validation & Provenance** — Schema validation, field evidence display, batch approve/reject operations
   - **Visual Feedback** — Color-coded PDF highlights (green/yellow/red) based on extraction confidence
+  - **Audit Export** — Downloadable JSON/PDF audit reports with full extraction provenance and evidence
 
 ### Template Management
 
@@ -95,6 +96,21 @@ MAGIC_IMPORT_ENABLED=false DATASPACE_ENABLED=false docker-compose up
 
 - **[Passport Mode](docs/features/passport-mode.md)** — Digital Product Passport visualization with template-specific cards
 - **AAS Browser** — Embedded Mnestix integration for exploring published AAS instances
+
+### Model Interoperability
+
+- **DPP Builder** — Digital Product Passport assembly for EU ESPR compliance
+  - **Package Management** — Create, validate, and export multi-submodel DPP packages
+  - **Compliance Validation** — Automatic ESPR compliance checking (full/partial/minimal/non-compliant)
+  - **Export Formats** — AASX bundle with manifest or JSON with validation report
+- **SAMM Converter** — Bidirectional Catena-X SAMM ↔ AAS conversion
+  - **Import** — Convert SAMM models (TTL/JSON-LD) to editable AAS templates
+  - **Export** — Generate SAMM Turtle files from AAS templates
+  - **Type Mapping** — Automatic XSD ↔ AAS DataTypeDefXsd conversion
+- **OPC UA Bridge** — Bidirectional OPC UA NodeSet2 ↔ AAS conversion
+  - **Import** — Convert NodeSet2.xml to AAS templates with hierarchy preservation
+  - **Export** — Generate OPC UA information models from AAS templates
+  - **Type Mapping** — OPC UA built-in types ↔ AAS value types
 
 ### Industry Integration
 
@@ -203,6 +219,14 @@ kubectl apply -k kubernetes/overlays/production
 | `OIDC_ENABLED` | Enable authentication | false |
 | `LOCAL_TEMPLATES_ENABLED` | Enable custom local templates | true |
 | `LOCAL_TEMPLATES_DIR` | Directory for local AASX templates | ./templates/local |
+
+### Model Interoperability Settings
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DPP_ENABLED` | Enable DPP Builder feature | true |
+| `SAMM_ENABLED` | Enable SAMM Converter feature | true |
+| `OPCUA_BRIDGE_ENABLED` | Enable OPC UA Bridge feature | true |
 
 ### Magic Import Settings
 
@@ -326,6 +350,9 @@ idta-submodel-editor/
 │   │   │   ├── magic_import/         # PDF extraction
 │   │   │   ├── semantic/             # Dictionary lookup
 │   │   │   ├── pcf/                  # Carbon footprint
+│   │   │   ├── dpp/                  # DPP Builder (EU ESPR)
+│   │   │   ├── samm/                 # SAMM Converter (Catena-X)
+│   │   │   ├── opcua/                # OPC UA Bridge
 │   │   │   └── dataspace/            # Catena-X connector
 │   │   │       ├── connection_manager.py
 │   │   │       ├── publisher.py
@@ -393,6 +420,49 @@ idta-submodel-editor/
 | POST | `/api/template-ops/migrate/form-data` | Migrate form data |
 | POST | `/api/template-ops/check-mismatch` | Check version mismatch |
 | POST | `/api/template-ops/digest` | Compute schema digest |
+
+### DPP Builder
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/dpp/packages` | Create DPP package |
+| GET | `/api/dpp/packages` | List DPP packages |
+| GET | `/api/dpp/packages/{id}` | Get package details |
+| DELETE | `/api/dpp/packages/{id}` | Delete package |
+| POST | `/api/dpp/packages/{id}/submodels` | Add submodel to package |
+| DELETE | `/api/dpp/packages/{id}/submodels/{name}` | Remove submodel |
+| POST | `/api/dpp/packages/{id}/validate` | Validate ESPR compliance |
+| POST | `/api/dpp/packages/{id}/export` | Export as AASX/JSON |
+
+### SAMM Converter
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/samm/import` | Import SAMM model (TTL/JSON-LD) |
+| POST | `/api/samm/import/file` | Import SAMM from file upload |
+| POST | `/api/samm/export` | Export AAS template as SAMM |
+| POST | `/api/samm/export/download` | Download SAMM as TTL file |
+| GET | `/api/samm/type-mappings` | Get SAMM ↔ AAS type mappings |
+
+### OPC UA Bridge
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/opcua/import` | Import NodeSet2.xml |
+| POST | `/api/opcua/import/file` | Import NodeSet from file upload |
+| POST | `/api/opcua/export` | Export AAS template as NodeSet |
+| POST | `/api/opcua/export/download` | Download NodeSet2.xml file |
+| POST | `/api/opcua/export/direct` | Export UI schema directly |
+| GET | `/api/opcua/type-mappings` | Get OPC UA ↔ AAS type mappings |
+
+### Magic Import
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/magic-import/jobs` | Create extraction job |
+| GET | `/api/magic-import/jobs/{id}` | Get job status |
+| GET | `/api/magic-import/jobs/{id}/result` | Get extraction results |
+| GET | `/api/magic-import/jobs/{id}/audit-report` | Download audit report (JSON/PDF) |
 
 ### Dataspace
 
