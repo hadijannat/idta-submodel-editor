@@ -5,13 +5,14 @@ Tests DPP package management including:
 - Package creation and lifecycle
 - Submodel addition and removal
 - Export functionality
+- Security: Package ID validation
 """
 
 import json
 import pytest
 from datetime import datetime, timezone
 
-from app.services.dpp.builder import DPPBuilder
+from app.services.dpp.builder import DPPBuilder, _validate_package_id
 from app.services.dpp.models import (
     DPPPackage,
     DPPPackageCreate,
@@ -88,7 +89,8 @@ class TestPackageRetrieval:
 
     def test_get_nonexistent_package(self, builder):
         """Test getting a package that doesn't exist."""
-        package = builder.get_package("nonexistent-id")
+        # Use a valid format ID that doesn't exist (matches dpp-[a-f0-9]{12})
+        package = builder.get_package("dpp-000000000000")
         assert package is None
 
     def test_list_packages(self, builder):
@@ -142,7 +144,8 @@ class TestPackageUpdate:
 
     def test_update_nonexistent_package(self, builder):
         """Test updating a package that doesn't exist."""
-        result = builder.update_package("nonexistent-id", product_name="Test")
+        # Use a valid format ID that doesn't exist (matches dpp-[a-f0-9]{12})
+        result = builder.update_package("dpp-000000000000", product_name="Test")
         assert result is None
 
 
@@ -158,7 +161,8 @@ class TestPackageDeletion:
 
     def test_delete_nonexistent_package(self, builder):
         """Test deleting a package that doesn't exist."""
-        assert builder.delete_package("nonexistent-id") is False
+        # Use a valid format ID that doesn't exist (matches dpp-[a-f0-9]{12})
+        assert builder.delete_package("dpp-000000000000") is False
 
 
 class TestSubmodelManagement:
@@ -244,7 +248,8 @@ class TestSubmodelManagement:
             form_data={},
         )
 
-        result = await builder.add_submodel("nonexistent-id", request)
+        # Use a valid format ID that doesn't exist (matches dpp-[a-f0-9]{12})
+        result = await builder.add_submodel("dpp-000000000000", request)
         assert result is None
 
     def test_remove_submodel(self, builder):
@@ -325,7 +330,8 @@ class TestExport:
     @pytest.mark.asyncio
     async def test_export_nonexistent_package(self, builder):
         """Test exporting a nonexistent package."""
-        content = await builder.export_package("nonexistent-id", format="json")
+        # Use a valid format ID that doesn't exist (matches dpp-[a-f0-9]{12})
+        content = await builder.export_package("dpp-000000000000", format="json")
         assert content is None
 
     @pytest.mark.asyncio
@@ -339,3 +345,56 @@ class TestExport:
         # Reload and check
         updated = builder.get_package(package.package_id)
         assert updated.validation_result is not None
+
+
+class TestPackageIdValidation:
+    """Test security validation of package IDs to prevent path traversal."""
+
+    def test_valid_package_id_passes(self):
+        """Test that valid package IDs pass validation."""
+        # Valid formats
+        _validate_package_id("dpp-abcdef123456")
+        _validate_package_id("dpp-000000000000")
+        _validate_package_id("dpp-ffffffffffff")
+
+    def test_path_traversal_blocked(self, builder):
+        """Test that path traversal attempts are blocked."""
+        traversal_ids = [
+            "../etc/passwd",
+            "../../secrets",
+            "dpp-../../../../etc/passwd",
+            "..",
+            "/etc/passwd",
+            "dpp-abc/../../../etc/passwd",
+        ]
+        for bad_id in traversal_ids:
+            with pytest.raises(ValueError, match="Invalid package ID format"):
+                _validate_package_id(bad_id)
+
+    def test_invalid_format_blocked(self, builder):
+        """Test that invalid ID formats are blocked."""
+        invalid_ids = [
+            "invalid-id",
+            "dpp-",  # Too short
+            "dpp-abc",  # Too short
+            "dpp-ABCDEF123456",  # Uppercase not allowed
+            "dpp-abcdefghijkl",  # Contains non-hex chars
+            "dpp-abcdef12345",  # Too short (11 chars)
+            "dpp-abcdef1234567",  # Too long (13 chars)
+            "DPP-abcdef123456",  # Wrong prefix case
+            "dpp_abcdef123456",  # Wrong separator
+            "",  # Empty
+        ]
+        for bad_id in invalid_ids:
+            with pytest.raises(ValueError, match="Invalid package ID format"):
+                _validate_package_id(bad_id)
+
+    def test_get_with_invalid_id_raises(self, builder):
+        """Test that get_package raises on invalid ID format."""
+        with pytest.raises(ValueError, match="Invalid package ID format"):
+            builder.get_package("../etc/passwd")
+
+    def test_delete_with_invalid_id_raises(self, builder):
+        """Test that delete_package raises on invalid ID format."""
+        with pytest.raises(ValueError, match="Invalid package ID format"):
+            builder.delete_package("../etc/passwd")

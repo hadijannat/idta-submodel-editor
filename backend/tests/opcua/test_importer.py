@@ -275,3 +275,78 @@ class TestImportResult:
         assert result.template is None
         assert result.ui_schema is None
         assert len(result.warnings) > 0
+
+
+class TestSecurityProtections:
+    """Test security protections for OPC UA importer."""
+
+    def test_large_content_rejected(self):
+        """Test that oversized content is rejected."""
+        from app.services.opcua.importer import MAX_NODESET_SIZE
+
+        importer = NodeSetImporter()
+        # Create content larger than the limit
+        large_content = "x" * (MAX_NODESET_SIZE + 1)
+
+        result = importer.import_nodeset(large_content)
+
+        assert not result.success
+        assert any("too large" in w for w in result.warnings)
+
+    def test_large_bytes_content_rejected(self):
+        """Test that oversized bytes content is rejected."""
+        from app.services.opcua.importer import MAX_NODESET_SIZE
+
+        importer = NodeSetImporter()
+        # Create bytes content larger than the limit
+        large_content = b"x" * (MAX_NODESET_SIZE + 1)
+
+        result = importer.import_nodeset(large_content)
+
+        assert not result.success
+        assert any("too large" in w for w in result.warnings)
+
+    def test_cycle_in_references_handled(self):
+        """Test that cyclic references don't cause infinite recursion."""
+        # Create a NodeSet with a self-referencing node
+        cyclic_nodeset = """<?xml version="1.0" encoding="utf-8"?>
+<UANodeSet xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd">
+  <UAObjectType NodeId="ns=1;i=1000" BrowseName="1:CyclicObject">
+    <DisplayName>Cyclic Object</DisplayName>
+    <References>
+      <Reference ReferenceType="HasComponent">ns=1;i=1000</Reference>
+    </References>
+  </UAObjectType>
+</UANodeSet>"""
+        importer = NodeSetImporter()
+        result = importer.import_nodeset(cyclic_nodeset)
+
+        # Should succeed without infinite recursion
+        assert result.success
+
+    def test_deep_hierarchy_handled(self):
+        """Test that deeply nested hierarchies are handled with depth limit."""
+        # Build a deep hierarchy programmatically
+        nodes = []
+        for i in range(150):  # More than MAX_HIERARCHY_DEPTH (100)
+            ref = ""
+            if i < 149:
+                ref = f'<Reference ReferenceType="HasComponent">ns=1;i={1001+i}</Reference>'
+            nodes.append(f"""
+  <UAObjectType NodeId="ns=1;i={1000+i}" BrowseName="1:Object{i}">
+    <DisplayName>Object {i}</DisplayName>
+    <References>
+      {ref}
+    </References>
+  </UAObjectType>""")
+
+        deep_nodeset = f"""<?xml version="1.0" encoding="utf-8"?>
+<UANodeSet xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd">
+  {"".join(nodes)}
+</UANodeSet>"""
+
+        importer = NodeSetImporter()
+        result = importer.import_nodeset(deep_nodeset)
+
+        # Should succeed without stack overflow
+        assert result.success

@@ -274,7 +274,12 @@ class AuditReportGenerator:
         job: MagicImportJob,
         result: MagicImportResult,
     ) -> bytes:
-        """Generate PDF format audit report."""
+        """
+        Generate PDF format audit report.
+
+        Raises:
+            ValueError: If reportlab is not installed.
+        """
         try:
             from reportlab.lib import colors
             from reportlab.lib.pagesizes import A4
@@ -288,8 +293,9 @@ class AuditReportGenerator:
                 TableStyle,
             )
         except ImportError:
-            logger.warning("reportlab not installed, falling back to JSON")
-            return self._generate_json(report)
+            raise ValueError(
+                "PDF generation requires reportlab. Install with: pip install reportlab"
+            )
 
         buffer = BytesIO()
         doc = SimpleDocTemplate(

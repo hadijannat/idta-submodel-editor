@@ -17,6 +17,11 @@ from app.services.opcua.type_mapper import OPCUATypeMapper
 
 logger = logging.getLogger(__name__)
 
+# Maximum recursion depth for node hierarchy traversal (protection against deep attacks)
+MAX_HIERARCHY_DEPTH = 100
+
+# Maximum size for NodeSet XML content (10 MB) - protection against XML bombs
+MAX_NODESET_SIZE = 10 * 1024 * 1024
 
 # OPC UA NodeSet2 namespaces
 NS = {
@@ -88,11 +93,34 @@ class NodeSetImporter:
         warnings: list[str] = []
 
         try:
-            # Parse XML
+            # Convert bytes to string and check size for XML bomb protection
             if isinstance(content, bytes):
+                if len(content) > MAX_NODESET_SIZE:
+                    return ImportResult(
+                        success=False,
+                        warnings=[
+                            f"NodeSet file too large ({len(content)} bytes). "
+                            f"Maximum size is {MAX_NODESET_SIZE} bytes (10 MB)."
+                        ],
+                    )
                 content = content.decode("utf-8")
+            elif len(content) > MAX_NODESET_SIZE:
+                return ImportResult(
+                    success=False,
+                    warnings=[
+                        f"NodeSet content too large ({len(content)} characters). "
+                        f"Maximum size is {MAX_NODESET_SIZE} characters."
+                    ],
+                )
 
-            root = ET.fromstring(content)
+            # Parse XML using defusedxml if available, otherwise standard ET
+            try:
+                import defusedxml.ElementTree as DefusedET
+
+                root = DefusedET.fromstring(content)
+            except ImportError:
+                # Fall back to standard ET with size limit already checked
+                root = ET.fromstring(content)
 
             # Extract namespaces
             self._parse_namespaces(root)
@@ -373,7 +401,10 @@ class NodeSetImporter:
         return next(iter(self._nodes.values())) if self._nodes else None
 
     def _build_hierarchy(self) -> None:
-        """Build parent-child relationships based on references."""
+        """Build parent-child relationships based on references with cycle detection."""
+        # Track which nodes have been added as children to detect cycles
+        added_as_child: set[str] = set()
+
         for node in self._nodes.values():
             for ref in node.references:
                 if ref["type"] in (
@@ -385,10 +416,24 @@ class NodeSetImporter:
                     if ref["is_forward"]:
                         target_id = ref["target"]
                         if target_id in self._nodes:
+                            # Skip if this would create a cycle
+                            if target_id == node.node_id:
+                                logger.warning(
+                                    "Skipping self-referencing node: %s", target_id
+                                )
+                                continue
+                            if target_id in added_as_child:
+                                # Node already has a parent - skip to avoid diamond/cycle
+                                logger.debug(
+                                    "Node %s already has a parent, skipping", target_id
+                                )
+                                continue
                             node.children.append(self._nodes[target_id])
+                            added_as_child.add(target_id)
 
     def _convert_to_template(self, root_node: OPCUANode) -> dict:
         """Convert OPC UA node hierarchy to AAS template structure."""
+        visited: set[str] = set()
         return {
             "idShort": self._sanitize_id_short(root_node.browse_name),
             "modelType": "Submodel",
@@ -402,13 +447,54 @@ class NodeSetImporter:
                 ],
             },
             "submodelElements": [
-                self._convert_node_to_element(child) for child in root_node.children
+                self._convert_node_to_element(child, visited, depth=1)
+                for child in root_node.children
             ],
         }
 
-    def _convert_node_to_element(self, node: OPCUANode) -> dict:
-        """Convert a single OPC UA node to AAS SubmodelElement."""
+    def _convert_node_to_element(
+        self,
+        node: OPCUANode,
+        visited: set[str] | None = None,
+        depth: int = 0,
+    ) -> dict:
+        """
+        Convert a single OPC UA node to AAS SubmodelElement.
+
+        Args:
+            node: The OPC UA node to convert
+            visited: Set of already-visited node IDs for cycle detection
+            depth: Current recursion depth for protection against deep attacks
+        """
+        if visited is None:
+            visited = set()
+
         id_short = self._sanitize_id_short(node.browse_name)
+
+        # Cycle detection: if we've already visited this node, return a placeholder
+        if node.node_id in visited:
+            logger.warning("Cycle detected at node %s, returning placeholder", node.node_id)
+            return {
+                "idShort": id_short,
+                "modelType": "Property",
+                "valueType": "xs:string",
+                "value": f"[Cycle: {node.node_id}]",
+            }
+
+        # Depth limit protection
+        if depth > MAX_HIERARCHY_DEPTH:
+            logger.warning(
+                "Max hierarchy depth exceeded at node %s, returning placeholder",
+                node.node_id,
+            )
+            return {
+                "idShort": id_short,
+                "modelType": "Property",
+                "valueType": "xs:string",
+                "value": f"[Max depth exceeded: {node.node_id}]",
+            }
+
+        visited.add(node.node_id)
 
         if node.node_class in ("ObjectType", "Object"):
             # Convert to SubmodelElementCollection
@@ -428,7 +514,8 @@ class NodeSetImporter:
                     ],
                 },
                 "value": [
-                    self._convert_node_to_element(child) for child in node.children
+                    self._convert_node_to_element(child, visited, depth + 1)
+                    for child in node.children
                 ],
             }
 
@@ -502,19 +589,58 @@ class NodeSetImporter:
 
     def _generate_ui_schema(self, root_node: OPCUANode) -> dict:
         """Generate UI schema from node hierarchy."""
+        visited: set[str] = set()
         return {
             "idShort": self._sanitize_id_short(root_node.browse_name),
             "modelType": "Submodel",
             "semanticId": f"urn:opcua:{root_node.node_id}",
-            "description": root_node.description or f"Imported from OPC UA NodeSet",
+            "description": root_node.description or "Imported from OPC UA NodeSet",
             "elements": [
-                self._convert_node_to_ui_element(child) for child in root_node.children
+                self._convert_node_to_ui_element(child, visited, depth=1)
+                for child in root_node.children
             ],
         }
 
-    def _convert_node_to_ui_element(self, node: OPCUANode) -> dict:
-        """Convert OPC UA node to UI schema element."""
+    def _convert_node_to_ui_element(
+        self,
+        node: OPCUANode,
+        visited: set[str] | None = None,
+        depth: int = 0,
+    ) -> dict:
+        """
+        Convert OPC UA node to UI schema element.
+
+        Args:
+            node: The OPC UA node to convert
+            visited: Set of already-visited node IDs for cycle detection
+            depth: Current recursion depth for protection against deep attacks
+        """
+        if visited is None:
+            visited = set()
+
         id_short = self._sanitize_id_short(node.browse_name)
+
+        # Cycle detection
+        if node.node_id in visited:
+            return {
+                "idShort": id_short,
+                "modelType": "Property",
+                "valueType": "xs:string",
+                "cardinality": {"min": 0, "max": 1},
+                "description": f"[Cycle: {node.node_id}]",
+            }
+
+        # Depth limit protection
+        if depth > MAX_HIERARCHY_DEPTH:
+            return {
+                "idShort": id_short,
+                "modelType": "Property",
+                "valueType": "xs:string",
+                "cardinality": {"min": 0, "max": 1},
+                "description": f"[Max depth exceeded: {node.node_id}]",
+            }
+
+        visited.add(node.node_id)
 
         if node.node_class in ("ObjectType", "Object"):
             return {
@@ -523,7 +649,8 @@ class NodeSetImporter:
                 "description": node.description,
                 "cardinality": {"min": 0, "max": 1},
                 "elements": [
-                    self._convert_node_to_ui_element(child) for child in node.children
+                    self._convert_node_to_ui_element(child, visited, depth + 1)
+                    for child in node.children
                 ],
             }
 

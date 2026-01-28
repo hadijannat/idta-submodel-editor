@@ -8,6 +8,7 @@ for EU ESPR (Ecodesign for Sustainable Products Regulation) compliance.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -32,6 +33,25 @@ from app.services.parser import ParserService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/dpp", tags=["dpp"])
+
+# Package ID validation pattern - must match format generated in DPPBuilder.create_package
+DPP_PACKAGE_ID_PATTERN = re.compile(r"^dpp-[a-f0-9]{12}$")
+
+
+def validate_package_id(package_id: str) -> str:
+    """
+    Validate package_id format to prevent path traversal attacks.
+
+    Package IDs are generated as 'dpp-{uuid.hex[:12]}' in DPPBuilder.
+    This validation ensures only valid IDs are accepted.
+    """
+    if not DPP_PACKAGE_ID_PATTERN.match(package_id):
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Invalid package ID format",
+            detail={"package_id": package_id},
+        )
+    return package_id
 
 
 def get_dpp_builder(
@@ -109,6 +129,7 @@ async def get_package(
             message="DPP Builder is disabled",
         )
 
+    validate_package_id(package_id)
     package = builder.get_package(package_id)
     if package is None:
         raise APIError(
@@ -139,6 +160,7 @@ async def update_package(
             message="DPP Builder is disabled",
         )
 
+    validate_package_id(package_id)
     package = builder.update_package(
         package_id,
         product_id=product_id,
@@ -172,6 +194,7 @@ async def delete_package(
             message="DPP Builder is disabled",
         )
 
+    validate_package_id(package_id)
     if not builder.delete_package(package_id):
         raise APIError(
             code=ErrorCode.RESOURCE_NOT_FOUND,
@@ -210,6 +233,7 @@ async def add_submodel(
             message="DPP Builder is disabled",
         )
 
+    validate_package_id(package_id)
     try:
         package = await builder.add_submodel(package_id, request)
         if package is None:
@@ -245,6 +269,7 @@ async def remove_submodel(
             message="DPP Builder is disabled",
         )
 
+    validate_package_id(package_id)
     package = builder.remove_submodel(package_id, template_name)
     if package is None:
         raise APIError(
@@ -283,6 +308,7 @@ async def validate_package(
             message="DPP Builder is disabled",
         )
 
+    validate_package_id(package_id)
     try:
         result = await builder.validate_package(package_id)
         if result is None:
@@ -330,6 +356,7 @@ async def export_package(
             message="DPP Builder is disabled",
         )
 
+    validate_package_id(package_id)
     if request is None:
         request = DPPExportRequest()
 

@@ -651,6 +651,13 @@ async def get_audit_report(
                     )
                 },
             )
+    except ValueError as e:
+        # Specific error for missing dependencies (e.g., reportlab for PDF)
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(e),
+            detail={"format": format, "suggestion": "Use format=json instead"},
+        )
     except Exception as e:
         logger.exception("Failed to generate audit report for job %s", job_id)
         raise APIError(

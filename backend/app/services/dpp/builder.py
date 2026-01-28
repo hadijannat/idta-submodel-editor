@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from io import BytesIO
@@ -32,6 +33,20 @@ if TYPE_CHECKING:
     from app.services.parser import ParserService
 
 logger = logging.getLogger(__name__)
+
+# Package ID validation pattern - must match format generated in create_package
+_PACKAGE_ID_PATTERN = re.compile(r"^dpp-[a-f0-9]{12}$")
+
+
+def _validate_package_id(package_id: str) -> None:
+    """
+    Validate package_id format to prevent path traversal attacks.
+
+    Raises:
+        ValueError: If package_id does not match expected format.
+    """
+    if not _PACKAGE_ID_PATTERN.match(package_id):
+        raise ValueError(f"Invalid package ID format: {package_id}")
 
 
 class DPPBuilder:
@@ -95,6 +110,7 @@ class DPPBuilder:
 
     def get_package(self, package_id: str) -> DPPPackage | None:
         """Get a DPP package by ID."""
+        _validate_package_id(package_id)
         package_path = self._packages_dir / f"{package_id}.json"
         if not package_path.exists():
             return None
@@ -157,6 +173,7 @@ class DPPBuilder:
 
     def delete_package(self, package_id: str) -> bool:
         """Delete a DPP package."""
+        _validate_package_id(package_id)
         package_path = self._packages_dir / f"{package_id}.json"
         if not package_path.exists():
             return False
@@ -387,6 +404,9 @@ class DPPBuilder:
         buffer = BytesIO()
 
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Track successful exports for manifest
+            successful_exports: list[tuple[DPPSubmodelRef, str]] = []
+
             # Export each submodel as separate AASX
             for idx, sm in enumerate(package.submodels):
                 template_path = f"{sm.template_status}/{sm.template_name}"
@@ -401,12 +421,13 @@ class DPPBuilder:
 
                     filename = f"{sm.role}_{sm.template_name}.aasx"
                     zf.writestr(filename, hydrated)
+                    successful_exports.append((sm, filename))
                 except Exception as e:
                     logger.warning(
                         "Failed to export submodel %s: %s", sm.template_name, e
                     )
 
-            # Add DPP manifest
+            # Add DPP manifest - only include successfully exported submodels
             manifest = {
                 "dpp_version": "1.0.0",
                 "package_id": package.package_id,
@@ -420,9 +441,9 @@ class DPPBuilder:
                         "template_name": sm.template_name,
                         "semantic_id": sm.semantic_id,
                         "role": sm.role,
-                        "file": f"{sm.role}_{sm.template_name}.aasx",
+                        "file": filename,
                     }
-                    for sm in package.submodels
+                    for sm, filename in successful_exports
                 ],
             }
             zf.writestr("dpp-manifest.json", json.dumps(manifest, indent=2))
