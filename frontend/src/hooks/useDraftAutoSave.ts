@@ -169,12 +169,14 @@ export function useDraftAutoSave(
   }, [enabled, form, saveDraft]);
 
   // Navigation guard effect (beforeunload)
+  // Note: We depend on `form` (stable reference) not `form.formState` (changing proxy)
+  // to avoid unnecessary re-registrations. isDirty is read inside the handler.
   useEffect(() => {
     if (!enabled) return;
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      const { isDirty } = form.formState;
-      if (isDirty) {
+      // Read isDirty inside handler to get current value without effect dependency
+      if (form.formState.isDirty) {
         e.preventDefault();
         // Modern browsers require returnValue to be set
         e.returnValue = '';
@@ -184,7 +186,7 @@ export function useDraftAutoSave(
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [enabled, form.formState]);
+  }, [enabled, form]);
 
   return {
     hasDraft,

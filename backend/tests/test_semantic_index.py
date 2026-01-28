@@ -48,8 +48,8 @@ class TestSemanticIndex:
 
         assert index.resolve("TestProperty") is cd
 
-    def test_suffix_match(self):
-        """Index should support suffix matching for partial identifiers."""
+    def test_no_suffix_match(self):
+        """Index should NOT support suffix matching (intentionally removed for O(1) guarantees)."""
         object_store: model.DictObjectStore = model.DictObjectStore()
 
         cd = model.ConceptDescription(
@@ -60,10 +60,13 @@ class TestSemanticIndex:
 
         index = SemanticIndex(object_store)
 
-        # Suffix match should work
+        # id_short exact match should work
         assert index.resolve("TestProperty") is cd
-        # Full match should also work
+        # Full id exact match should work
         assert index.resolve("https://example.org/cd/TestProperty") is cd
+        # Partial suffix should NOT match (returns None)
+        assert index.resolve("cd/TestProperty") is None
+        assert index.resolve("org/cd/TestProperty") is None
 
     def test_multiple_concept_descriptions(self):
         """Index should handle multiple ConceptDescriptions."""

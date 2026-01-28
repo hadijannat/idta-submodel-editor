@@ -21,6 +21,8 @@ interface VirtualizedListProps {
   renderItem: (field: FieldArrayWithId, index: number) => React.ReactNode;
   /** Container class name */
   className?: string;
+  /** Container height. Defaults to 500px. Use '100%' for parent-controlled sizing. */
+  height?: string | number;
 }
 
 /**
@@ -33,6 +35,7 @@ export const VirtualizedList: React.FC<VirtualizedListProps> = ({
   fields,
   renderItem,
   className = '',
+  height = 500,
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +53,7 @@ export const VirtualizedList: React.FC<VirtualizedListProps> = ({
       ref={parentRef}
       className={`virtualized-list-container ${className}`}
       style={{
-        height: '500px',
+        height: typeof height === 'number' ? `${height}px` : height,
         overflow: 'auto',
       }}
     >

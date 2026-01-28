@@ -329,6 +329,8 @@ class ToolRegistry:
                     results[tool_id] = False
                 break
 
+        # Invalidate manifest cache since initialized state changed
+        self._invalidate_manifest_cache()
         return results
 
     async def shutdown_all(self) -> None:
@@ -349,6 +351,8 @@ class ToolRegistry:
                 logger.error("Error shutting down tool %s: %s", tool_id, e)
 
         self._initialization_order.clear()
+        # Invalidate manifest cache since initialized state changed
+        self._invalidate_manifest_cache()
 
     def get_all_routers(self) -> list[APIRouter]:
         """

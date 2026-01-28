@@ -80,11 +80,9 @@ class SemanticIndex:
         if identifier in self._by_id_short:
             return self._by_id_short[identifier]
 
-        # Try suffix match (for partial identifiers)
-        for obj_id, cd in self._by_id.items():
-            if obj_id.endswith(identifier):
-                return cd
-
+        # No fallback - return None for unmatched identifiers
+        # Suffix matching was intentionally removed as it reintroduces O(K)
+        # complexity and can return wrong results when multiple IDs share suffixes
         return None
 
     def __len__(self) -> int:
