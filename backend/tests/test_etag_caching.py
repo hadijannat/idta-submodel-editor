@@ -30,6 +30,7 @@ def fetcher(temp_cache_dir):
             cache_dir=temp_cache_dir,
             cache_ttl_hours=24,
             github_api_version="2022-11-28",
+            github_template_ref="main",
             local_templates_enabled=False,
             local_templates_dir=temp_cache_dir / "local",
         )

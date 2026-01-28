@@ -38,6 +38,7 @@ from app.schemas.magic_import import (
     ConfidenceBreakdown,
     EvidenceRef,
     UnmappedFinding,
+    ValidationResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -545,13 +546,17 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         from app.services.magic_import.validator import ExtractionValidator
 
         validator = ExtractionValidator()
-        validation_result = validator.validate_extractions(
-            final_extractions,
-            job.template_name,
-            job.template_status,
-            job.template_version,
-            mode="warn",
-        )
+        validation_mode = settings.magic_import_validation_mode
+        if validation_mode == "off":
+            validation_result = ValidationResult(is_valid=True, errors=[], warnings=[], skipped=True)
+        else:
+            validation_result = validator.validate_extractions(
+                final_extractions,
+                job.template_name,
+                job.template_status,
+                job.template_version,
+                mode="strict" if validation_mode == "strict" else "warn",
+            )
 
         logger.info(
             "Validation complete: valid=%s, errors=%d, warnings=%d",

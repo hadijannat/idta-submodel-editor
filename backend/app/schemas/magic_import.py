@@ -222,6 +222,7 @@ class ValidationResult(BaseModel):
     is_valid: bool = Field(description="True if no errors (warnings OK)")
     errors: list[ValidationError] = Field(default_factory=list)
     warnings: list[ValidationError] = Field(default_factory=list)
+    skipped: bool = Field(default=False, description="True if validation was disabled")
 
 
 class MagicImportResult(BaseModel):

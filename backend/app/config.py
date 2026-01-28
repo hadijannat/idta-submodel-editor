@@ -6,6 +6,7 @@ Supports environment variables and .env files for configuration.
 
 from functools import lru_cache
 import json
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     github_token: str | None = None
     github_repo: str = "admin-shell-io/submodel-templates"
     github_api_version: str = "2022-11-28"
+    github_template_ref: str = "main"
 
     # Caching
     cache_dir: Path = Path("./cache/templates")
@@ -113,6 +115,7 @@ class Settings(BaseSettings):
     magic_import_ocr_enabled: bool = True
     magic_import_ocr_language: str = "eng+deu"
     magic_import_ocr_dpi: int = 300
+    magic_import_validation_mode: Literal["warn", "strict", "off"] = "warn"
 
     # Celery + Redis (for background job processing)
     celery_broker_url: str = "redis://localhost:6379/0"
@@ -185,6 +188,23 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return Path(v)
         return v
+
+    @field_validator("github_template_ref", mode="before")
+    @classmethod
+    def parse_github_template_ref(cls, v: str | None) -> str:
+        if v is None:
+            return "main"
+        if not isinstance(v, str):
+            return v
+        value = v.strip()
+        if not value:
+            return "main"
+        # Validate Git ref naming convention (branches, tags, commit SHAs)
+        if not re.match(r"^[a-zA-Z0-9._/-]+$", value):
+            raise ValueError(f"Invalid git ref: {value}")
+        if value.startswith("/") or value.endswith("/") or ".." in value:
+            raise ValueError(f"Invalid git ref path: {value}")
+        return value
 
     @field_validator(
         "semantic_index_dir",

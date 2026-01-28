@@ -13,6 +13,7 @@ Complete environment variable reference for the IDTA Submodel Template Editor.
 | `ENV` | Environment (development, staging, production) | development |
 | `SECRET_KEY` | Secret key for signing | Required in production |
 | `GITHUB_TOKEN` | GitHub API token for higher rate limits | Optional |
+| `GITHUB_TEMPLATE_REF` | Git ref (branch/tag/commit) for templates | main |
 | `CORS_ORIGINS` | Allowed CORS origins | http://localhost:8080 |
 | `CACHE_TTL_HOURS` | Template cache TTL in hours | 24 |
 | `MAX_UPLOAD_SIZE_MB` | Maximum upload file size | 50 |

@@ -13,7 +13,7 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -46,6 +46,7 @@ class TemplateFetcherService:
         self.cache_dir = cache_dir or settings.cache_dir
         self.cache_ttl_hours = cache_ttl_hours or settings.cache_ttl_hours
         self.github_api_version = settings.github_api_version
+        self.github_template_ref = settings.github_template_ref
 
         # Local templates configuration
         self.local_templates_enabled = settings.local_templates_enabled
@@ -76,6 +77,14 @@ class TemplateFetcherService:
     def _is_cache_valid(self, cache_time: datetime) -> bool:
         """Check if cached data is still within TTL."""
         return datetime.now() - cache_time < timedelta(hours=self.cache_ttl_hours)
+
+    def _add_ref_param(self, url: str, ref: str) -> str:
+        """Add or update the ref query parameter in a URL."""
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        params["ref"] = [ref]
+        new_query = urlencode(params, doseq=True)
+        return urlunparse(parsed._replace(query=new_query))
 
     def _get_cache_path(self, template_path: str) -> Path:
         """Generate cache file path for a template."""
@@ -183,7 +192,10 @@ class TemplateFetcherService:
         """
         directories = None
         async with httpx.AsyncClient(timeout=30.0) as client:
-            url = f"https://api.github.com/repos/{self.github_repo}/contents/{root}"
+            url = (
+                "https://api.github.com/repos/"
+                f"{self.github_repo}/contents/{root}?ref={self.github_template_ref}"
+            )
             try:
                 response = await client.get(url, headers=self.headers)
                 response.raise_for_status()
@@ -210,7 +222,10 @@ class TemplateFetcherService:
                 url = item.get("url")
                 if not url:
                     url_path = quote(path, safe="/")
-                    url = f"https://github.com/{self.github_repo}/tree/main/{url_path}"
+                    url = (
+                        "https://github.com/"
+                        f"{self.github_repo}/tree/{self.github_template_ref}/{url_path}"
+                    )
                 templates.append(
                     {
                         "name": name,
@@ -236,6 +251,8 @@ class TemplateFetcherService:
 
             raw_name = item.get("name") or ""
             raw_path = item.get("path") or raw_name
+            if not raw_path:
+                continue
             if raw_path.startswith(f"{root}/"):
                 template_name = raw_path.split("/", 1)[1].split("/", 1)[0]
             else:
@@ -251,7 +268,10 @@ class TemplateFetcherService:
                 {
                     "name": template_name,
                     "path": path,
-                    "url": f"https://github.com/{self.github_repo}/tree/main/{url_path}",
+                    "url": (
+                        "https://github.com/"
+                        f"{self.github_repo}/tree/{self.github_template_ref}/{url_path}"
+                    ),
                     "sha": None,
                     "type": "dir",
                     "contentType": "directory",
@@ -332,7 +352,9 @@ class TemplateFetcherService:
         aasx_sha = None
         async with httpx.AsyncClient(timeout=60.0) as client:
             contents_url = (
-                f"https://api.github.com/repos/{self.github_repo}/contents/{template_path}"
+                "https://api.github.com/repos/"
+                f"{self.github_repo}/contents/{template_path}"
+                f"?ref={self.github_template_ref}"
             )
 
             # Build request headers - add If-None-Match if we have a cached ETag
@@ -461,7 +483,8 @@ class TemplateFetcherService:
         # Otherwise, search in subdirectories (version folders)
         for subdir in subdirs:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(subdir["url"], headers=self.headers)
+                url = self._add_ref_param(subdir["url"], self.github_template_ref)
+                response = await client.get(url, headers=self.headers)
                 if response.status_code == 200:
                     sub_items = response.json()
                     url, sha = await self._find_aasx_file_with_sha(
@@ -502,7 +525,8 @@ class TemplateFetcherService:
                 return None
             raw_path = quote(f"{template_path}/{filename}", safe="/")
             return (
-                f"https://raw.githubusercontent.com/{self.github_repo}/main/{raw_path}"
+                "https://raw.githubusercontent.com/"
+                f"{self.github_repo}/{self.github_template_ref}/{raw_path}"
             )
 
         for subdir in subdirs:
@@ -524,7 +548,10 @@ class TemplateFetcherService:
         Parse GitHub HTML tree page to get directory items.
         """
         url_path = quote(path, safe="/")
-        url = f"https://github.com/{self.github_repo}/tree/main/{url_path}"
+        url = (
+            "https://github.com/"
+            f"{self.github_repo}/tree/{self.github_template_ref}/{url_path}"
+        )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url)
@@ -557,7 +584,11 @@ class TemplateFetcherService:
             List of version metadata.
         """
         async with httpx.AsyncClient(timeout=30.0) as client:
-            url = f"https://api.github.com/repos/{self.github_repo}/contents/{template_path}"
+            url = (
+                "https://api.github.com/repos/"
+                f"{self.github_repo}/contents/{template_path}"
+                f"?ref={self.github_template_ref}"
+            )
             response = await client.get(url, headers=self.headers)
             response.raise_for_status()
             items = response.json()

@@ -8,10 +8,13 @@ These tests ensure:
 
 import json
 from datetime import date, datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pytest
+from basyx.aas import model
+from basyx.aas.adapter import aasx as aasx_adapter
 
 from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
@@ -132,6 +135,33 @@ class TestHydrateRoundTrip:
 
         # Verify the JSON has submodel content
         assert isinstance(json_data, dict), "JSON output should be a dict"
+
+    def test_hydrate_preserves_unknown_elements(self, hydrator: HydratorService):
+        """Verify that hydrate→JSON keeps elements the UI doesn't explicitly map."""
+        nameplate_path = FIXTURES_DIR / "aasx" / "digital-nameplate-filled.aasx"
+        if not nameplate_path.exists():
+            pytest.skip("digital-nameplate-filled.aasx fixture not found")
+
+        mutated_aasx = _inject_unknown_element(nameplate_path.read_bytes())
+        json_output = hydrator.hydrate_to_json(mutated_aasx, {"elements": {}})
+        json_data = json.loads(json_output)
+
+        submodels = json_data.get("submodels") or []
+        if not submodels:
+            pytest.skip("No submodels found in hydrated JSON")
+
+        elements = submodels[0].get("submodelElements") or []
+        sentinel = next(
+            (elem for elem in elements if elem.get("idShort") == "UnknownPreserve"),
+            None,
+        )
+        assert sentinel is not None, "Unknown element was dropped during hydrate/round-trip"
+
+        # Verify nested structure survived
+        nested = sentinel.get("value", [])
+        assert len(nested) == 1, "Nested content was dropped"
+        assert nested[0].get("idShort") == "Sentinel", "Nested idShort was modified"
+        assert nested[0].get("value") == "keep-me", "Nested value was modified"
 
     def test_hydrate_preserves_string_values(
         self, parser: ParserService, hydrator: HydratorService
@@ -325,3 +355,53 @@ def _set_nested_value(data: dict, path: str, value: Any) -> None:
         current = current[part]
 
     current[parts[-1]] = value
+
+
+def _inject_unknown_element(aasx_bytes: bytes) -> bytes:
+    """Return AASX bytes with an extra element that the UI does not map."""
+    object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
+    file_store = aasx_adapter.DictSupplementaryFileContainer()
+
+    with aasx_adapter.AASXReader(BytesIO(aasx_bytes)) as reader:
+        reader.read_into(object_store, file_store)
+
+    submodel = next(
+        (obj for obj in object_store if isinstance(obj, model.Submodel)),
+        None,
+    )
+    if submodel is None:
+        raise ValueError("No Submodel found in template")
+
+    sentinel = model.SubmodelElementCollection(
+        id_short="UnknownPreserve",
+        value=(
+            model.Property(
+                id_short="Sentinel",
+                value_type=model.datatypes.String,
+                value="keep-me",
+            ),
+        ),
+    )
+    existing = list(submodel.submodel_element or [])
+    existing.append(sentinel)
+    submodel.submodel_element = existing
+
+    output = BytesIO()
+    with aasx_adapter.AASXWriter(output) as writer:
+        aas_ids = [obj.id for obj in object_store if isinstance(obj, model.AssetAdministrationShell)]
+        if aas_ids:
+            writer.write_aas(
+                aas_ids=aas_ids,
+                object_store=object_store,
+                file_store=file_store,
+                write_json=False,
+            )
+        else:
+            writer.write_all_aas_objects(
+                "/aasx/data.xml",
+                object_store,
+                file_store,
+                write_json=False,
+            )
+
+    return output.getvalue()
