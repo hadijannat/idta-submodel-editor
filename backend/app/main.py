@@ -188,6 +188,7 @@ def create_application() -> FastAPI:
             "mnestix_url": settings.mnestix_url if settings.mnestix_enabled else None,
             "basyx_registry_url": settings.basyx_registry_url if settings.mnestix_enabled else None,
             "dataspace_enabled": settings.dataspace_enabled,
+            "dpp_enabled": settings.dpp_enabled,
         }
 
     # Exception handler for APIError (structured errors)

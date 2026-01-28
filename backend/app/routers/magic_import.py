@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
@@ -22,6 +22,7 @@ from app.schemas.magic_import import (
     QualityMetrics,
     ReExtractRequest,
 )
+from app.services.magic_import.audit_report import AuditReport, AuditReportGenerator
 from app.services.magic_import.job_manager import JobManager
 from app.services.magic_import.outcome_tracker import OutcomeTracker
 from app.utils.upload_security import FileType, UploadValidator, read_upload_file
@@ -564,6 +565,147 @@ async def get_quality_metrics(
         )
 
     return QualityMetrics.model_validate(metrics_data)
+
+
+# ============================================================================
+# Audit Report Endpoints
+# ============================================================================
+
+
+@router.get("/jobs/{job_id}/audit-report")
+async def get_audit_report(
+    job_id: str,
+    format: Annotated[
+        Literal["json", "pdf"],
+        Query(description="Report format (json or pdf)"),
+    ] = "json",
+    job_manager: Annotated[JobManager, Depends(get_job_manager)] = None,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> Response:
+    """
+    Generate an audit report for a completed Magic Import job.
+
+    The audit report provides full traceability of AI extractions:
+    - Field values with source quotes from the PDF
+    - Page and bounding box locations
+    - Confidence breakdown (LLM/Localizer/OCR/Rules)
+    - Review status (approved/edited/needs_review)
+    - Processing metadata (LLM provider, tokens used, timing)
+
+    This enables "Auditable AI" - showing the reasoning and evidence
+    behind each extraction for compliance and trust.
+
+    Args:
+        job_id: The Magic Import job ID
+        format: Output format - "json" (default) or "pdf"
+
+    Returns:
+        Audit report in the requested format
+    """
+    # Check job exists and is DONE
+    job = job_manager.get_job(job_id)
+    if job is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
+
+    if job.status != JobStatus.DONE:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=f"Job is not complete. Current status: {job.status}",
+            detail={"job_id": job_id, "status": job.status},
+        )
+
+    # Load result
+    result = job_manager.load_result(job_id)
+    if result is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Result not found",
+            detail={"job_id": job_id},
+        )
+
+    try:
+        generator = AuditReportGenerator()
+        content = generator.generate(job, result, format=format)
+
+        if format == "json":
+            return Response(
+                content=content,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="audit-report-{job_id}.json"'
+                    )
+                },
+            )
+        else:  # pdf
+            return Response(
+                content=content,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="audit-report-{job_id}.pdf"'
+                    )
+                },
+            )
+    except Exception as e:
+        logger.exception("Failed to generate audit report for job %s", job_id)
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to generate audit report",
+            detail={"error": str(e)},
+        )
+
+
+@router.get("/jobs/{job_id}/audit-report/preview", response_model=AuditReport)
+async def preview_audit_report(
+    job_id: str,
+    job_manager: Annotated[JobManager, Depends(get_job_manager)] = None,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> AuditReport:
+    """
+    Get a preview of the audit report data without generating a file.
+
+    Useful for displaying audit information in the UI before downloading.
+    """
+    # Check job exists and is DONE
+    job = job_manager.get_job(job_id)
+    if job is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Job not found",
+            detail={"job_id": job_id},
+        )
+
+    if job.status != JobStatus.DONE:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=f"Job is not complete. Current status: {job.status}",
+            detail={"job_id": job_id, "status": job.status},
+        )
+
+    # Load result
+    result = job_manager.load_result(job_id)
+    if result is None:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message="Result not found",
+            detail={"job_id": job_id},
+        )
+
+    try:
+        generator = AuditReportGenerator()
+        return generator._build_report(job, result)
+    except Exception as e:
+        logger.exception("Failed to build audit report for job %s", job_id)
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to build audit report",
+            detail={"error": str(e)},
+        )
 
 
 @router.post("/jobs/{job_id}/corrections", response_model=ExtractionOutcome)

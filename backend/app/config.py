@@ -167,6 +167,23 @@ class Settings(BaseSettings):
     mnestix_enabled: bool = True
     mnestix_url: str = "http://mnestix:3000"
 
+    # =========================================================================
+    # DPP (Digital Product Passport) Builder
+    # =========================================================================
+    dpp_enabled: bool = True
+
+    # =========================================================================
+    # SAMM (Semantic Aspect Meta Model) Converter
+    # =========================================================================
+    samm_enabled: bool = True
+    samm_default_namespace: str = "org.idta.generated"
+
+    # =========================================================================
+    # OPC UA Bridge (NodeSet import/export)
+    # =========================================================================
+    opcua_bridge_enabled: bool = True
+    opcua_default_namespace: str = "urn:idta:generated:aas"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):

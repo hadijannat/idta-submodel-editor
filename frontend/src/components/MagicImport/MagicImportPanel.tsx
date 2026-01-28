@@ -18,6 +18,7 @@ import ExtractionReviewTable from './ExtractionReviewTable';
 import ProvenancePanel from './ProvenancePanel';
 import ProviderQuickStatus from './ProviderQuickStatus';
 import { LLMSettingsPanel } from '../LLMSettings';
+import { downloadAuditReport } from '../../services/magicImportApi';
 import './MagicImport.css';
 
 interface MagicImportPanelProps {
@@ -69,6 +70,8 @@ export default function MagicImportPanel({
   const inputId = useId();
   const [focusToken, setFocusToken] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAuditMenu, setShowAuditMenu] = useState(false);
+  const [auditExporting, setAuditExporting] = useState<'json' | 'pdf' | null>(null);
 
   // Handle file selection
   const handleFileSelect = useCallback(
@@ -138,6 +141,23 @@ export default function MagicImportPanel({
   const handleFocusEvidence = useCallback(() => {
     setFocusToken((token) => token + 1);
   }, []);
+
+  // Handle audit report export
+  const handleAuditExport = useCallback(
+    async (format: 'json' | 'pdf') => {
+      if (!job?.job_id) return;
+      setAuditExporting(format);
+      setShowAuditMenu(false);
+      try {
+        await downloadAuditReport(job.job_id, format);
+      } catch (err) {
+        console.error('Failed to download audit report:', err);
+      } finally {
+        setAuditExporting(null);
+      }
+    },
+    [job?.job_id]
+  );
 
   // Render upload state
   if (!job) {
@@ -493,21 +513,53 @@ export default function MagicImportPanel({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="magic-import-panel__btn--secondary"
-          onClick={reset}
-        >
-          Start Over
-        </button>
-        <button
-          type="button"
-          className="magic-import-panel__btn--primary"
-          onClick={applyToForm}
-          disabled={!canApply}
-        >
-          Apply {readyCount} Fields to Form
-        </button>
+        <div className="magic-import-panel__footer-actions">
+          <button
+            type="button"
+            className="magic-import-panel__btn--secondary"
+            onClick={reset}
+          >
+            Start Over
+          </button>
+          {/* Audit Report Export */}
+          <div className="magic-import-panel__audit-dropdown">
+            <button
+              type="button"
+              className="magic-import-panel__btn--secondary"
+              onClick={() => setShowAuditMenu(!showAuditMenu)}
+              disabled={!!auditExporting}
+              title="Export extraction audit report showing AI reasoning and evidence"
+            >
+              {auditExporting ? `Exporting ${auditExporting.toUpperCase()}...` : 'Audit Report'}
+            </button>
+            {showAuditMenu && (
+              <div className="magic-import-panel__audit-menu">
+                <button
+                  type="button"
+                  className="magic-import-panel__audit-menu-item"
+                  onClick={() => handleAuditExport('json')}
+                >
+                  Export as JSON
+                </button>
+                <button
+                  type="button"
+                  className="magic-import-panel__audit-menu-item"
+                  onClick={() => handleAuditExport('pdf')}
+                >
+                  Export as PDF
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="magic-import-panel__btn--primary"
+            onClick={applyToForm}
+            disabled={!canApply}
+          >
+            Apply {readyCount} Fields to Form
+          </button>
+        </div>
       </div>
     </div>
   );

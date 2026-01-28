@@ -501,3 +501,127 @@ export async function recordCorrection(
 
   return response.json();
 }
+
+// ============================================================================
+// Audit Report API
+// ============================================================================
+
+/**
+ * Review status for audit reporting.
+ */
+export type ReviewStatus = 'approved' | 'edited' | 'needs_review' | 'not_reviewed';
+
+/**
+ * Audit entry for a single extracted field.
+ */
+export interface AuditFieldEntry {
+  path: string;
+  value: string | null;
+  value_type: string | null;
+  extraction_status: ExtractionStatus;
+  review_status: ReviewStatus;
+  confidence: number;
+  confidence_breakdown: ConfidenceBreakdown | null;
+  confidence_reasons: string[];
+  has_evidence: boolean;
+  evidence_page: number | null;
+  evidence_quote: string | null;
+  evidence_method: 'TEXT' | 'OCR' | null;
+  evidence_char_start: number | null;
+  evidence_char_end: number | null;
+}
+
+/**
+ * Summary statistics for audit report.
+ */
+export interface AuditReportSummary {
+  total_fields: number;
+  fields_filled: number;
+  fields_empty: number;
+  fields_needs_review: number;
+  fields_approved: number;
+  fields_edited: number;
+  average_confidence: number;
+  evidence_coverage: number;
+}
+
+/**
+ * Metadata for audit report.
+ */
+export interface AuditReportMetadata {
+  job_id: string;
+  generated_at: string;
+  pdf_filename: string;
+  pdf_size_bytes: number;
+  template_name: string;
+  template_status: 'published' | 'deprecated';
+  template_version: string | null;
+  llm_provider: string;
+  llm_model: string;
+  processing_time_seconds: number;
+  llm_tokens_used: number | null;
+  extraction_started_at: string;
+  extraction_completed_at: string;
+}
+
+/**
+ * Complete audit report for Magic Import extraction.
+ */
+export interface AuditReport {
+  report_version: string;
+  metadata: AuditReportMetadata;
+  summary: AuditReportSummary;
+  fields: AuditFieldEntry[];
+}
+
+/**
+ * Get audit report preview (JSON data).
+ */
+export async function getAuditReportPreview(jobId: string): Promise<AuditReport> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/magic-import/jobs/${jobId}/audit-report/preview`
+  );
+
+  if (!response.ok) {
+    throw new ApiError('Failed to get audit report preview', response.status);
+  }
+
+  return response.json();
+}
+
+/**
+ * Download audit report in specified format.
+ */
+export async function downloadAuditReport(
+  jobId: string,
+  format: 'json' | 'pdf' = 'json'
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/magic-import/jobs/${jobId}/audit-report?format=${format}`
+  );
+
+  if (!response.ok) {
+    throw new ApiError('Failed to download audit report', response.status);
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+
+  // Extract filename from Content-Disposition header
+  let filename = `audit-report-${jobId}.${format}`;
+  const contentDisposition = response.headers.get('Content-Disposition');
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (match) {
+      filename = match[1];
+    }
+  }
+
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
