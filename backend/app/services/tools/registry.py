@@ -63,6 +63,7 @@ class ToolRegistry:
         self._context = context or initialize_tool_context()
         self._tools: dict[str, BaseTool] = {}
         self._initialization_order: list[str] = []
+        self._manifest_cache: list[dict] | None = None
 
     @property
     def context(self) -> ToolContext:
@@ -91,6 +92,7 @@ class ToolRegistry:
             logger.info("Registering tool: %s", tool_id)
 
         self._tools[tool_id] = tool
+        self._invalidate_manifest_cache()
         return tool
 
     def unregister(self, tool_id: str) -> bool:
@@ -107,6 +109,7 @@ class ToolRegistry:
             del self._tools[tool_id]
             if tool_id in self._initialization_order:
                 self._initialization_order.remove(tool_id)
+            self._invalidate_manifest_cache()
             logger.info("Unregistered tool: %s", tool_id)
             return True
         return False
@@ -363,14 +366,25 @@ class ToolRegistry:
 
         return routers
 
+    def _invalidate_manifest_cache(self) -> None:
+        """Invalidate the cached manifest when tools change."""
+        self._manifest_cache = None
+
     def get_tool_manifest(self) -> list[dict]:
         """
         Get the manifest of all tools for API responses.
 
+        The manifest is cached and only rebuilt when tools are
+        registered or unregistered.
+
         Returns:
             List of tool manifest entries
         """
-        return [tool.to_manifest_entry() for tool in self._tools.values()]
+        if self._manifest_cache is None:
+            self._manifest_cache = [
+                tool.to_manifest_entry() for tool in self._tools.values()
+            ]
+        return self._manifest_cache
 
     async def health_check_all(self) -> dict[str, dict]:
         """

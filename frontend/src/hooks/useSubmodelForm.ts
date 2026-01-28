@@ -17,6 +17,7 @@ import {
   verifyExport,
 } from '../services/api';
 import { getMaxItems, getMinItems, isRequired } from '../types/aas-elements';
+import { useDraftAutoSave } from './useDraftAutoSave';
 
 interface UseSubmodelFormOptions {
   /** Template name to load */
@@ -29,6 +30,15 @@ interface UseSubmodelFormOptions {
   initialSchema?: SubmodelUISchema;
   /** Called when form is submitted successfully */
   onSubmit?: (data: SubmodelFormData) => void;
+}
+
+interface DraftInfo {
+  /** Whether a draft exists */
+  hasDraft: boolean;
+  /** Draft timestamp */
+  timestamp?: number;
+  /** Human-readable age */
+  age?: string;
 }
 
 interface UseSubmodelFormReturn {
@@ -44,6 +54,8 @@ interface UseSubmodelFormReturn {
   validating: boolean;
   /** Validation result */
   validationResult: { valid: boolean; errors: string[]; warnings: string[] } | null;
+  /** Draft auto-save info */
+  draftInfo: DraftInfo | null;
   /** Load or reload schema */
   loadSchema: (
     templateName: string,
@@ -62,6 +74,10 @@ interface UseSubmodelFormReturn {
   verifyExport: () => Promise<void>;
   /** Reset form to default values */
   resetForm: () => void;
+  /** Recover draft data */
+  recoverDraft: () => Promise<boolean>;
+  /** Dismiss/clear saved draft */
+  dismissDraft: () => Promise<void>;
 }
 
 /**
@@ -363,6 +379,51 @@ export function useSubmodelForm(
     mode: 'onBlur',
   });
 
+  // Draft auto-save
+  const [draftInfo, setDraftInfo] = useState<DraftInfo | null>(null);
+  const draftAutoSave = useDraftAutoSave(form, {
+    templateName: templateName ?? '',
+    templateVersion,
+    enabled: !!templateName,
+  });
+
+  // Check for existing draft on mount
+  useEffect(() => {
+    if (!templateName) return;
+
+    const checkDraft = async () => {
+      const draft = await draftAutoSave.loadDraft();
+      if (draft) {
+        setDraftInfo({
+          hasDraft: true,
+          timestamp: draft.timestamp,
+          age: draftAutoSave.getDraftAge(draft.timestamp),
+        });
+      } else {
+        setDraftInfo({ hasDraft: false });
+      }
+    };
+    checkDraft();
+  }, [templateName, draftAutoSave]);
+
+  // Recover draft data
+  const recoverDraft = useCallback(async (): Promise<boolean> => {
+    const draft = await draftAutoSave.loadDraft();
+    if (draft) {
+      form.reset(draft.data, { keepDirty: false });
+      await draftAutoSave.clearDraft();
+      setDraftInfo({ hasDraft: false });
+      return true;
+    }
+    return false;
+  }, [draftAutoSave, form]);
+
+  // Dismiss/clear saved draft
+  const dismissDraft = useCallback(async (): Promise<void> => {
+    await draftAutoSave.clearDraft();
+    setDraftInfo({ hasDraft: false });
+  }, [draftAutoSave]);
+
   // Load schema from API
   const loadSchema = useCallback(
     async (
@@ -505,6 +566,7 @@ export function useSubmodelForm(
     error,
     validating,
     validationResult,
+    draftInfo,
     loadSchema,
     validate,
     exportAasx: handleExportAasx,
@@ -512,6 +574,8 @@ export function useSubmodelForm(
     exportPdf: handleExportPdf,
     verifyExport: handleVerifyExport,
     resetForm,
+    recoverDraft,
+    dismissDraft,
   };
 }
 

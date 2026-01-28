@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Optional, Any
 
 if TYPE_CHECKING:
     from basyx.aas import model
+    from app.utils.semantic_index import SemanticIndex
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ def resolve_semantic_label(
     element: "model.SubmodelElement",
     object_store: "model.DictObjectStore",
     language_priority: list[str] | None = None,
+    semantic_index: Optional["SemanticIndex"] = None,
 ) -> str | None:
     """
     Resolve human-readable label from ConceptDescription.
@@ -31,6 +33,7 @@ def resolve_semantic_label(
         element: SubmodelElement with semantic_id
         object_store: Object store containing ConceptDescriptions
         language_priority: List of language codes in preference order
+        semantic_index: Optional pre-built index for O(1) lookups
 
     Returns:
         Human-readable label or None if not found
@@ -46,7 +49,9 @@ def resolve_semantic_label(
 
     semantic_ref = element.semantic_id
 
-    concept_description = _resolve_concept_description(semantic_ref, object_store)
+    concept_description = _resolve_concept_description(
+        semantic_ref, object_store, semantic_index
+    )
     if concept_description is not None:
         label = _extract_preferred_name(concept_description, language_priority)
         if label:
@@ -61,11 +66,17 @@ def resolve_semantic_label(
 def resolve_semantic_description(
     element: "model.SubmodelElement",
     object_store: "model.DictObjectStore",
+    semantic_index: Optional["SemanticIndex"] = None,
 ) -> dict[str, str] | None:
     """
     Resolve a multi-language description from ConceptDescriptions.
 
     Falls back to ConceptDescription.description or IEC61360 definition.
+
+    Args:
+        element: SubmodelElement with semantic_id
+        object_store: Object store containing ConceptDescriptions
+        semantic_index: Optional pre-built index for O(1) lookups
     """
     from basyx.aas import model
 
@@ -73,7 +84,9 @@ def resolve_semantic_description(
         return None
 
     semantic_ref = element.semantic_id
-    concept_description = _resolve_concept_description(semantic_ref, object_store)
+    concept_description = _resolve_concept_description(
+        semantic_ref, object_store, semantic_index
+    )
     if concept_description is None:
         return None
 
@@ -146,9 +159,15 @@ def _extract_display_name(
 def _resolve_concept_description(
     semantic_ref,
     object_store: "model.DictObjectStore",
+    semantic_index: Optional["SemanticIndex"] = None,
 ) -> Optional["model.ConceptDescription"]:
     """
     Resolve a ConceptDescription from a semantic reference.
+
+    Args:
+        semantic_ref: The semantic reference to resolve
+        object_store: Object store containing ConceptDescriptions
+        semantic_index: Optional pre-built index for O(1) lookups
     """
     from basyx.aas import model
 
@@ -162,7 +181,11 @@ def _resolve_concept_description(
 
     if isinstance(semantic_ref, model.ExternalReference):
         for key in semantic_ref.key or ():
-            cd = _find_concept_description_by_identifier(object_store, key.value)
+            # Use index if available for O(1) lookup
+            if semantic_index is not None:
+                cd = semantic_index.resolve(key.value)
+            else:
+                cd = _find_concept_description_by_identifier(object_store, key.value)
             if cd:
                 return cd
 
@@ -308,6 +331,7 @@ def get_description_text(
 def get_unit_from_concept_description(
     element: "model.SubmodelElement",
     object_store: "model.DictObjectStore",
+    semantic_index: Optional["SemanticIndex"] = None,
 ) -> str | None:
     """
     Extract unit information from linked ConceptDescription.
@@ -315,6 +339,7 @@ def get_unit_from_concept_description(
     Args:
         element: SubmodelElement with semantic_id
         object_store: Object store containing ConceptDescriptions
+        semantic_index: Optional pre-built index for O(1) lookups
 
     Returns:
         Unit string or None
@@ -326,15 +351,12 @@ def get_unit_from_concept_description(
 
     semantic_ref = element.semantic_id
 
-    if isinstance(semantic_ref, model.ModelReference):
-        try:
-            resolved_cd = semantic_ref.resolve(object_store)
-            if isinstance(resolved_cd, model.ConceptDescription):
-                for eds in resolved_cd.embedded_data_specifications or []:
-                    content = eds.data_specification_content
-                    if isinstance(content, model.DataSpecificationIEC61360):
-                        return content.unit
-        except (KeyError, model.UnexpectedTypeError):
-            pass
+    # Use the unified resolution function with index support
+    cd = _resolve_concept_description(semantic_ref, object_store, semantic_index)
+    if cd is not None:
+        for eds in cd.embedded_data_specifications or []:
+            content = eds.data_specification_content
+            if isinstance(content, model.DataSpecificationIEC61360):
+                return content.unit
 
     return None

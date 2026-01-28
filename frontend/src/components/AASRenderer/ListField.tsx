@@ -2,15 +2,20 @@
  * ListField component for rendering SubmodelElementList elements.
  *
  * Uses React Hook Form's useFieldArray for dynamic add/remove.
+ * Conditionally uses virtualization for lists exceeding VIRTUALIZATION_THRESHOLD.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useFormContext, useFieldArray, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import type { ElementFormData } from '../../types/aas-elements';
 import { getMaxItems, getMinItems } from '../../types/aas-elements';
 import SemanticChip from '../semantic/SemanticChip';
 import SemanticLookupModal from '../semantic/SemanticLookupModal';
+import { VirtualizedList } from './VirtualizedList';
+
+/** Threshold above which virtualization is enabled for performance */
+const VIRTUALIZATION_THRESHOLD = 20;
 
 interface ListFieldProps {
   /** Form path for the list */
@@ -74,6 +79,7 @@ function createDefaultItem(template: UIElementSchema | null): ElementFormData {
 
 /**
  * Renders a dynamic list with add/remove functionality.
+ * Uses virtualization for large lists (> VIRTUALIZATION_THRESHOLD items).
  */
 export const ListField: React.FC<ListFieldProps> = ({
   path,
@@ -100,56 +106,136 @@ export const ListField: React.FC<ListFieldProps> = ({
   const canRemove = fields.length > minItems;
   const canAdd = maxItems === undefined || fields.length < maxItems;
 
-  const handleAddItem = () => {
+  // Determine if virtualization should be used
+  const useVirtualization = fields.length > VIRTUALIZATION_THRESHOLD;
+
+  const handleAddItem = useCallback(() => {
     const newItem = createDefaultItem(itemTemplate || null);
     append(newItem);
-  };
+  }, [itemTemplate, append]);
 
-  const handleRemoveItem = (index: number) => {
-    if (canRemove || fields.length > minItems) {
-      remove(index);
-    }
-  };
+  const handleRemoveItem = useCallback(
+    (index: number) => {
+      if (canRemove || fields.length > minItems) {
+        remove(index);
+      }
+    },
+    [canRemove, fields.length, minItems, remove]
+  );
 
-  const handleMoveUp = (index: number) => {
-    if (index > 0) {
-      move(index, index - 1);
-    }
-  };
+  const handleMoveUp = useCallback(
+    (index: number) => {
+      if (index > 0) {
+        move(index, index - 1);
+      }
+    },
+    [move]
+  );
 
-  const handleMoveDown = (index: number) => {
-    if (index < fields.length - 1) {
-      move(index, index + 1);
-    }
-  };
+  const handleMoveDown = useCallback(
+    (index: number) => {
+      if (index < fields.length - 1) {
+        move(index, index + 1);
+      }
+    },
+    [move, fields.length]
+  );
 
   // Get the effective item schema for rendering
-  const getItemSchema = (index: number): UIElementSchema => {
-    // Use existing item schema if available
-    if (schema.items && schema.items[index]) {
-      return schema.items[index];
-    }
-    // Fall back to template
-    if (itemTemplate) {
+  const getItemSchema = useCallback(
+    (index: number): UIElementSchema => {
+      // Use existing item schema if available
+      if (schema.items && schema.items[index]) {
+        return schema.items[index];
+      }
+      // Fall back to template
+      if (itemTemplate) {
+        return {
+          ...itemTemplate,
+          idShort: `${itemTemplate.idShort}_${index}`,
+        };
+      }
+      // Default schema
       return {
-        ...itemTemplate,
-        idShort: `${itemTemplate.idShort}_${index}`,
+        idShort: `item_${index}`,
+        modelType: 'Property',
+        semanticId: null,
+        semanticLabel: null,
+        description: null,
+        qualifiers: [],
+        cardinality: '[1]',
+        category: null,
+        valueType: 'xs:string',
+        inputType: 'text',
       };
-    }
-    // Default schema
-    return {
-      idShort: `item_${index}`,
-      modelType: 'Property',
-      semanticId: null,
-      semanticLabel: null,
-      description: null,
-      qualifiers: [],
-      cardinality: '[1]',
-      category: null,
-      valueType: 'xs:string',
-      inputType: 'text',
-    };
-  };
+    },
+    [schema.items, itemTemplate]
+  );
+
+  // Unified render function for a single list item
+  const renderListItem = useCallback(
+    (field: { id: string }, index: number) => {
+      const itemSchema = getItemSchema(index);
+      return (
+        <div key={field.id} className="aas-list-item" data-index={index}>
+          <div className="aas-list-item-header">
+            <span className="aas-list-item-index">Item {index + 1}</span>
+            <div className="aas-list-item-actions">
+              {schema.orderRelevant !== false && (
+                <>
+                  <button
+                    type="button"
+                    className="aas-btn aas-btn-icon"
+                    onClick={() => handleMoveUp(index)}
+                    disabled={index === 0}
+                    aria-label="Move up"
+                    title="Move up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="aas-btn aas-btn-icon"
+                    onClick={() => handleMoveDown(index)}
+                    disabled={index === fields.length - 1}
+                    aria-label="Move down"
+                    title="Move down"
+                  >
+                    ↓
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                className="aas-btn aas-btn-icon aas-btn-danger"
+                onClick={() => handleRemoveItem(index)}
+                disabled={!canRemove && fields.length <= minItems}
+                aria-label="Remove item"
+                title="Remove item"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          <div className="aas-list-item-content">
+            {renderItem(`${path}.items.${index}`, index, itemSchema)}
+          </div>
+        </div>
+      );
+    },
+    [
+      getItemSchema,
+      schema.orderRelevant,
+      handleMoveUp,
+      handleMoveDown,
+      handleRemoveItem,
+      canRemove,
+      fields.length,
+      minItems,
+      renderItem,
+      path,
+    ]
+  );
 
   return (
     <div className={`aas-list aas-depth-${depth}`} data-id-short={schema.idShort}>
@@ -158,6 +244,11 @@ export const ListField: React.FC<ListFieldProps> = ({
         <span className="aas-list-count">({fields.length} items)</span>
         {schema.cardinality !== '[1]' && (
           <span className="aas-cardinality">{schema.cardinality}</span>
+        )}
+        {useVirtualization && (
+          <span className="aas-virtualized-badge" title="Virtualized for performance">
+            ⚡
+          </span>
         )}
         <button
           type="button"
@@ -190,60 +281,16 @@ export const ListField: React.FC<ListFieldProps> = ({
           <div className="aas-list-empty">
             <p>No items. Click "Add Item" to add one.</p>
           </div>
+        ) : useVirtualization ? (
+          // Use virtualized rendering for large lists
+          <VirtualizedList
+            fields={fields}
+            renderItem={renderListItem}
+            className="aas-list-virtualized"
+          />
         ) : (
-          fields.map((field, index) => {
-            const itemSchema = getItemSchema(index);
-            return (
-              <div
-                key={field.id}
-                className="aas-list-item"
-                data-index={index}
-              >
-                <div className="aas-list-item-header">
-                  <span className="aas-list-item-index">Item {index + 1}</span>
-                  <div className="aas-list-item-actions">
-                    {schema.orderRelevant !== false && (
-                      <>
-                        <button
-                          type="button"
-                          className="aas-btn aas-btn-icon"
-                          onClick={() => handleMoveUp(index)}
-                          disabled={index === 0}
-                          aria-label="Move up"
-                          title="Move up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="aas-btn aas-btn-icon"
-                          onClick={() => handleMoveDown(index)}
-                          disabled={index === fields.length - 1}
-                          aria-label="Move down"
-                          title="Move down"
-                        >
-                          ↓
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="aas-btn aas-btn-icon aas-btn-danger"
-                      onClick={() => handleRemoveItem(index)}
-                      disabled={!canRemove && fields.length <= minItems}
-                      aria-label="Remove item"
-                      title="Remove item"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-                <div className="aas-list-item-content">
-                  {renderItem(`${path}.items.${index}`, index, itemSchema)}
-                </div>
-              </div>
-            );
-          })
+          // Standard rendering for small lists
+          fields.map((field, index) => renderListItem(field, index))
         )}
       </div>
 

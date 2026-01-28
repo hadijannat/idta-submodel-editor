@@ -20,6 +20,7 @@ from app.utils.semantic_resolver import (
     resolve_semantic_label,
     resolve_semantic_description,
 )
+from app.utils.semantic_index import SemanticIndex
 from app.utils.aasx_reader import SafeAASXReader
 from app.utils.xsd_mapping import (
     get_input_type,
@@ -76,6 +77,11 @@ class ParserService:
         aas = self._find_aas(object_store)
         aas_metadata = self._extract_aas_metadata(aas) if aas else None
 
+        # Build semantic index once for O(1) ConceptDescription lookups
+        # This replaces O(M*K) linear scans with O(K) index build + O(M) lookups
+        semantic_index = SemanticIndex(object_store)
+        logger.debug(f"Built semantic index with {len(semantic_index)} ConceptDescriptions")
+
         return {
             "aas": aas_metadata,
             "submodelId": submodel_id,
@@ -84,7 +90,7 @@ class ParserService:
             "description": dict(submodel.description) if submodel.description else None,
             "administration": self._serialize_administration(submodel.administration),
             "elements": [
-                self._element_to_schema(e, object_store)
+                self._element_to_schema(e, object_store, semantic_index)
                 for e in submodel.submodel_element
             ],
             "supplementaryFiles": list(file_store),
@@ -192,16 +198,24 @@ class ParserService:
         self,
         element: model.SubmodelElement,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """
         Convert a SubmodelElement to UI schema.
 
         Recursively processes nested elements (SMC, SML, Entity).
+
+        Args:
+            element: SubmodelElement to convert
+            object_store: Object store containing ConceptDescriptions
+            semantic_index: Pre-built index for O(1) ConceptDescription lookups
         """
         # Base schema applicable to all element types
         description = dict(element.description) if element.description else None
         if not description:
-            semantic_description = resolve_semantic_description(element, object_store)
+            semantic_description = resolve_semantic_description(
+                element, object_store, semantic_index
+            )
             if semantic_description:
                 description = semantic_description
 
@@ -211,7 +225,9 @@ class ParserService:
             "semanticId": self._serialize_reference(
                 getattr(element, "semantic_id", None)
             ),
-            "semanticLabel": resolve_semantic_label(element, object_store),
+            "semanticLabel": resolve_semantic_label(
+                element, object_store, semantic_index=semantic_index
+            ),
             "description": (
                 description
             ),
@@ -222,13 +238,13 @@ class ParserService:
 
         # Type-specific schema extensions
         if isinstance(element, model.Property):
-            base_schema.update(self._property_schema(element, object_store))
+            base_schema.update(self._property_schema(element, object_store, semantic_index))
 
         elif isinstance(element, model.SubmodelElementCollection):
-            base_schema.update(self._collection_schema(element, object_store))
+            base_schema.update(self._collection_schema(element, object_store, semantic_index))
 
         elif isinstance(element, model.SubmodelElementList):
-            base_schema.update(self._list_schema(element, object_store))
+            base_schema.update(self._list_schema(element, object_store, semantic_index))
 
         elif isinstance(element, model.MultiLanguageProperty):
             base_schema.update(self._multilang_schema(element))
@@ -240,22 +256,22 @@ class ParserService:
             base_schema.update(self._blob_schema(element))
 
         elif isinstance(element, model.Range):
-            base_schema.update(self._range_schema(element, object_store))
+            base_schema.update(self._range_schema(element, object_store, semantic_index))
 
         elif isinstance(element, model.ReferenceElement):
             base_schema.update(self._reference_schema(element))
 
         elif isinstance(element, model.Entity):
-            base_schema.update(self._entity_schema(element, object_store))
+            base_schema.update(self._entity_schema(element, object_store, semantic_index))
 
         elif isinstance(element, model.RelationshipElement):
             base_schema.update(self._relationship_schema(element))
 
         elif isinstance(element, model.AnnotatedRelationshipElement):
-            base_schema.update(self._annotated_relationship_schema(element, object_store))
+            base_schema.update(self._annotated_relationship_schema(element, object_store, semantic_index))
 
         elif isinstance(element, model.Operation):
-            base_schema.update(self._operation_schema(element, object_store))
+            base_schema.update(self._operation_schema(element, object_store, semantic_index))
 
         elif isinstance(element, model.Capability):
             base_schema.update(self._capability_schema(element))
@@ -269,6 +285,7 @@ class ParserService:
         self,
         element: model.Property,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for Property element."""
         value_type = str(element.value_type) if element.value_type else "xs:string"
@@ -278,7 +295,7 @@ class ParserService:
             "inputType": get_input_type(value_type),
             "step": get_step_attribute(value_type),
             "constraints": get_range_constraints(value_type),
-            "unit": get_unit_from_concept_description(element, object_store),
+            "unit": get_unit_from_concept_description(element, object_store, semantic_index),
             "valueId": self._serialize_reference(element.value_id),
         }
 
@@ -286,11 +303,13 @@ class ParserService:
         self,
         element: model.SubmodelElementCollection,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for SubmodelElementCollection."""
         return {
             "elements": [
-                self._element_to_schema(e, object_store) for e in element.value
+                self._element_to_schema(e, object_store, semantic_index)
+                for e in element.value
             ],
         }
 
@@ -298,6 +317,7 @@ class ParserService:
         self,
         element: model.SubmodelElementList,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for SubmodelElementList."""
         schema: dict[str, Any] = {
@@ -315,13 +335,16 @@ class ParserService:
             "semanticIdListElement": self._serialize_reference(
                 element.semantic_id_list_element
             ),
-            "items": [self._element_to_schema(e, object_store) for e in element.value],
+            "items": [
+                self._element_to_schema(e, object_store, semantic_index)
+                for e in element.value
+            ],
         }
 
         # Create item template from first item or type specification
         if element.value:
             schema["itemTemplate"] = self._element_to_schema(
-                element.value[0], object_store
+                element.value[0], object_store, semantic_index
             )
         elif element.type_value_list_element:
             schema["itemTemplate"] = self._create_template_from_type(
@@ -357,6 +380,7 @@ class ParserService:
         self,
         element: model.Range,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for Range element."""
         value_type = str(element.value_type) if element.value_type else "xs:double"
@@ -366,7 +390,7 @@ class ParserService:
             "max": element.max,
             "inputType": get_input_type(value_type),
             "step": get_step_attribute(value_type),
-            "unit": get_unit_from_concept_description(element, object_store),
+            "unit": get_unit_from_concept_description(element, object_store, semantic_index),
         }
 
     def _reference_schema(self, element: model.ReferenceElement) -> dict[str, Any]:
@@ -379,6 +403,7 @@ class ParserService:
         self,
         element: model.Entity,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for Entity element."""
         return {
@@ -393,7 +418,8 @@ class ParserService:
                 else []
             ),
             "statements": [
-                self._element_to_schema(e, object_store) for e in element.statement
+                self._element_to_schema(e, object_store, semantic_index)
+                for e in element.statement
             ],
         }
 
@@ -410,11 +436,13 @@ class ParserService:
         self,
         element: model.AnnotatedRelationshipElement,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for AnnotatedRelationshipElement."""
         schema = self._relationship_schema(element)
         schema["annotations"] = [
-            self._element_to_schema(e, object_store) for e in element.annotation or []
+            self._element_to_schema(e, object_store, semantic_index)
+            for e in element.annotation or []
         ]
         return schema
 
@@ -422,23 +450,24 @@ class ParserService:
         self,
         element: model.Operation,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for Operation element."""
         return {
             "inputVariables": [
                 schema
                 for v in (element.input_variable or [])
-                if (schema := self._operation_variable_schema(v, object_store)) is not None
+                if (schema := self._operation_variable_schema(v, object_store, semantic_index)) is not None
             ],
             "outputVariables": [
                 schema
                 for v in (element.output_variable or [])
-                if (schema := self._operation_variable_schema(v, object_store)) is not None
+                if (schema := self._operation_variable_schema(v, object_store, semantic_index)) is not None
             ],
             "inoutputVariables": [
                 schema
                 for v in (element.in_output_variable or [])
-                if (schema := self._operation_variable_schema(v, object_store)) is not None
+                if (schema := self._operation_variable_schema(v, object_store, semantic_index)) is not None
             ],
         }
 
@@ -446,6 +475,7 @@ class ParserService:
         self,
         variable: OperationVariableType | model.SubmodelElement,
         object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any] | None:
         """Generate schema for Operation variable."""
         if hasattr(variable, "value"):
@@ -459,14 +489,14 @@ class ParserService:
                     type(value).__name__,
                 )
                 return None
-            return self._element_to_schema(value, object_store)  # type: ignore[arg-type]
+            return self._element_to_schema(value, object_store, semantic_index)  # type: ignore[arg-type]
         if not isinstance(variable, model.SubmodelElement):
             logger.warning(
                 "Skipping operation variable that is not a submodel element: %s",
                 type(variable).__name__,
             )
             return None
-        return self._element_to_schema(variable, object_store)
+        return self._element_to_schema(variable, object_store, semantic_index)
 
     def _capability_schema(self, element: model.Capability) -> dict[str, Any]:
         """Generate schema for Capability element."""

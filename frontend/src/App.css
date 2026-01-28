@@ -1197,6 +1197,26 @@ body {
   padding: var(--spacing-md);
 }
 
+/* Virtualized list styles */
+.aas-virtualized-badge {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  background: var(--color-accent-light, #e3f2fd);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent, #1976d2);
+  margin-left: var(--spacing-xs);
+}
+
+.virtualized-list-container {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-alt);
+}
+
+.aas-list-virtualized .aas-list-item {
+  margin-bottom: var(--spacing-sm);
+}
+
 /* ============================================================================
    Multi-language Styles
    ============================================================================ */
@@ -1211,6 +1231,11 @@ body {
 .aas-multilang-count {
   font-size: 0.75rem;
   color: var(--color-text-muted);
+}
+
+.aas-multilang-missing {
+  color: var(--color-warning, #f59e0b);
+  margin-left: var(--spacing-xs);
 }
 
 .aas-multilang-tabs {
@@ -1255,6 +1280,29 @@ body {
 .aas-tab-indicator {
   color: var(--color-success);
   margin-left: var(--spacing-xs);
+}
+
+.aas-tab-warning {
+  color: var(--color-warning, #f59e0b);
+  margin-left: var(--spacing-xs);
+  font-size: 0.75rem;
+}
+
+.aas-tab.invalid-code {
+  border-color: var(--color-warning, #f59e0b);
+  color: var(--color-warning, #f59e0b);
+}
+
+.aas-warning-message {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-warning, #f59e0b);
+  margin-top: var(--spacing-xs);
+}
+
+/* RTL text direction support */
+.aas-textarea[dir="rtl"] {
+  text-align: right;
 }
 
 /* ============================================================================
