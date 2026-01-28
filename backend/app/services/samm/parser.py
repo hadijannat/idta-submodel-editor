@@ -316,10 +316,11 @@ class SAMMParser:
 
     def _parse_ttl_basic(self, content: str) -> SAMMAspect:
         """Basic TTL parser without rdflib."""
-        # Extract prefixes
+        # Extract prefixes (including empty prefix with just ":")
         self._prefixes = {}
-        for match in re.finditer(r"@prefix\s+(\w+):\s+<([^>]+)>", content):
-            self._prefixes[match.group(1)] = match.group(2)
+        for match in re.finditer(r"@prefix\s*(\w*):\s+<([^>]+)>", content):
+            prefix = match.group(1)  # Can be empty string for default prefix
+            self._prefixes[prefix] = match.group(2)
 
         # Find aspect definition
         aspect_match = re.search(
@@ -330,32 +331,50 @@ class SAMMParser:
 
         aspect_name = aspect_match.group(1)
 
-        # Extract base URN from prefixes
+        # Extract base URN from default prefix (empty string key)
         base_urn = self._prefixes.get("", "urn:samm:unknown:")
+        # Remove trailing # if present (we'll add it when constructing URIs)
+        if base_urn.endswith("#"):
+            base_urn = base_urn[:-1]
         aspect_urn = f"{base_urn}#{aspect_name}"
 
         # Extract version from URN
         version_match = re.search(r":(\d+\.\d+\.\d+)#?", base_urn)
         version = version_match.group(1) if version_match else "1.0.0"
 
-        # Extract description
+        # Extract description (handle language tags like @en)
         desc_match = re.search(
-            rf":{aspect_name}[^;]*samm:description\s+\"([^\"]+)\"", content, re.DOTALL
+            rf":{aspect_name}\s+[^.]*?samm:description\s+\"([^\"]+)\"(?:@\w+)?",
+            content,
+            re.DOTALL,
         )
         description = desc_match.group(1) if desc_match else None
 
         # Extract properties (basic extraction)
         properties: list[SAMMProperty] = []
         props_match = re.search(
-            rf":{aspect_name}[^;]*samm:properties\s+\(([^)]+)\)", content, re.DOTALL
+            rf":{aspect_name}\s+[^.]*?samm:properties\s+\(\s*([^)]+)\s*\)",
+            content,
+            re.DOTALL,
         )
         if props_match:
             props_content = props_match.group(1)
             for prop_name in re.findall(r":(\w+)", props_content):
+                # Try to extract property description
+                prop_desc_match = re.search(
+                    rf":{prop_name}\s+[^.]*?samm:description\s+\"([^\"]+)\"",
+                    content,
+                    re.DOTALL,
+                )
+                prop_description = (
+                    prop_desc_match.group(1) if prop_desc_match else None
+                )
+
                 properties.append(
                     SAMMProperty(
                         urn=f"{base_urn}#{prop_name}",
                         name=prop_name,
+                        description=prop_description,
                     )
                 )
 
