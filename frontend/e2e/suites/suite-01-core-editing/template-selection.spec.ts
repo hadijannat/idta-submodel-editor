@@ -6,6 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import { TemplateSelectorPage } from '../../pages/template-selector.page';
+import { FormEditorPage } from '../../pages/form-editor.page';
 import { APIClient } from '../../helpers/api-client';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
@@ -97,19 +98,21 @@ test.describe('Template Selection', () => {
     test('clicking template card navigates to editor', async ({ page }) => {
       await templateSelector.selectTemplate('Digital Nameplate');
 
-      // Wait for navigation
-      await page.waitForURL(/.*/, { timeout: 10000 });
+      // Wait for navigation and verify editor is visible
+      const formEditor = new FormEditorPage(page);
+      await formEditor.waitForFormReady();
 
-      // Verify we're in the editor (form container visible)
-      const formContainer = page.locator('.form-container, [data-testid="form-container"]');
-      await expect(formContainer).toBeVisible({ timeout: 30000 });
+      // Verify we're in the editor by checking for the form container (main section)
+      await expect(formEditor.formContainer).toBeVisible({ timeout: 30000 });
     });
 
     test('search then select workflow works', async ({ page }) => {
       await templateSelector.searchAndSelectTemplate('Digital Nameplate');
 
-      const formContainer = page.locator('.form-container, [data-testid="form-container"]');
-      await expect(formContainer).toBeVisible({ timeout: 30000 });
+      // Verify we're in the editor
+      const formEditor = new FormEditorPage(page);
+      await formEditor.waitForFormReady();
+      await expect(formEditor.formContainer).toBeVisible({ timeout: 30000 });
     });
   });
 

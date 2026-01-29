@@ -51,10 +51,10 @@ export class FormEditorPage {
     this.fillFieldsStep = this.stepperSidebar.locator('button.wizard-step', { hasText: /Fill.*Fields/i });
     this.exportStep = this.stepperSidebar.locator('button.wizard-step', { hasText: /Export/i });
 
-    // Form controls
-    this.saveButton = page.getByRole('button', { name: /save/i });
-    this.resetButton = page.getByRole('button', { name: /reset/i });
-    this.validateButton = page.getByRole('button', { name: /validate/i });
+    // Form controls - use specific classes to avoid matching wizard steps or other buttons
+    this.saveButton = page.locator('button.btn-save, button.btn-primary:has-text("Save")').first();
+    this.resetButton = page.locator('button.btn-reset, button.btn-secondary:has-text("Reset")').first();
+    this.validateButton = page.locator('button.btn-validate');
 
     // Export controls
     this.exportAasxButton = page.getByRole('button', { name: /export.*aasx/i });
@@ -110,30 +110,36 @@ export class FormEditorPage {
   // --------------------------------------------------------------------------
 
   /**
-   * Get a form field by idShort path.
-   * AAS fields use data-id-short attribute and .aas-field class.
+   * Get a form field container by idShort path.
+   * Returns the AAS renderer wrapper element with data-id-short attribute.
+   * Use getFieldInput() to get the actual input element.
    */
   getField(idShortPath: string): Locator {
-    // Try multiple selectors to find the field
-    return this.page.locator(
-      `[data-id-short="${idShortPath}"], ` +
-        `.aas-field:has(.aas-label:text("${idShortPath}")), ` +
-        `[name*="${idShortPath}"]`
-    );
+    // Use data-id-short attribute which is set on the renderer wrapper
+    // This returns a single element, avoiding strict mode violations
+    return this.page.locator(`[data-id-short="${idShortPath}"]`);
+  }
+
+  /**
+   * Get the input element within a field.
+   * Finds the actual input/textarea inside the field container.
+   */
+  getFieldInput(idShortPath: string): Locator {
+    return this.getField(idShortPath).locator('.aas-input, input, textarea').first();
   }
 
   /**
    * Get a text input field.
    */
   getTextInput(idShortPath: string): Locator {
-    return this.getField(idShortPath).locator('input[type="text"], textarea');
+    return this.getField(idShortPath).locator('.aas-input, input[type="text"], textarea').first();
   }
 
   /**
    * Fill a text/string property field.
    */
   async fillProperty(idShortPath: string, value: string): Promise<void> {
-    const input = this.getTextInput(idShortPath);
+    const input = this.getFieldInput(idShortPath);
     await input.fill(value);
   }
 
@@ -141,7 +147,7 @@ export class FormEditorPage {
    * Fill a number property field.
    */
   async fillNumberProperty(idShortPath: string, value: number): Promise<void> {
-    const input = this.getField(idShortPath).locator('input[type="number"], input[type="text"]');
+    const input = this.getField(idShortPath).locator('.aas-input, input[type="number"], input[type="text"]').first();
     await input.fill(value.toString());
   }
 
@@ -149,7 +155,7 @@ export class FormEditorPage {
    * Fill a date property field.
    */
   async fillDateProperty(idShortPath: string, date: string): Promise<void> {
-    const input = this.getField(idShortPath).locator('input[type="date"], input[type="text"]');
+    const input = this.getField(idShortPath).locator('.aas-input, input[type="date"], input[type="text"]').first();
     await input.fill(date);
   }
 
@@ -157,7 +163,7 @@ export class FormEditorPage {
    * Fill a boolean property field.
    */
   async fillBooleanProperty(idShortPath: string, value: boolean): Promise<void> {
-    const checkbox = this.getField(idShortPath).locator('input[type="checkbox"]');
+    const checkbox = this.getField(idShortPath).locator('input[type="checkbox"]').first();
     if (value) {
       await checkbox.check();
     } else {
@@ -169,7 +175,7 @@ export class FormEditorPage {
    * Select an enum value.
    */
   async selectEnumValue(idShortPath: string, value: string): Promise<void> {
-    const select = this.getField(idShortPath).locator('select');
+    const select = this.getField(idShortPath).locator('select').first();
     await select.selectOption(value);
   }
 
@@ -177,7 +183,7 @@ export class FormEditorPage {
    * Get the current value of a property field.
    */
   async getPropertyValue(idShortPath: string): Promise<string> {
-    const input = this.getTextInput(idShortPath);
+    const input = this.getFieldInput(idShortPath);
     return await input.inputValue();
   }
 
@@ -335,15 +341,15 @@ export class FormEditorPage {
    * Get a file field.
    */
   getFileField(idShortPath: string): Locator {
-    return this.getField(idShortPath).locator('.file-field, [data-testid="file-field"]');
+    return this.getField(idShortPath).locator('.aas-field-file').first();
   }
 
   /**
    * Set a file URL.
    */
   async setFileUrl(idShortPath: string, url: string): Promise<void> {
-    const field = this.getFileField(idShortPath);
-    const urlInput = field.locator('input[type="url"], input[type="text"]');
+    const field = this.getField(idShortPath);
+    const urlInput = field.locator('.aas-input, input[type="url"], input[type="text"]').first();
     await urlInput.fill(url);
   }
 
@@ -351,8 +357,8 @@ export class FormEditorPage {
    * Set file content type.
    */
   async setFileContentType(idShortPath: string, contentType: string): Promise<void> {
-    const field = this.getFileField(idShortPath);
-    const contentTypeInput = field.locator('input[name*="contentType"], select');
+    const field = this.getField(idShortPath);
+    const contentTypeInput = field.locator('input[name*="contentType"], select').first();
 
     if (await contentTypeInput.isVisible()) {
       if ((await contentTypeInput.evaluate((el) => el.tagName)) === 'SELECT') {
@@ -371,7 +377,7 @@ export class FormEditorPage {
    * Get a range field.
    */
   getRangeField(idShortPath: string): Locator {
-    return this.getField(idShortPath).locator('.range-field, [data-testid="range-field"]');
+    return this.getField(idShortPath).locator('.aas-field-range').first();
   }
 
   /**
@@ -382,9 +388,10 @@ export class FormEditorPage {
     min: string | number,
     max: string | number
   ): Promise<void> {
-    const field = this.getRangeField(idShortPath);
-    const minInput = field.locator('input').first();
-    const maxInput = field.locator('input').last();
+    const field = this.getField(idShortPath);
+    const inputs = field.locator('.aas-input, input');
+    const minInput = inputs.first();
+    const maxInput = inputs.nth(1);
 
     await minInput.fill(min.toString());
     await maxInput.fill(max.toString());
@@ -398,15 +405,15 @@ export class FormEditorPage {
    * Get a reference field.
    */
   getReferenceField(idShortPath: string): Locator {
-    return this.getField(idShortPath).locator('.reference-field, [data-testid="reference-field"]');
+    return this.getField(idShortPath).locator('.aas-field-reference').first();
   }
 
   /**
    * Fill a reference field with a global reference.
    */
   async fillReferenceProperty(idShortPath: string, value: string): Promise<void> {
-    const field = this.getReferenceField(idShortPath);
-    const input = field.locator('input[type="text"]');
+    const field = this.getField(idShortPath);
+    const input = field.locator('.aas-input, input[type="text"]').first();
     await input.fill(value);
   }
 
@@ -458,13 +465,22 @@ export class FormEditorPage {
    */
   async getFieldError(idShortPath: string): Promise<string | null> {
     const field = this.getField(idShortPath);
-    const error = field.locator('.aas-error-message');
+    const error = field.locator('.aas-error-message').first();
 
     if (await error.isVisible()) {
       return await error.textContent();
     }
 
     return null;
+  }
+
+  /**
+   * Check if a field has an error state (red border/styling).
+   */
+  async hasFieldError(idShortPath: string): Promise<boolean> {
+    const field = this.getField(idShortPath);
+    const errorInput = field.locator('.aas-input-error');
+    return await errorInput.count() > 0;
   }
 
   // --------------------------------------------------------------------------

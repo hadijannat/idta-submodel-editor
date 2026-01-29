@@ -42,14 +42,16 @@ export class TemplateSelectorPage {
     this.emptyState = page.locator('.template-list-empty');
 
     // Template card elements (functions returning locators) - using actual class names
+    // Structure: .template-item-header contains .template-title (IDTA number)
+    //            .template-item-name contains the actual template name
     this.templateCardTitle = (name: string) =>
-      this.getTemplateCard(name).locator('.template-title, .template-item-header');
-    this.templateCardDescription = (name: string) =>
       this.getTemplateCard(name).locator('.template-item-name');
+    this.templateCardDescription = (name: string) =>
+      this.getTemplateCard(name).locator('.template-item-header');
     this.templateCardVersion = (name: string) =>
       this.getTemplateCard(name).locator('.template-version');
     this.templateCardIdta = (name: string) =>
-      this.getTemplateCard(name).locator('.template-idta-number');
+      this.getTemplateCard(name).locator('.template-title');
   }
 
   // --------------------------------------------------------------------------
@@ -215,10 +217,19 @@ export class TemplateSelectorPage {
     const card = this.getTemplateCard(name);
     await card.waitFor({ state: 'visible' });
 
-    const title = (await this.templateCardTitle(name).textContent()) ?? '';
-    const description = await this.templateCardDescription(name).textContent();
-    const version = await this.templateCardVersion(name).textContent();
-    const idtaNumber = await this.templateCardIdta(name).textContent();
+    // Get title from the card - use first() to avoid strict mode violations
+    const titleLocator = this.templateCardTitle(name).first();
+    const title = (await titleLocator.textContent({ timeout: 5000 }).catch(() => '')) ?? '';
+
+    // Get optional fields with fallbacks
+    const descLocator = this.templateCardDescription(name).first();
+    const description = await descLocator.textContent({ timeout: 2000 }).catch(() => null);
+
+    const versionLocator = this.templateCardVersion(name).first();
+    const version = await versionLocator.textContent({ timeout: 2000 }).catch(() => null);
+
+    const idtaLocator = this.templateCardIdta(name).first();
+    const idtaNumber = await idtaLocator.textContent({ timeout: 2000 }).catch(() => null);
 
     return {
       title: title.trim(),
