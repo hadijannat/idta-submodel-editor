@@ -107,11 +107,24 @@ export interface MagicImportResult {
 }
 
 export interface DataspaceConnection {
-  id: string;
+  connection_id: string;
   environment: string;
   edc_mode: string;
-  status: 'connecting' | 'connected' | 'disconnected' | 'error';
+  status:
+    | 'not_connected'
+    | 'provisioning_secrets'
+    | 'configuring_edc'
+    | 'registering_connector'
+    | 'publishing_self_description'
+    | 'connected'
+    | 'degraded'
+    | 'disconnected'
+    | 'failed';
+  progress?: number;
+  progress_message?: string | null;
+  error_message?: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface DataspacePublication {

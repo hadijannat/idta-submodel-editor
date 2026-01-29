@@ -502,6 +502,7 @@ export async function pollConnectionStatus(
     // Terminal states
     if (
       connection.status === 'connected' ||
+      connection.status === 'degraded' ||
       connection.status === 'failed' ||
       connection.status === 'disconnected'
     ) {

@@ -598,9 +598,10 @@ async def disconnect(
         )
     _assert_owner(connection, user)
 
-    # Check for active publications
+    # Check for active publications - only block on truly active statuses
     registrations = conn_manager.list_registrations(connection_id=connection_id)
-    active_registrations = [r for r in registrations if r.status.value != "failed"]
+    ACTIVE_STATUSES = {"pending", "registered", "updating"}
+    active_registrations = [r for r in registrations if r.status.value in ACTIVE_STATUSES]
 
     if active_registrations and not request.force and not request.unpublish_all:
         raise APIError(
@@ -673,12 +674,14 @@ async def reconnect(
         )
 
     # Reset status and re-queue onboarding
+    # Store progress in metadata since ConnectionState has no progress fields
+    connection.metadata["progress"] = 0.0
+    connection.metadata["progress_message"] = "Reconnecting..."
     conn_manager.update_connection(
         connection_id,
         status=InternalConnectionStatus.CONNECTING,
         error_message=None,
-        progress=0.0,
-        progress_message="Reconnecting...",
+        metadata=connection.metadata,
     )
 
     # Queue background onboarding task
@@ -916,7 +919,7 @@ async def get_publication(
         raise APIError(
             code=ErrorCode.RESOURCE_NOT_FOUND,
             message="Connection not found",
-            detail={"connection_id": connection_id},
+            detail={"connection_id": registration.connection_id},
         )
     _assert_owner(connection, user)
 
@@ -961,7 +964,7 @@ async def update_publication(
         raise APIError(
             code=ErrorCode.RESOURCE_NOT_FOUND,
             message="Connection not found",
-            detail={"connection_id": connection_id},
+            detail={"connection_id": registration.connection_id},
         )
     _assert_owner(connection, user)
 
@@ -1035,7 +1038,7 @@ async def unpublish(
         raise APIError(
             code=ErrorCode.RESOURCE_NOT_FOUND,
             message="Connection not found",
-            detail={"connection_id": connection_id},
+            detail={"connection_id": registration.connection_id},
         )
     _assert_owner(connection, user)
 

@@ -420,11 +420,15 @@ export async function mockMagicImport(page: Page): Promise<void> {
 export async function mockDataspace(page: Page): Promise<void> {
   // Mock connection storage
   const connections = new Map<string, {
-    id: string;
+    connection_id: string;
     environment: string;
     edc_mode: string;
     status: string;
+    progress: number;
+    progress_message: string | null;
+    error_message: string | null;
     created_at: string;
+    updated_at: string;
   }>();
 
   // Mock health endpoint
@@ -498,12 +502,17 @@ export async function mockDataspace(page: Page): Promise<void> {
       // Create connection
       const body = request.postDataJSON();
       const id = `mock-conn-${Date.now()}`;
+      const now = new Date().toISOString();
       const connection = {
-        id,
+        connection_id: id,
         environment: body?.environment || 'sandbox',
         edc_mode: body?.edc_mode || 'tractus-x',
         status: 'connected',
-        created_at: new Date().toISOString(),
+        progress: 1.0,
+        progress_message: null,
+        error_message: null,
+        created_at: now,
+        updated_at: now,
       };
 
       connections.set(id, connection);
@@ -660,12 +669,17 @@ export function getMockDataspaceConnection(
   environment: string,
   edcMode: string
 ): DataspaceConnection {
+  const now = new Date().toISOString();
   return {
-    id: `mock-conn-${Date.now()}`,
+    connection_id: `mock-conn-${Date.now()}`,
     environment,
     edc_mode: edcMode,
     status: 'connected',
-    created_at: new Date().toISOString(),
+    progress: 1.0,
+    progress_message: null,
+    error_message: null,
+    created_at: now,
+    updated_at: now,
   };
 }
 

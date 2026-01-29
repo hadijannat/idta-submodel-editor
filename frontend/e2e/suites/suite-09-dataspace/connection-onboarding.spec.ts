@@ -64,7 +64,7 @@ test.describe('Dataspace Connection Onboarding', () => {
     test('can create sandbox connection', async () => {
       const connection = await api.createDataspaceConnection('sandbox', 'tractus-x');
 
-      expect(connection.id).toBeDefined();
+      expect(connection.connection_id).toBeDefined();
       expect(connection.environment).toBe('sandbox');
       expect(connection.edc_mode).toBe('tractus-x');
       expect(connection.status).toBeDefined();
@@ -73,9 +73,18 @@ test.describe('Dataspace Connection Onboarding', () => {
     test('connection has valid status', async () => {
       const connection = await api.createDataspaceConnection('sandbox', 'tractus-x');
 
-      expect(['connecting', 'connected', 'disconnected', 'error']).toContain(
-        connection.status
-      );
+      const validStatuses = [
+        'not_connected',
+        'provisioning_secrets',
+        'configuring_edc',
+        'registering_connector',
+        'publishing_self_description',
+        'connected',
+        'degraded',
+        'disconnected',
+        'failed',
+      ];
+      expect(validStatuses).toContain(connection.status);
     });
 
     test('can list connections', async () => {
@@ -90,9 +99,9 @@ test.describe('Dataspace Connection Onboarding', () => {
     test('can get connection details', async () => {
       const created = await api.createDataspaceConnection('sandbox', 'tractus-x');
 
-      const connection = await api.getDataspaceConnection(created.id);
+      const connection = await api.getDataspaceConnection(created.connection_id);
 
-      expect(connection.id).toBe(created.id);
+      expect(connection.connection_id).toBe(created.connection_id);
       expect(connection.environment).toBe('sandbox');
     });
   });
@@ -101,11 +110,11 @@ test.describe('Dataspace Connection Onboarding', () => {
     test('can delete connection', async () => {
       const connection = await api.createDataspaceConnection('sandbox', 'tractus-x');
 
-      await api.deleteDataspaceConnection(connection.id);
+      await api.deleteDataspaceConnection(connection.connection_id);
 
       // Verify deletion
       try {
-        await api.getDataspaceConnection(connection.id);
+        await api.getDataspaceConnection(connection.connection_id);
         // Should not reach here
         expect(false).toBe(true);
       } catch (error) {

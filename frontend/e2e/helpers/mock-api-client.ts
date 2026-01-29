@@ -159,7 +159,7 @@ export class MockableAPIClient extends APIClient {
   ): Promise<DataspaceConnection> {
     if (this.useMockDataspace) {
       const connection = getMockDataspaceConnection(environment, edcMode);
-      this.mockConnections.set(connection.id, connection);
+      this.mockConnections.set(connection.connection_id, connection);
       return connection;
     }
     return super.createDataspaceConnection(environment, edcMode);
