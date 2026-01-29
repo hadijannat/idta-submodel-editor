@@ -224,10 +224,9 @@ test.describe('Smoke Tests', () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  test('can complete full flow: select template, fill form, export', async ({ page, request }) => {
+  test('can complete full flow: select template, fill form, export', async ({ page }) => {
     const templateSelector = new TemplateSelectorPage(page);
     const formEditor = new FormEditorPage(page);
-    const api = new APIClient(request, API_BASE_URL);
 
     // 1. Navigate to app
     await templateSelector.goto();

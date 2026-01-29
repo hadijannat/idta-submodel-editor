@@ -144,7 +144,7 @@ test.describe('Client-Side Validation', () => {
 
       // Should show error while typing
       const errorIndicator = field.locator('.error, .invalid, [aria-invalid="true"]');
-      const hasError = await errorIndicator.isVisible().catch(() => false);
+      await errorIndicator.isVisible().catch(() => false);
 
       // Continue typing valid URL
       await input.clear();
@@ -253,7 +253,7 @@ test.describe('Client-Side Validation', () => {
       await formEditor.validate();
       await page.waitForTimeout(500);
 
-      const hadErrors = await formEditor.hasValidationErrors();
+      await formEditor.hasValidationErrors();
 
       // Navigate away and back
       await formEditor.goToStep('export');

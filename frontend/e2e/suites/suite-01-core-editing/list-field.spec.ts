@@ -279,7 +279,7 @@ test.describe('List Fields', () => {
   });
 
   test.describe('Export Integration', () => {
-    test('list items appear in exported data', async ({ request, page }) => {
+    test('list items appear in exported data', async ({ request }) => {
       const api = new APIClient(request, API_BASE_URL);
 
       // Use API to export with list data

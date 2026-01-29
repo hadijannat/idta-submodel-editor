@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import { APIClient } from '../../helpers/api-client';
-import { createPCFFormData, createCarbonFootprintFormData } from '../../helpers/test-data-factory';
+import { createCarbonFootprintFormData } from '../../helpers/test-data-factory';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 

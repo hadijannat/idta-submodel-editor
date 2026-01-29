@@ -70,7 +70,7 @@ test.describe('Property Fields', () => {
       expect(value).toBe('2024');
     });
 
-    test('integer property rejects non-numeric input', async ({ page }) => {
+    test('integer property rejects non-numeric input', async () => {
       await formEditor.fillProperty('YearOfConstruction', 'not-a-number');
 
       // Check for validation error or filtered input
@@ -105,7 +105,7 @@ test.describe('Property Fields', () => {
       expect(value).toContain('2024');
     });
 
-    test('date property shows date picker on focus', async ({ page }) => {
+    test('date property shows date picker on focus', async () => {
       const field = formEditor.getField('DateOfManufacture');
       const input = field.locator('input');
 

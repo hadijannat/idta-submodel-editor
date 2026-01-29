@@ -33,9 +33,8 @@ test.describe('Multi-Language Property Fields', () => {
 
       // Verify value was set (check the field contains the value)
       const field = formEditor.getMultiLangField('ManufacturerName');
-      const hasValue = await field.getByText('Test Manufacturer').isVisible().catch(() => false);
 
-      // Or check via input value
+      // Check via input value
       const input = field.locator('input, textarea').first();
       if (await input.isVisible()) {
         const value = await input.inputValue();
@@ -43,7 +42,7 @@ test.describe('Multi-Language Property Fields', () => {
       }
     });
 
-    test('can switch between languages', async ({ page }) => {
+    test('can switch between languages', async () => {
       const field = formEditor.getMultiLangField('ManufacturerName');
 
       const isVisible = await field.isVisible();
@@ -74,7 +73,7 @@ test.describe('Multi-Language Property Fields', () => {
       }
     });
 
-    test('different languages maintain separate values', async ({ page }) => {
+    test('different languages maintain separate values', async () => {
       const field = formEditor.getMultiLangField('ManufacturerName');
 
       const isVisible = await field.isVisible();
@@ -109,7 +108,7 @@ test.describe('Multi-Language Property Fields', () => {
   });
 
   test.describe('Add/Remove Languages', () => {
-    test('can add a new language', async ({ page }) => {
+    test('can add a new language', async () => {
       const field = formEditor.getMultiLangField('ManufacturerName');
 
       const isVisible = await field.isVisible();
@@ -130,7 +129,7 @@ test.describe('Multi-Language Property Fields', () => {
       }
     });
 
-    test('can remove a language', async ({ page }) => {
+    test('can remove a language', async () => {
       const field = formEditor.getMultiLangField('ManufacturerName');
 
       const isVisible = await field.isVisible();

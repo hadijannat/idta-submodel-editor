@@ -17,7 +17,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Determine base URLs from environment
 const BASE_URL = process.env.DEMO_BASE_URL || 'http://localhost:8080';
-const API_URL = process.env.VITE_API_URL || 'http://localhost:8000';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _API_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 
 // Determine profile
 const PROFILE = process.env.E2E_PROFILE || 'default';

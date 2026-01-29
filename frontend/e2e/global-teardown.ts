@@ -8,7 +8,8 @@ import { FullConfig } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export default async function globalTeardown(config: FullConfig): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export default async function globalTeardown(_config: FullConfig): Promise<void> {
   console.log('\n🧹 E2E Test Teardown');
   console.log('━'.repeat(50));
 

@@ -144,7 +144,7 @@ test.describe('Collection Fields', () => {
   });
 
   test.describe('Visual Indicators', () => {
-    test('collection shows expand/collapse icon', async ({ page }) => {
+    test('collection shows expand/collapse icon', async () => {
       const collection = formEditor.getCollectionField('ContactInformation');
 
       const isVisible = await collection.isVisible();
@@ -161,7 +161,7 @@ test.describe('Collection Fields', () => {
       await expect(expandIcon.first()).toBeVisible();
     });
 
-    test('collection header shows element count or label', async ({ page }) => {
+    test('collection header shows element count or label', async () => {
       const collection = formEditor.getCollectionField('ContactInformation');
 
       const isVisible = await collection.isVisible();
@@ -181,7 +181,7 @@ test.describe('Collection Fields', () => {
   });
 
   test.describe('Required Fields in Collections', () => {
-    test('required nested fields show validation errors', async ({ page }) => {
+    test('required nested fields show validation errors', async () => {
       // This test verifies that validation reaches into collections
       await formEditor.validate();
 
