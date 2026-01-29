@@ -90,8 +90,12 @@ export default defineConfig({
   // Retry configuration
   retries: process.env.CI ? 2 : 0,
 
-  // Parallel workers
-  workers: process.env.CI ? 1 : undefined,
+  // Parallel workers - limit to avoid test interference with shared backend
+  // CI: 1 worker for reliability, Local: 2 workers for speed with stability
+  workers: process.env.CI ? 1 : 2,
+
+  // Run tests within each file serially to avoid state conflicts
+  fullyParallel: false,
 
   // Reporter configuration
   reporter: process.env.CI
