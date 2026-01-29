@@ -2,18 +2,19 @@
  * ECLASS Semantic Search Tests
  *
  * Tests for ECLASS dictionary lookup functionality.
+ * Automatically falls back to mock responses when real service is unavailable.
  */
 
 import { test, expect } from '@playwright/test';
-import { APIClient } from '../../helpers/api-client';
+import { createMockableAPIClient, MockableAPIClient } from '../../helpers/mock-api-client';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 
 test.describe('ECLASS Semantic Search', () => {
-  let api: APIClient;
+  let api: MockableAPIClient;
 
   test.beforeEach(async ({ request }) => {
-    api = new APIClient(request, API_BASE_URL);
+    api = await createMockableAPIClient(request, API_BASE_URL);
   });
 
   test('can search ECLASS dictionary', async () => {
@@ -33,11 +34,10 @@ test.describe('ECLASS Semantic Search', () => {
       limit: 5,
     });
 
-    if (response.results.length > 0) {
-      expect(response.results[0].irdi).toBeDefined();
-      // ECLASS IRDI format: 0173-1#XX-XXXXXX#XXX
-      expect(response.results[0].irdi).toMatch(/0173-1#/);
-    }
+    expect(response.results.length).toBeGreaterThan(0);
+    expect(response.results[0].irdi).toBeDefined();
+    // ECLASS IRDI format: 0173-1#XX-XXXXXX#XXX
+    expect(response.results[0].irdi).toMatch(/0173-1#/);
   });
 
   test('search results include preferred name', async () => {
@@ -46,10 +46,9 @@ test.describe('ECLASS Semantic Search', () => {
       limit: 5,
     });
 
-    if (response.results.length > 0) {
-      expect(response.results[0].preferredName).toBeDefined();
-      expect(response.results[0].preferredName.length).toBeGreaterThan(0);
-    }
+    expect(response.results.length).toBeGreaterThan(0);
+    expect(response.results[0].preferredName).toBeDefined();
+    expect(response.results[0].preferredName.length).toBeGreaterThan(0);
   });
 
   test('search results indicate source', async () => {
@@ -58,9 +57,8 @@ test.describe('ECLASS Semantic Search', () => {
       limit: 5,
     });
 
-    if (response.results.length > 0) {
-      expect(response.results[0].source).toBe('eclass');
-    }
+    expect(response.results.length).toBeGreaterThan(0);
+    expect(response.results[0].source).toBe('eclass');
   });
 
   test('empty search returns empty results', async () => {

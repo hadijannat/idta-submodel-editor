@@ -3,31 +3,19 @@
  *
  * Tests for dataspace connection management including
  * environment selection, onboarding wizard, and health checks.
- *
- * Requires: docker-compose --profile dataspace up
+ * Automatically falls back to mock responses when real service is unavailable.
  */
 
 import { test, expect } from '@playwright/test';
-import { APIClient } from '../../helpers/api-client';
-import { checkDataspaceServices } from '../../helpers/docker-health';
+import { createMockableAPIClient, MockableAPIClient } from '../../helpers/mock-api-client';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 
 test.describe('Dataspace Connection Onboarding', () => {
-  let api: APIClient;
-
-  test.beforeAll(async () => {
-    // Check if dataspace services are available
-    const services = await checkDataspaceServices({ timeout: 5000 });
-    const allHealthy = services.every((s) => s.status === 'healthy');
-
-    if (!allHealthy) {
-      test.skip();
-    }
-  });
+  let api: MockableAPIClient;
 
   test.beforeEach(async ({ request }) => {
-    api = new APIClient(request, API_BASE_URL);
+    api = await createMockableAPIClient(request, API_BASE_URL);
   });
 
   test.describe('Environment Discovery', () => {
