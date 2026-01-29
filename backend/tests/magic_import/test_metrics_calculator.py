@@ -83,19 +83,27 @@ def sample_index() -> PDFIndex:
 @pytest.fixture
 def sample_tables() -> TableExtractionResult:
     """Create sample table extraction results."""
+    from app.schemas.magic_import import ExtractedTableCell
+
     return TableExtractionResult(
         tables=[
             ExtractedTable(
+                table_id="test-table-1",
                 page=0,
                 bbox=BBox(x0=0.1, y0=0.2, x1=0.9, y1=0.5),
-                headers=["Property", "Value"],
-                rows=[
-                    ["Serial Number", "SN-12345"],
-                    ["Weight", "5.5 kg"],
+                rows=3,
+                cols=2,
+                cells=[
+                    ExtractedTableCell(row=0, col=0, text="Property", is_header=True),
+                    ExtractedTableCell(row=0, col=1, text="Value", is_header=True),
+                    ExtractedTableCell(row=1, col=0, text="Serial Number"),
+                    ExtractedTableCell(row=1, col=1, text="SN-12345"),
+                    ExtractedTableCell(row=2, col=0, text="Weight"),
+                    ExtractedTableCell(row=2, col=1, text="5.5 kg"),
                 ],
-                table_type="key_value",
-                num_rows=2,
-                num_cols=2,
+                headers=["Property", "Value"],
+                accuracy=0.95,
+                method="LATTICE",
             ),
         ],
         total_tables=1,

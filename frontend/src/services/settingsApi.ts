@@ -73,6 +73,47 @@ export interface FeatureFlagsUpdate {
 }
 
 // ============================================================================
+// Provider Detail Types (for enhanced provider selection)
+// ============================================================================
+
+export interface ProviderDetailInfo {
+  name: string;
+  available: boolean;
+  model: string | null;
+  is_local: boolean;
+  privacy_note: string;
+  error: string | null;
+}
+
+export interface ModelRecommendation {
+  model_id: string;
+  display_name: string;
+  description: string;
+  min_memory_gb: number;
+  recommended_memory_gb: number;
+  quality_tier: 'high' | 'medium' | 'fast';
+  parameters: string;
+  quantization: string | null;
+  is_available: boolean;
+}
+
+export interface ProviderDetailResponse {
+  providers: ProviderDetailInfo[];
+  active_provider: string | null;
+  model_recommendations: Record<string, ModelRecommendation[]>;
+  fallback_supported: boolean;
+}
+
+export interface ProviderSelectResponse {
+  success: boolean;
+  selected_provider: string;
+  active_provider: string | null;
+  model: string | null;
+  fallback_used: boolean;
+  fallback_reason: string | null;
+}
+
+// ============================================================================
 // Provider Info
 // ============================================================================
 
@@ -264,6 +305,49 @@ export async function updateFeatureFlags(
   if (!response.ok) {
     const details = await response.json().catch(() => response.statusText);
     throw new ApiError('Failed to update feature flags', response.status, details);
+  }
+
+  return response.json();
+}
+
+// ============================================================================
+// Provider Detail API Functions
+// ============================================================================
+
+/**
+ * Get detailed provider information with model recommendations.
+ */
+export async function getProviderDetails(): Promise<ProviderDetailResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/magic-import/providers/info`);
+
+  if (!response.ok) {
+    const details = await response.json().catch(() => response.statusText);
+    throw new ApiError('Failed to load provider details', response.status, details);
+  }
+
+  return response.json();
+}
+
+/**
+ * Select a provider with optional fallback.
+ */
+export async function selectProvider(
+  provider: ProviderType,
+  useFallback: boolean = true
+): Promise<ProviderSelectResponse> {
+  const params = new URLSearchParams({
+    provider,
+    use_fallback: String(useFallback),
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/magic-import/providers/select?${params}`,
+    { method: 'POST' }
+  );
+
+  if (!response.ok) {
+    const details = await response.json().catch(() => response.statusText);
+    throw new ApiError('Failed to select provider', response.status, details);
   }
 
   return response.json();

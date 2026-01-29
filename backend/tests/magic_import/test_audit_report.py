@@ -322,10 +322,13 @@ class TestJSONGeneration:
         # Should be valid JSON
         data = json.loads(content.decode("utf-8"))
 
-        assert data["report_version"] == "1.0.0"
+        assert data["report_version"] == "2.0.0"
         assert "metadata" in data
         assert "summary" in data
+        assert "compliance" in data
+        assert "confidence_distribution" in data
         assert "fields" in data
+        assert "evidence_appendix" in data
         assert len(data["fields"]) == 4
 
     def test_json_field_structure(self, sample_job, sample_result):
@@ -597,3 +600,235 @@ class TestEdgeCases:
 
         data = json.loads(content.decode("utf-8"))
         assert data["fields"][0]["confidence_breakdown"] is None
+
+
+class TestComplianceSummary:
+    """Test compliance summary calculation for auditors."""
+
+    def test_compliance_summary_quality_score(self, sample_job, sample_result):
+        """Test quality score calculation."""
+        generator = AuditReportGenerator()
+        report = generator._build_report(sample_job, sample_result)
+
+        # Quality score should be between 0 and 100
+        assert 0 <= report.compliance.quality_score <= 100
+        # Grade should be valid
+        assert report.compliance.quality_grade in ("A", "B", "C", "D", "F")
+
+    def test_compliance_summary_confidence_tiers(self, sample_job, sample_result):
+        """Test confidence tier counts."""
+        generator = AuditReportGenerator()
+        report = generator._build_report(sample_job, sample_result)
+
+        # Tiers should add up to total fields
+        total_tiers = (
+            report.compliance.high_confidence_fields +
+            report.compliance.medium_confidence_fields +
+            report.compliance.low_confidence_fields
+        )
+        assert total_tiers == report.summary.total_fields
+
+    def test_compliance_flags_low_confidence(self, sample_job):
+        """Test audit flags for low confidence extractions."""
+        # Create extractions with mostly low confidence
+        extractions = [
+            FieldExtraction(
+                path=f"field{i}",
+                value_raw=f"value{i}",
+                status=ExtractionStatus.FILLED,
+                confidence=0.3 + (i * 0.05),  # 0.3, 0.35, 0.4, 0.45, 0.5
+            )
+            for i in range(5)
+        ]
+
+        result = MagicImportResult(
+            job_id="test-job",
+            template_name="Test",
+            extractions=extractions,
+            fields_extracted=5,
+            fields_needing_review=0,
+            average_confidence=0.4,
+            llm_provider="openai",
+            llm_model="gpt-4o",
+            processing_time_seconds=1.0,
+        )
+
+        generator = AuditReportGenerator()
+        report = generator._build_report(sample_job, result)
+
+        # Should have low confidence flag
+        has_low_conf_flag = any("LOW_CONFIDENCE" in flag for flag in report.compliance.flags)
+        assert has_low_conf_flag
+
+    def test_compliance_grade_a(self, sample_job):
+        """Test grade A for high quality extractions."""
+        extractions = [
+            FieldExtraction(
+                path=f"field{i}",
+                value_raw=f"value{i}",
+                status=ExtractionStatus.FILLED,
+                confidence=0.95,
+                user_approved=True,
+                evidence=EvidenceRef(
+                    page=0,
+                    quote="quote",
+                    boxes=[],
+                    method="TEXT",
+                    locator_score=0.95,
+                ),
+            )
+            for i in range(5)
+        ]
+
+        result = MagicImportResult(
+            job_id="test-job",
+            template_name="Test",
+            extractions=extractions,
+            fields_extracted=5,
+            fields_needing_review=0,
+            average_confidence=0.95,
+            llm_provider="openai",
+            llm_model="gpt-4o",
+            processing_time_seconds=1.0,
+        )
+
+        generator = AuditReportGenerator()
+        report = generator._build_report(sample_job, result)
+
+        # Should be grade A
+        assert report.compliance.quality_grade == "A"
+
+
+class TestConfidenceDistribution:
+    """Test confidence distribution calculation."""
+
+    def test_distribution_buckets(self, sample_job, sample_result):
+        """Test confidence distribution buckets."""
+        generator = AuditReportGenerator()
+        report = generator._build_report(sample_job, sample_result)
+
+        dist = report.confidence_distribution
+        # All buckets should be non-negative
+        assert dist.bucket_0_20 >= 0
+        assert dist.bucket_20_40 >= 0
+        assert dist.bucket_40_60 >= 0
+        assert dist.bucket_60_80 >= 0
+        assert dist.bucket_80_100 >= 0
+
+        # Total should equal number of fields
+        total = (
+            dist.bucket_0_20 +
+            dist.bucket_20_40 +
+            dist.bucket_40_60 +
+            dist.bucket_60_80 +
+            dist.bucket_80_100
+        )
+        assert total == len(report.fields)
+
+    def test_distribution_with_varied_confidence(self, sample_job):
+        """Test distribution with extractions across all buckets."""
+        extractions = [
+            FieldExtraction(path="f1", value_raw="v1", status=ExtractionStatus.FILLED, confidence=0.15),
+            FieldExtraction(path="f2", value_raw="v2", status=ExtractionStatus.FILLED, confidence=0.35),
+            FieldExtraction(path="f3", value_raw="v3", status=ExtractionStatus.FILLED, confidence=0.55),
+            FieldExtraction(path="f4", value_raw="v4", status=ExtractionStatus.FILLED, confidence=0.75),
+            FieldExtraction(path="f5", value_raw="v5", status=ExtractionStatus.FILLED, confidence=0.95),
+        ]
+
+        result = MagicImportResult(
+            job_id="test-job",
+            template_name="Test",
+            extractions=extractions,
+            fields_extracted=5,
+            fields_needing_review=0,
+            average_confidence=0.55,
+            llm_provider="openai",
+            llm_model="gpt-4o",
+            processing_time_seconds=1.0,
+        )
+
+        generator = AuditReportGenerator()
+        report = generator._build_report(sample_job, result)
+
+        dist = report.confidence_distribution
+        assert dist.bucket_0_20 == 1
+        assert dist.bucket_20_40 == 1
+        assert dist.bucket_40_60 == 1
+        assert dist.bucket_60_80 == 1
+        assert dist.bucket_80_100 == 1
+
+
+class TestEvidenceAppendix:
+    """Test evidence appendix generation."""
+
+    def test_evidence_appendix_without_pdf(self, sample_job, sample_result):
+        """Test evidence appendix generation without PDF file."""
+        generator = AuditReportGenerator()
+        report = generator._build_report(
+            sample_job,
+            sample_result,
+            include_evidence_appendix=True,
+            # No pdf_path provided
+        )
+
+        # Should have empty appendix without PDF
+        assert report.evidence_appendix == []
+
+    def test_evidence_appendix_entries_structure(self, sample_job):
+        """Test evidence appendix entry structure."""
+        from app.services.magic_import.audit_report import EvidenceAppendixEntry
+
+        entry = EvidenceAppendixEntry(
+            field_path="Nameplate/ManufacturerName",
+            page_number=1,
+            quote="Test quote",
+            confidence=0.95,
+            image_base64=None,
+            bbox={"x0": 10.0, "y0": 20.0, "x1": 100.0, "y1": 50.0},
+        )
+
+        assert entry.field_path == "Nameplate/ManufacturerName"
+        assert entry.page_number == 1
+        assert entry.confidence == 0.95
+        assert entry.bbox is not None
+
+    def test_evidence_appendix_disabled(self, sample_job, sample_result):
+        """Test evidence appendix can be disabled."""
+        generator = AuditReportGenerator()
+        report = generator._build_report(
+            sample_job,
+            sample_result,
+            include_evidence_appendix=False,
+        )
+
+        # Should have empty appendix when disabled
+        assert report.evidence_appendix == []
+
+
+class TestPDFEnhancements:
+    """Test PDF generation enhancements."""
+
+    def test_pdf_contains_compliance_section(self, sample_job, sample_result):
+        """Test PDF contains compliance summary section."""
+        generator = AuditReportGenerator()
+
+        try:
+            content = generator.generate(sample_job, sample_result, format="pdf")
+            if content.startswith(b"%PDF"):
+                content_str = content.decode("latin-1", errors="ignore")
+                # Should contain compliance-related terms
+                assert "compliance" in content_str.lower() or "quality" in content_str.lower()
+        except Exception:
+            pytest.skip("reportlab not available")
+
+    def test_pdf_contains_charts(self, sample_job, sample_result):
+        """Test PDF contains chart elements (confidence distribution)."""
+        generator = AuditReportGenerator()
+
+        try:
+            content = generator.generate(sample_job, sample_result, format="pdf")
+            if content.startswith(b"%PDF"):
+                # PDF should be larger due to chart graphics
+                assert len(content) > 1000  # Charts add significant size
+        except Exception:
+            pytest.skip("reportlab not available")

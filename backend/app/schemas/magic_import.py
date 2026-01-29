@@ -63,6 +63,11 @@ class BBox(BaseModel):
     y0: float = Field(ge=0.0, le=1.0, description="Top edge (normalized)")
     x1: float = Field(ge=0.0, le=1.0, description="Right edge (normalized)")
     y1: float = Field(ge=0.0, le=1.0, description="Bottom edge (normalized)")
+    # Phase 1.1: Interactive evidence highlighting
+    box_id: str | None = Field(default=None, description="Unique identifier for interactive highlighting")
+    word_confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="OCR confidence for this bounding box"
+    )
 
     def to_absolute(self, width: float, height: float) -> tuple[float, float, float, float]:
         """Convert to absolute coordinates."""
@@ -365,6 +370,32 @@ class PDFWord(BaseModel):
     method: Literal["TEXT", "OCR"] = "TEXT"
 
 
+class ExtractedTableCell(BaseModel):
+    """A cell in an extracted table."""
+
+    row: int
+    col: int
+    text: str
+    bbox: BBox | None = None
+    is_header: bool = False
+    row_span: int = 1
+    col_span: int = 1
+
+
+class ExtractedTable(BaseModel):
+    """A table extracted from a PDF page."""
+
+    table_id: str = Field(description="Unique identifier for the table")
+    page: int = Field(description="0-indexed page number")
+    bbox: BBox = Field(description="Bounding box of the table in normalized coordinates")
+    rows: int = Field(description="Number of rows")
+    cols: int = Field(description="Number of columns")
+    cells: list[ExtractedTableCell] = Field(description="Flattened list of cells")
+    headers: list[str] = Field(default_factory=list, description="Detected column headers")
+    accuracy: float = Field(ge=0.0, le=1.0, description="Extraction accuracy score")
+    method: Literal["LATTICE", "STREAM"] = Field(description="Extraction method used")
+
+
 class PDFIndex(BaseModel):
     """Full index of a PDF document."""
 
@@ -373,6 +404,9 @@ class PDFIndex(BaseModel):
     info: PDFIndexInfo
     pages: list[PDFPageInfo]
     words: list[PDFWord]
+    tables: list[ExtractedTable] = Field(
+        default_factory=list, description="Tables extracted from the document"
+    )
 
 
 class Snippet(BaseModel):

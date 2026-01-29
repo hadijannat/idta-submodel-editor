@@ -8,7 +8,7 @@
  * - Apply to form
  */
 
-import { useCallback, useMemo, useRef, useId, useState } from 'react';
+import { useCallback, useMemo, useRef, useId, useState, useEffect } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelFormData } from '../../types/aas-elements';
 import type { SubmodelUISchema } from '../../types/ui-schema';
@@ -17,6 +17,7 @@ import PdfViewer from './PdfViewer';
 import ExtractionReviewTable from './ExtractionReviewTable';
 import ProvenancePanel from './ProvenancePanel';
 import ProviderQuickStatus from './ProviderQuickStatus';
+import ProviderSelector from './ProviderSelector';
 import { LLMSettingsPanel } from '../LLMSettings';
 import { downloadAuditReport } from '../../services/magicImportApi';
 import './MagicImport.css';
@@ -54,6 +55,8 @@ export default function MagicImportPanel({
     updateExtraction,
     approveExtraction,
     approveAll,
+    approveMany,
+    unapproveMany,
     reextractPaths,
     applyToForm,
     reset,
@@ -70,8 +73,13 @@ export default function MagicImportPanel({
   const inputId = useId();
   const [focusToken, setFocusToken] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showProviderSelector, setShowProviderSelector] = useState(false);
   const [showAuditMenu, setShowAuditMenu] = useState(false);
   const [auditExporting, setAuditExporting] = useState<'json' | 'pdf' | null>(null);
+
+  // Evidence highlighting state (within selected extraction)
+  const [highlightedBoxIndex, setHighlightedBoxIndex] = useState<number | null>(null);
+  const [highlightAllBoxes, setHighlightAllBoxes] = useState(false);
 
   // Handle file selection
   const handleFileSelect = useCallback(
@@ -120,6 +128,12 @@ export default function MagicImportPanel({
     [extractions, selectedExtractionPath]
   );
 
+  // Reset evidence focus when selection changes
+  useEffect(() => {
+    setHighlightedBoxIndex(null);
+    setHighlightAllBoxes(false);
+  }, [selectedExtractionPath]);
+
   // Count ready extractions
   const readyCount = extractions.filter((e) => e.user_approved || e.status === 'filled').length;
   const fieldsExtracted = extractions.length;
@@ -140,6 +154,31 @@ export default function MagicImportPanel({
 
   const handleFocusEvidence = useCallback(() => {
     setFocusToken((token) => token + 1);
+  }, []);
+
+  // Handle hover from PDF viewer
+  const handleBoxHover = useCallback((boxIndex: number | null) => {
+    setHighlightedBoxIndex(boxIndex);
+  }, []);
+
+  // Handle explicit focus from provenance carousel
+  const handleBoxFocus = useCallback((boxIndex: number) => {
+    setHighlightAllBoxes(false);
+    setHighlightedBoxIndex(boxIndex);
+  }, []);
+
+  // Handle click from PDF box - pins highlight to that box
+  const handleBoxClick = useCallback((boxIndex: number) => {
+    setHighlightedBoxIndex(boxIndex);
+    setHighlightAllBoxes(false);
+  }, []);
+
+  // Handle "View All" toggle from provenance panel
+  const handleToggleViewAll = useCallback((active: boolean) => {
+    setHighlightAllBoxes(active);
+    if (active) {
+      setHighlightedBoxIndex(null);
+    }
   }, []);
 
   // Handle audit report export
@@ -180,7 +219,10 @@ export default function MagicImportPanel({
         </div>
 
         {/* Provider Status */}
-        <ProviderQuickStatus onConfigureClick={() => setShowSettings(true)} />
+        <ProviderQuickStatus
+          onChangeProviderClick={() => setShowProviderSelector(true)}
+          onConfigureClick={() => setShowSettings(true)}
+        />
 
         <label
           htmlFor={inputId}
@@ -210,7 +252,26 @@ export default function MagicImportPanel({
 
         {error && <div className="magic-import-panel__error">{error}</div>}
 
-        {/* Settings Modal */}
+        {/* Provider Selector Modal (Quick selection with privacy indicators) */}
+        {showProviderSelector && (
+          <div
+            className="magic-import-panel__settings-overlay"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowProviderSelector(false);
+              }
+            }}
+          >
+            <ProviderSelector
+              onClose={() => setShowProviderSelector(false)}
+              onProviderSelected={() => {
+                setShowProviderSelector(false);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Full Settings Modal (for API key configuration) */}
         {showSettings && (
           <div
             className="magic-import-panel__settings-overlay"
@@ -439,6 +500,10 @@ export default function MagicImportPanel({
             evidence={selectedExtraction?.evidence ?? null}
             confidence={selectedExtraction?.confidence}
             focusToken={focusToken}
+            highlightedBoxIndex={highlightedBoxIndex}
+            highlightAllBoxes={highlightAllBoxes}
+            onBoxHover={handleBoxHover}
+            onBoxClick={handleBoxClick}
           />
         </div>
 
@@ -453,6 +518,9 @@ export default function MagicImportPanel({
               onUpdate={updateExtraction}
               onApprove={approveExtraction}
               onApproveAll={approveAll}
+              onApproveMany={approveMany}
+              onUnapproveMany={unapproveMany}
+              highlightSelectedRow={highlightedBoxIndex !== null || highlightAllBoxes}
             />
             <ProvenancePanel
               extraction={selectedExtraction ?? null}
@@ -467,6 +535,8 @@ export default function MagicImportPanel({
               }
               onClose={() => selectExtraction(null)}
               isReExtracting={isReextracting}
+              onFocusBox={handleBoxFocus}
+              onToggleViewAll={handleToggleViewAll}
             />
           </div>
         </div>

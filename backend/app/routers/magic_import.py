@@ -502,6 +502,181 @@ async def get_provider_status(
     }
 
 
+class ProviderInfoResponse(BaseModel):
+    """Detailed provider information."""
+
+    name: str
+    available: bool
+    model: str | None
+    is_local: bool
+    privacy_note: str
+    error: str | None = None
+
+
+class ModelRecommendationResponse(BaseModel):
+    """Model recommendation with system requirements."""
+
+    model_id: str
+    display_name: str
+    description: str
+    min_memory_gb: int
+    recommended_memory_gb: int
+    quality_tier: str
+    parameters: str
+    quantization: str | None
+    is_available: bool = False
+
+
+class ProviderDetailResponse(BaseModel):
+    """Extended provider details with recommendations."""
+
+    providers: list[ProviderInfoResponse]
+    active_provider: str | None
+    model_recommendations: dict[str, list[ModelRecommendationResponse]]
+    fallback_supported: bool
+
+
+@router.get("/providers/info", response_model=ProviderDetailResponse)
+async def get_provider_info(
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> ProviderDetailResponse:
+    """
+    Get detailed information about all LLM providers.
+
+    Includes:
+    - Availability status for each provider
+    - Privacy notes (local vs cloud)
+    - Model recommendations for local provider
+    - Fallback chain support
+    """
+    from app.services import settings_service
+    from app.services.magic_import.llm.factory import get_provider_info
+    from app.services.magic_import.llm.local_provider import (
+        LocalProvider,
+        RECOMMENDED_MODELS,
+    )
+
+    # Get provider info
+    provider_infos = get_provider_info()
+
+    # Get active provider
+    active = settings_service.get_effective_provider()
+
+    # Get model recommendations for local provider
+    recommendations: dict[str, list[ModelRecommendationResponse]] = {}
+
+    # Check which local models are available (independent of configured model)
+    local_models: set[str] = set()
+    try:
+        base_url = settings_service.get_effective_base_url("local")
+        local = LocalProvider(
+            model=settings_service.get_effective_model("local"),
+            base_url=base_url,
+        )
+        available_models = await local.list_available_models()
+        local_models = {m.split(":")[0] for m in available_models if m}
+    except Exception:
+        pass
+
+    for use_case, recs in RECOMMENDED_MODELS.items():
+        recommendations[use_case] = [
+            ModelRecommendationResponse(
+                model_id=r.model_id,
+                display_name=r.display_name,
+                description=r.description,
+                min_memory_gb=r.min_memory_gb,
+                recommended_memory_gb=r.recommended_memory_gb,
+                quality_tier=r.quality_tier,
+                parameters=r.parameters,
+                quantization=r.quantization,
+                is_available=r.model_id.split(":")[0] in local_models,
+            )
+            for r in recs
+        ]
+
+    return ProviderDetailResponse(
+        providers=[
+            ProviderInfoResponse(
+                name=p.name,
+                available=p.available,
+                model=p.model,
+                is_local=p.is_local,
+                privacy_note=p.privacy_note,
+                error=p.error,
+            )
+            for p in provider_infos
+        ],
+        active_provider=active,
+        model_recommendations=recommendations,
+        fallback_supported=True,
+    )
+
+
+@router.post("/providers/select")
+async def select_provider(
+    provider: str = Query(..., description="Provider to select"),
+    use_fallback: bool = Query(True, description="Enable fallback if unavailable"),
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> dict:
+    """
+    Select LLM provider for extraction.
+
+    If use_fallback is True and the selected provider is unavailable,
+    will attempt to use fallback providers in order.
+    """
+    from app.services import settings_service
+    from app.services.magic_import.llm.factory import (
+        DEFAULT_FALLBACK_ORDER,
+        get_provider_with_fallback,
+        get_available_providers,
+    )
+
+    valid_providers = ["openai", "anthropic", "openrouter", "local"]
+    if provider not in valid_providers:
+        raise APIError(
+            code=ErrorCode.INVALID_ARGUMENT,
+            message=f"Invalid provider: {provider}. Must be one of: {valid_providers}",
+        )
+
+    # Try to get the provider
+    if use_fallback:
+        preference = [provider] + [p for p in DEFAULT_FALLBACK_ORDER if p != provider]
+        actual_provider, fallback_reason = get_provider_with_fallback(
+            preference=preference
+        )
+        if actual_provider:
+            settings_service.set_active_provider(actual_provider.name)
+            return {
+                "success": True,
+                "selected_provider": provider,
+                "active_provider": actual_provider.name,
+                "model": actual_provider.model,
+                "fallback_used": actual_provider.name != provider,
+                "fallback_reason": fallback_reason,
+            }
+    else:
+        available = get_available_providers()
+        if provider in available:
+            settings_service.set_active_provider(provider)
+            return {
+                "success": True,
+                "selected_provider": provider,
+                "active_provider": provider,
+                "model": settings_service.get_effective_model(provider),
+                "fallback_used": False,
+                "fallback_reason": None,
+            }
+
+    return {
+        "success": False,
+        "selected_provider": provider,
+        "active_provider": None,
+        "model": None,
+        "fallback_used": False,
+        "fallback_reason": f"Provider {provider} not available",
+    }
+
+
 @router.post("/health")
 async def health_check() -> dict:
     """Check if Magic Import service is healthy."""

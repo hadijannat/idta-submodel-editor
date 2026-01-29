@@ -46,6 +46,8 @@ interface UseMagicImportReturn {
   updateExtraction: (path: string, value: string) => void;
   approveExtraction: (path: string) => void;
   approveAll: () => void;
+  approveMany: (paths: string[]) => void;
+  unapproveMany: (paths: string[]) => void;
   reextractPaths: (paths: string[], hint?: string) => Promise<void>;
   applyToForm: () => void;
   reset: () => void;
@@ -216,6 +218,40 @@ export function useMagicImport({
     );
   }, []);
 
+  // Approve multiple extractions by path
+  const approveMany = useCallback((paths: string[]) => {
+    const pathSet = new Set(paths);
+    setExtractions((prev) =>
+      prev.map((e) =>
+        pathSet.has(e.path)
+          ? {
+              ...e,
+              user_approved: true,
+              needs_review: false,
+              status: e.status === 'empty' ? e.status : 'filled',
+            }
+          : e
+      )
+    );
+  }, []);
+
+  // Unapprove multiple extractions (for undo functionality)
+  const unapproveMany = useCallback((paths: string[]) => {
+    const pathSet = new Set(paths);
+    setExtractions((prev) =>
+      prev.map((e) =>
+        pathSet.has(e.path)
+          ? {
+              ...e,
+              user_approved: false,
+              needs_review: true,
+              status: 'needs_review' as const,
+            }
+          : e
+      )
+    );
+  }, []);
+
   // Re-extract specific fields
   const reextractPaths = useCallback(
     async (paths: string[], hint?: string) => {
@@ -331,6 +367,8 @@ export function useMagicImport({
     updateExtraction,
     approveExtraction,
     approveAll,
+    approveMany,
+    unapproveMany,
     reextractPaths,
     applyToForm,
     reset,

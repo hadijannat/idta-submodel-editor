@@ -2,6 +2,7 @@
 Local LLM provider for Magic Import using Ollama.
 
 Supports local models like Llama 3, Mistral, Mixtral, etc.
+Provides model recommendations based on system capabilities.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import httpx
@@ -24,11 +26,119 @@ from app.schemas.magic_import import LLMExtractionResponse, LLMFieldExtraction
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class ModelRecommendation:
+    """Recommendation for a local LLM model."""
+
+    model_id: str
+    display_name: str
+    description: str
+    min_memory_gb: int
+    recommended_memory_gb: int
+    quality_tier: str  # "high", "medium", "fast"
+    parameters: str  # e.g., "8B", "70B"
+    quantization: str | None  # e.g., "Q4_0", "Q8_0"
+
+
+# Recommended models for Magic Import extraction
+RECOMMENDED_MODELS: dict[str, list[ModelRecommendation]] = {
+    "extraction": [
+        ModelRecommendation(
+            model_id="llama3.1:8b-instruct-q8_0",
+            display_name="Llama 3.1 8B (Q8)",
+            description="Best quality/speed balance. Strong extraction accuracy.",
+            min_memory_gb=8,
+            recommended_memory_gb=12,
+            quality_tier="high",
+            parameters="8B",
+            quantization="Q8_0",
+        ),
+        ModelRecommendation(
+            model_id="llama3.1:8b",
+            display_name="Llama 3.1 8B",
+            description="Excellent extraction quality. Default quantization.",
+            min_memory_gb=6,
+            recommended_memory_gb=8,
+            quality_tier="high",
+            parameters="8B",
+            quantization=None,
+        ),
+        ModelRecommendation(
+            model_id="mistral:7b-instruct-v0.3-q4_0",
+            display_name="Mistral 7B Instruct (Q4)",
+            description="Good extraction quality. Lower memory footprint.",
+            min_memory_gb=4,
+            recommended_memory_gb=6,
+            quality_tier="medium",
+            parameters="7B",
+            quantization="Q4_0",
+        ),
+        ModelRecommendation(
+            model_id="phi3:3.8b-mini-128k-instruct-q4_0",
+            display_name="Phi-3 Mini 3.8B (Q4)",
+            description="Compact model for systems with limited RAM.",
+            min_memory_gb=3,
+            recommended_memory_gb=4,
+            quality_tier="fast",
+            parameters="3.8B",
+            quantization="Q4_0",
+        ),
+    ],
+    "fast": [
+        ModelRecommendation(
+            model_id="gemma2:2b-instruct-q4_0",
+            display_name="Gemma 2 2B (Q4)",
+            description="Very fast inference. Good for quick iterations.",
+            min_memory_gb=2,
+            recommended_memory_gb=3,
+            quality_tier="fast",
+            parameters="2B",
+            quantization="Q4_0",
+        ),
+        ModelRecommendation(
+            model_id="qwen2.5:1.5b-instruct-q4_0",
+            display_name="Qwen 2.5 1.5B (Q4)",
+            description="Ultra-compact. Works on low-memory systems.",
+            min_memory_gb=2,
+            recommended_memory_gb=3,
+            quality_tier="fast",
+            parameters="1.5B",
+            quantization="Q4_0",
+        ),
+    ],
+    "high_quality": [
+        ModelRecommendation(
+            model_id="llama3.1:70b-instruct-q4_0",
+            display_name="Llama 3.1 70B (Q4)",
+            description="Best extraction accuracy. Requires high-end GPU.",
+            min_memory_gb=40,
+            recommended_memory_gb=48,
+            quality_tier="high",
+            parameters="70B",
+            quantization="Q4_0",
+        ),
+        ModelRecommendation(
+            model_id="mixtral:8x7b-instruct-v0.1-q4_0",
+            display_name="Mixtral 8x7B (Q4)",
+            description="Mixture of Experts. Excellent quality.",
+            min_memory_gb=24,
+            recommended_memory_gb=32,
+            quality_tier="high",
+            parameters="8x7B",
+            quantization="Q4_0",
+        ),
+    ],
+}
+
+
 class LocalProvider(LLMProvider):
     """Local Ollama provider for structured extraction."""
 
     # Default timeout for local inference (can be slow)
     DEFAULT_TIMEOUT = 120.0
+
+    # Model recommendations by use case
+    MODEL_RECOMMENDATIONS = RECOMMENDED_MODELS
 
     def __init__(self, model: str | None = None, base_url: str | None = None) -> None:
         self.settings = get_settings()
@@ -205,3 +315,87 @@ class LocalProvider(LLMProvider):
         except Exception as e:
             logger.warning("Failed to pull model %s: %s", self._model, e)
             return False
+
+    async def list_available_models(self) -> list[str]:
+        """Get list of locally available Ollama models."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{self._base_url}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
+                    return [m.get("name", "") for m in data.get("models", [])]
+        except Exception as e:
+            logger.debug("Failed to list Ollama models: %s", e)
+        return []
+
+    async def get_best_model(
+        self, use_case: str = "extraction"
+    ) -> str | None:
+        """
+        Select the best available model for the given use case.
+
+        Checks which recommended models are already downloaded and
+        returns the highest quality one available.
+
+        Args:
+            use_case: One of "extraction", "fast", "high_quality"
+
+        Returns:
+            Model identifier if found, None if no suitable model available
+        """
+        recommendations = self.MODEL_RECOMMENDATIONS.get(use_case, [])
+        if not recommendations:
+            recommendations = self.MODEL_RECOMMENDATIONS["extraction"]
+
+        available = await self.list_available_models()
+        if not available:
+            return None
+
+        # Normalize model names for comparison (remove tag if not specified)
+        def normalize(name: str) -> str:
+            return name.split(":")[0]
+
+        available_bases = {normalize(m) for m in available}
+
+        # Try recommendations in order (they're sorted by quality)
+        for rec in recommendations:
+            rec_base = normalize(rec.model_id)
+            if rec_base in available_bases:
+                # Find the exact match with tag if possible
+                for avail in available:
+                    if avail == rec.model_id or normalize(avail) == rec_base:
+                        logger.info(
+                            "Selected best model for %s: %s", use_case, avail
+                        )
+                        return avail
+
+        # Fallback: return any available model
+        if available:
+            logger.info(
+                "No recommended model found for %s, using: %s",
+                use_case,
+                available[0],
+            )
+            return available[0]
+
+        return None
+
+    @classmethod
+    def get_model_recommendations(
+        cls, use_case: str = "extraction"
+    ) -> list[ModelRecommendation]:
+        """
+        Get recommended models for a use case.
+
+        Args:
+            use_case: One of "extraction", "fast", "high_quality"
+
+        Returns:
+            List of ModelRecommendation objects
+        """
+        return cls.MODEL_RECOMMENDATIONS.get(use_case, [])
+
+    @classmethod
+    def get_all_recommendations(cls) -> dict[str, list[ModelRecommendation]]:
+        """Get all model recommendations by use case."""
+        return cls.MODEL_RECOMMENDATIONS

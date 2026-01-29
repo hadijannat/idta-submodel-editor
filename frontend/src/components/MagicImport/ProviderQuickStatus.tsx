@@ -11,10 +11,16 @@ import { ProviderStatusBadge } from '../LLMSettings';
 import './MagicImport.css';
 
 interface ProviderQuickStatusProps {
+  /** Callback when user clicks to configure/change provider */
   onConfigureClick?: () => void;
+  /** Callback when user wants to change provider (opens selector) */
+  onChangeProviderClick?: () => void;
 }
 
-export function ProviderQuickStatus({ onConfigureClick }: ProviderQuickStatusProps) {
+export function ProviderQuickStatus({
+  onConfigureClick,
+  onChangeProviderClick,
+}: ProviderQuickStatusProps) {
   const [status, setStatus] = useState<StatusType | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -87,8 +93,11 @@ export function ProviderQuickStatus({ onConfigureClick }: ProviderQuickStatusPro
     ? status.provider.charAt(0).toUpperCase() + status.provider.slice(1)
     : 'Unknown';
 
+  // Show privacy indicator for local provider
+  const isLocal = status.provider === 'local';
+
   return (
-    <div className="llm-quick-status">
+    <div className={`llm-quick-status ${isLocal ? 'llm-quick-status--local' : ''}`}>
       <div className="llm-quick-status__info">
         <ProviderStatusBadge
           status={status.healthy ? 'connected' : 'error'}
@@ -98,16 +107,34 @@ export function ProviderQuickStatus({ onConfigureClick }: ProviderQuickStatusPro
         {status.model && (
           <span className="llm-quick-status__model">· {status.model}</span>
         )}
+        {/* Privacy indicator */}
+        {isLocal && (
+          <span className="llm-quick-status__privacy" title="Data stays on your machine">
+            🔒
+          </span>
+        )}
       </div>
-      {onConfigureClick && (
-        <button
-          type="button"
-          className="llm-quick-status__link"
-          onClick={onConfigureClick}
-        >
-          Change Provider →
-        </button>
-      )}
+      <div className="llm-quick-status__actions">
+        {(onChangeProviderClick || onConfigureClick) && (
+          <button
+            type="button"
+            className="llm-quick-status__link"
+            onClick={onChangeProviderClick || onConfigureClick}
+          >
+            Change →
+          </button>
+        )}
+        {onConfigureClick && onChangeProviderClick && (
+          <button
+            type="button"
+            className="llm-quick-status__link llm-quick-status__link--secondary"
+            onClick={onConfigureClick}
+            title="Configure API keys"
+          >
+            ⚙️
+          </button>
+        )}
+      </div>
     </div>
   );
 }
