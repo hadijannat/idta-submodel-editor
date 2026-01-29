@@ -285,9 +285,9 @@ async def get_fields_by_semantic_id(
 async def get_field_keywords(
     idta_number: str,
     path: str,
+    index: Annotated[TemplateKnowledgeIndex, Depends(get_knowledge_index)],
     include_similar: bool = Query(default=True, description="Include keywords from similar fields"),
     max_keywords: int = Query(default=20, ge=1, le=50, description="Maximum keywords to return"),
-    index: Annotated[TemplateKnowledgeIndex, Depends(get_knowledge_index)],
 ) -> dict:
     """
     Get extraction keywords for a specific field.
