@@ -173,8 +173,8 @@ export interface PCFCalculationResult {
 // ============================================================================
 
 export class APIClient {
-  private baseURL: string;
-  private request: APIRequestContext;
+  protected baseURL: string;
+  protected request: APIRequestContext;
 
   constructor(request: APIRequestContext, baseURL: string = 'http://localhost:8000') {
     this.request = request;

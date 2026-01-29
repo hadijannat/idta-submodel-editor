@@ -74,14 +74,15 @@ export class MockableAPIClient extends APIClient {
     dataspace: boolean;
   }> {
     // Check each service and enable mocks if unavailable
+    // Pass baseURL to availability checks for consistency
     if (!this.useMockSemantic) {
-      this.useMockSemantic = !(await isSemanticServiceAvailable(request));
+      this.useMockSemantic = !(await isSemanticServiceAvailable(request, this.baseURL));
     }
     if (!this.useMockMagicImport) {
-      this.useMockMagicImport = !(await isMagicImportServiceAvailable(request));
+      this.useMockMagicImport = !(await isMagicImportServiceAvailable(request, this.baseURL));
     }
     if (!this.useMockDataspace) {
-      this.useMockDataspace = !(await isDataspaceServiceAvailable(request));
+      this.useMockDataspace = !(await isDataspaceServiceAvailable(request, this.baseURL));
     }
 
     return {
@@ -124,7 +125,7 @@ export class MockableAPIClient extends APIClient {
     if (this.useMockMagicImport) {
       return {
         job_id: jobId,
-        status: 'completed',
+        status: 'done',
       };
     }
     return super.getMagicImportJobStatus(jobId);

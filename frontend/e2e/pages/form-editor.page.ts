@@ -45,11 +45,11 @@ export class FormEditorPage {
     this.stepperSidebar = page.locator('.wizard-stepper');
     this.exportPanel = page.locator('.app-export-sidebar');
 
-    // Stepper steps - target wizard-step buttons specifically to avoid matching export buttons
-    this.configureInstanceStep = page.locator('button.wizard-step', { hasText: /Configure Instance/i });
-    this.magicImportStep = page.locator('button.wizard-step', { hasText: /Magic Import/i });
-    this.fillFieldsStep = page.locator('button.wizard-step', { hasText: /Fill.*Fields/i });
-    this.exportStep = page.locator('button.wizard-step', { hasText: /Export/i });
+    // Stepper steps - scoped to stepperSidebar to avoid collisions with nested wizards
+    this.configureInstanceStep = this.stepperSidebar.locator('button.wizard-step', { hasText: /Configure Instance/i });
+    this.magicImportStep = this.stepperSidebar.locator('button.wizard-step', { hasText: /Magic Import/i });
+    this.fillFieldsStep = this.stepperSidebar.locator('button.wizard-step', { hasText: /Fill.*Fields/i });
+    this.exportStep = this.stepperSidebar.locator('button.wizard-step', { hasText: /Export/i });
 
     // Form controls
     this.saveButton = page.getByRole('button', { name: /save/i });
@@ -195,7 +195,7 @@ export class FormEditorPage {
   /**
    * Fill a multi-language property value for a specific language.
    * @param labelText - The label text of the field (e.g., "ManufacturerName")
-   * @param language - Language code or label (e.g., "en" or "English")
+   * @param language - Language code (e.g., "en", "de") - must be exact match
    * @param value - The value to fill
    */
   async fillMultiLangProperty(
@@ -206,8 +206,9 @@ export class FormEditorPage {
     const field = this.getMultiLangField(labelText);
     await field.waitFor({ state: 'visible', timeout: 10000 });
 
-    // Click the language tab - tabs show language codes like "en", "de"
-    const langTab = field.locator('.aas-tab', { hasText: language });
+    // Click the language tab - use aria-controls to precisely match language code
+    // aria-controls format: "{path}-panel-{lang}"
+    const langTab = field.locator(`[role="tab"][aria-controls$="-panel-${language}"]`);
     await langTab.click();
 
     // Wait for the panel to become visible (not hidden)

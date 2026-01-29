@@ -27,24 +27,36 @@ import type {
   PolicyTemplate,
 } from './api-client';
 
-const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
-
 // ============================================================================
 // Service Availability Checks
 // ============================================================================
 
 /**
- * Check if a service endpoint is available.
+ * Check if a service endpoint is available via GET.
  */
-export async function isServiceAvailable(
+export async function isServiceAvailableGet(
   request: APIRequestContext,
-  endpoint: string,
+  url: string,
   timeout = 5000
 ): Promise<boolean> {
   try {
-    const response = await request.get(`${API_BASE_URL}${endpoint}`, {
-      timeout,
-    });
+    const response = await request.get(url, { timeout });
+    return response.ok();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a service endpoint is available via POST.
+ */
+export async function isServiceAvailablePost(
+  request: APIRequestContext,
+  url: string,
+  timeout = 5000
+): Promise<boolean> {
+  try {
+    const response = await request.post(url, { timeout, data: {} });
     return response.ok();
   } catch {
     return false;
@@ -53,29 +65,35 @@ export async function isServiceAvailable(
 
 /**
  * Check if semantic search service is available.
+ * Uses /api/semantic/providers endpoint since there's no dedicated health endpoint.
  */
 export async function isSemanticServiceAvailable(
-  request: APIRequestContext
+  request: APIRequestContext,
+  baseURL: string = process.env.VITE_API_URL || 'http://localhost:8000'
 ): Promise<boolean> {
-  return isServiceAvailable(request, '/api/semantic/health');
+  return isServiceAvailableGet(request, `${baseURL}/api/semantic/providers`);
 }
 
 /**
  * Check if magic import service is available.
+ * Uses POST /api/magic-import/health as per backend router.
  */
 export async function isMagicImportServiceAvailable(
-  request: APIRequestContext
+  request: APIRequestContext,
+  baseURL: string = process.env.VITE_API_URL || 'http://localhost:8000'
 ): Promise<boolean> {
-  return isServiceAvailable(request, '/api/magic-import/health');
+  return isServiceAvailablePost(request, `${baseURL}/api/magic-import/health`);
 }
 
 /**
  * Check if dataspace service is available.
+ * Uses GET /api/dataspace/health as per backend router.
  */
 export async function isDataspaceServiceAvailable(
-  request: APIRequestContext
+  request: APIRequestContext,
+  baseURL: string = process.env.VITE_API_URL || 'http://localhost:8000'
 ): Promise<boolean> {
-  return isServiceAvailable(request, '/api/dataspace/health');
+  return isServiceAvailableGet(request, `${baseURL}/api/dataspace/health`);
 }
 
 // ============================================================================
@@ -241,12 +259,18 @@ export async function mockMagicImport(page: Page): Promise<void> {
     });
   });
 
-  // Mock upload/create job endpoint
-  await page.route('**/api/magic-import/upload', async (route) => {
+  // Mock create job endpoint (POST /api/magic-import/jobs)
+  await page.route('**/api/magic-import/jobs', async (route) => {
+    // Only handle POST requests for job creation
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+
     const jobId = `mock-job-${Date.now()}`;
     const job = {
       job_id: jobId,
-      status: 'completed',
+      status: 'done',
       template: 'Digital Nameplate',
       created_at: new Date().toISOString(),
       extractions: [
@@ -292,10 +316,53 @@ export async function mockMagicImport(page: Page): Promise<void> {
     });
   });
 
-  // Mock job status endpoint
+  // Mock job result endpoint (GET /api/magic-import/jobs/{id}/result)
+  // Must be defined BEFORE the wildcard route to take precedence
+  await page.route('**/api/magic-import/jobs/*/result', async (route) => {
+    const url = route.request().url();
+    const pathParts = url.split('/');
+    const jobIdIndex = pathParts.findIndex(p => p === 'jobs') + 1;
+    const jobId = pathParts[jobIdIndex];
+
+    const job = jobId ? jobs.get(jobId) : undefined;
+    const extractions = job?.extractions || [
+      { field: 'ManufacturerName', value: 'Mock Manufacturer', confidence: 0.95 },
+    ];
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        job_id: jobId,
+        status: 'done',
+        extractions,
+      }),
+    });
+  });
+
+  // Mock job PDF endpoint (GET /api/magic-import/jobs/{id}/pdf)
+  await page.route('**/api/magic-import/jobs/*/pdf', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/pdf',
+      body: Buffer.from('%PDF-1.4 Mock Job PDF'),
+    });
+  });
+
+  // Mock job status endpoint (GET /api/magic-import/jobs/{id})
+  // Note: This must come AFTER the more specific routes above
   await page.route('**/api/magic-import/jobs/*', async (route) => {
     const url = route.request().url();
-    const jobId = url.split('/').pop();
+    // Extract jobId - it's the segment after 'jobs'
+    const pathParts = url.split('/');
+    const jobsIndex = pathParts.findIndex(p => p === 'jobs');
+    const jobId = jobsIndex >= 0 ? pathParts[jobsIndex + 1] : undefined;
+
+    // Skip if this is a sub-path (result, pdf, etc.) - those have their own handlers
+    if (jobId && (jobId === 'result' || jobId === 'pdf' || jobId === 'approve' || jobId === 'audit-report')) {
+      await route.fallback();
+      return;
+    }
 
     if (jobId && jobs.has(jobId)) {
       await route.fulfill({
@@ -304,13 +371,13 @@ export async function mockMagicImport(page: Page): Promise<void> {
         body: JSON.stringify(jobs.get(jobId)),
       });
     } else {
-      // Return a default completed job for any ID
+      // Return a default done job for any ID
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           job_id: jobId,
-          status: 'completed',
+          status: 'done',
           template: 'Digital Nameplate',
           extractions: [
             {
@@ -554,7 +621,7 @@ export function getMockMagicImportJob(_template: string): MagicImportJob & {
 } {
   return {
     job_id: `mock-job-${Date.now()}`,
-    status: 'completed',
+    status: 'done',
     extractions: [
       { field: 'ManufacturerName', value: 'ACME Corporation', confidence: 0.95 },
       { field: 'ManufacturerProductDesignation', value: 'Industrial Sensor Model X', confidence: 0.92 },
