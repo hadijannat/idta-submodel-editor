@@ -1,0 +1,581 @@
+/**
+ * Page object for the Form Editor component.
+ *
+ * Encapsulates interactions with the main AAS form editor including
+ * property fields, collections, lists, and export functionality.
+ */
+
+import type { Locator, Page } from '@playwright/test';
+
+export class FormEditorPage {
+  readonly page: Page;
+
+  // Main sections
+  readonly formContainer: Locator;
+  readonly stepperSidebar: Locator;
+  readonly exportPanel: Locator;
+
+  // Stepper steps
+  readonly configureInstanceStep: Locator;
+  readonly magicImportStep: Locator;
+  readonly fillFieldsStep: Locator;
+  readonly exportStep: Locator;
+
+  // Form controls
+  readonly saveButton: Locator;
+  readonly resetButton: Locator;
+  readonly validateButton: Locator;
+
+  // Export controls
+  readonly exportAasxButton: Locator;
+  readonly exportJsonButton: Locator;
+  readonly exportPdfButton: Locator;
+  readonly exportFormatSelect: Locator;
+
+  // Validation
+  readonly validationErrorBanner: Locator;
+  readonly validationWarningBanner: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+
+    // Main sections - using actual class names from App.tsx
+    // The form container is the main content area (.app-main) - use getByRole for specificity
+    this.formContainer = page.getByRole('main');
+    this.stepperSidebar = page.locator('.wizard-stepper');
+    this.exportPanel = page.locator('.app-export-sidebar');
+
+    // Stepper steps - target wizard-step buttons specifically to avoid matching export buttons
+    this.configureInstanceStep = page.locator('button.wizard-step', { hasText: /Configure Instance/i });
+    this.magicImportStep = page.locator('button.wizard-step', { hasText: /Magic Import/i });
+    this.fillFieldsStep = page.locator('button.wizard-step', { hasText: /Fill.*Fields/i });
+    this.exportStep = page.locator('button.wizard-step', { hasText: /Export/i });
+
+    // Form controls
+    this.saveButton = page.getByRole('button', { name: /save/i });
+    this.resetButton = page.getByRole('button', { name: /reset/i });
+    this.validateButton = page.getByRole('button', { name: /validate/i });
+
+    // Export controls
+    this.exportAasxButton = page.getByRole('button', { name: /export.*aasx/i });
+    this.exportJsonButton = page.getByRole('button', { name: /export.*json/i });
+    this.exportPdfButton = page.getByRole('button', { name: /export.*pdf/i });
+    this.exportFormatSelect = page.getByRole('combobox', { name: /format/i });
+
+    // Validation - from App.tsx review-summary section
+    this.validationErrorBanner = page.locator('.issue-badge-error').first();
+    this.validationWarningBanner = page.locator('.issue-badge-warning').first();
+  }
+
+  // --------------------------------------------------------------------------
+  // Navigation
+  // --------------------------------------------------------------------------
+
+  /**
+   * Wait for the form to be ready.
+   */
+  async waitForFormReady(timeout: number = 30000): Promise<void> {
+    await this.formContainer.waitFor({ state: 'visible', timeout });
+  }
+
+  /**
+   * Navigate to a specific step.
+   */
+  async goToStep(
+    step: 'configure' | 'magic-import' | 'fill-fields' | 'export'
+  ): Promise<void> {
+    let stepButton: Locator;
+
+    switch (step) {
+      case 'configure':
+        stepButton = this.configureInstanceStep;
+        break;
+      case 'magic-import':
+        stepButton = this.magicImportStep;
+        break;
+      case 'fill-fields':
+        stepButton = this.fillFieldsStep;
+        break;
+      case 'export':
+        stepButton = this.exportStep;
+        break;
+    }
+
+    await stepButton.click();
+    await this.page.waitForTimeout(500); // Wait for step transition
+  }
+
+  // --------------------------------------------------------------------------
+  // Field Interactions - Property Fields
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a form field by idShort path.
+   * AAS fields use data-id-short attribute and .aas-field class.
+   */
+  getField(idShortPath: string): Locator {
+    // Try multiple selectors to find the field
+    return this.page.locator(
+      `[data-id-short="${idShortPath}"], ` +
+        `.aas-field:has(.aas-label:text("${idShortPath}")), ` +
+        `[name*="${idShortPath}"]`
+    );
+  }
+
+  /**
+   * Get a text input field.
+   */
+  getTextInput(idShortPath: string): Locator {
+    return this.getField(idShortPath).locator('input[type="text"], textarea');
+  }
+
+  /**
+   * Fill a text/string property field.
+   */
+  async fillProperty(idShortPath: string, value: string): Promise<void> {
+    const input = this.getTextInput(idShortPath);
+    await input.fill(value);
+  }
+
+  /**
+   * Fill a number property field.
+   */
+  async fillNumberProperty(idShortPath: string, value: number): Promise<void> {
+    const input = this.getField(idShortPath).locator('input[type="number"], input[type="text"]');
+    await input.fill(value.toString());
+  }
+
+  /**
+   * Fill a date property field.
+   */
+  async fillDateProperty(idShortPath: string, date: string): Promise<void> {
+    const input = this.getField(idShortPath).locator('input[type="date"], input[type="text"]');
+    await input.fill(date);
+  }
+
+  /**
+   * Fill a boolean property field.
+   */
+  async fillBooleanProperty(idShortPath: string, value: boolean): Promise<void> {
+    const checkbox = this.getField(idShortPath).locator('input[type="checkbox"]');
+    if (value) {
+      await checkbox.check();
+    } else {
+      await checkbox.uncheck();
+    }
+  }
+
+  /**
+   * Select an enum value.
+   */
+  async selectEnumValue(idShortPath: string, value: string): Promise<void> {
+    const select = this.getField(idShortPath).locator('select');
+    await select.selectOption(value);
+  }
+
+  /**
+   * Get the current value of a property field.
+   */
+  async getPropertyValue(idShortPath: string): Promise<string> {
+    const input = this.getTextInput(idShortPath);
+    return await input.inputValue();
+  }
+
+  // --------------------------------------------------------------------------
+  // Field Interactions - Multi-Language Property
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a multi-language field by its label text.
+   */
+  getMultiLangField(labelText: string): Locator {
+    return this.page.locator(`.aas-field-multilang:has(.aas-label:text("${labelText}"))`);
+  }
+
+  /**
+   * Fill a multi-language property value for a specific language.
+   * @param labelText - The label text of the field (e.g., "ManufacturerName")
+   * @param language - Language code or label (e.g., "en" or "English")
+   * @param value - The value to fill
+   */
+  async fillMultiLangProperty(
+    labelText: string,
+    language: string,
+    value: string
+  ): Promise<void> {
+    const field = this.getMultiLangField(labelText);
+    await field.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Click the language tab - tabs show language codes like "en", "de"
+    const langTab = field.locator('.aas-tab', { hasText: language });
+    await langTab.click();
+
+    // Wait for the panel to become visible (not hidden)
+    // The active panel's textarea should now be visible
+    const activePanel = field.locator('.aas-multilang-panel:not([hidden])');
+    await activePanel.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Fill the textarea in the active panel
+    const textarea = activePanel.locator('textarea.aas-textarea');
+    await textarea.fill(value);
+  }
+
+  /**
+   * Add a new language to a multi-language property.
+   */
+  async addLanguage(idShortPath: string, language: string): Promise<void> {
+    const field = this.getMultiLangField(idShortPath);
+    const addButton = field.getByRole('button', { name: /add.*language/i });
+    await addButton.click();
+
+    // Select the new language
+    const langInput = this.page.getByRole('combobox', { name: /language/i }).last();
+    await langInput.fill(language);
+    await langInput.press('Enter');
+  }
+
+  // --------------------------------------------------------------------------
+  // Field Interactions - Collection Fields
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a collection field.
+   */
+  getCollectionField(idShortPath: string): Locator {
+    return this.page.locator(
+      `.aas-collection[data-id-short="${idShortPath}"], ` +
+        `.aas-collection:has(.aas-collection-title:text("${idShortPath}"))`
+    );
+  }
+
+  /**
+   * Expand a collection by clicking its header.
+   */
+  async expandCollection(idShortPath: string): Promise<void> {
+    const collection = this.getCollectionField(idShortPath);
+    const header = collection.locator('.aas-collection-header');
+    const content = collection.locator('.aas-collection-content');
+
+    // Only click if not already expanded
+    if (!(await content.isVisible())) {
+      await header.click();
+    }
+  }
+
+  /**
+   * Collapse a collection by clicking its header.
+   */
+  async collapseCollection(idShortPath: string): Promise<void> {
+    const collection = this.getCollectionField(idShortPath);
+    const header = collection.locator('.aas-collection-header');
+    const content = collection.locator('.aas-collection-content');
+
+    // Only click if currently expanded
+    if (await content.isVisible()) {
+      await header.click();
+    }
+  }
+
+  /**
+   * Check if a collection is expanded.
+   */
+  async isCollectionExpanded(idShortPath: string): Promise<boolean> {
+    const collection = this.getCollectionField(idShortPath);
+    const content = collection.locator('.aas-collection-content.expanded');
+    return await content.isVisible();
+  }
+
+  // --------------------------------------------------------------------------
+  // Field Interactions - List Fields
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a list field.
+   */
+  getListField(idShortPath: string): Locator {
+    return this.page.locator(
+      `.aas-list[data-id-short="${idShortPath}"], ` +
+        `.aas-list:has(.aas-list-title:text("${idShortPath}"))`
+    );
+  }
+
+  /**
+   * Add an item to a list field.
+   */
+  async addListItem(idShortPath: string): Promise<void> {
+    const list = this.getListField(idShortPath);
+    const addButton = list.locator('.aas-btn-add');
+    await addButton.click();
+  }
+
+  /**
+   * Remove an item from a list field by index.
+   */
+  async removeListItem(idShortPath: string, index: number): Promise<void> {
+    const list = this.getListField(idShortPath);
+    const removeButtons = list.locator('.aas-list-item .aas-btn-danger');
+    await removeButtons.nth(index).click();
+  }
+
+  /**
+   * Get the number of items in a list field.
+   */
+  async getListItemCount(idShortPath: string): Promise<number> {
+    const list = this.getListField(idShortPath);
+    const items = list.locator('.aas-list-item');
+    return await items.count();
+  }
+
+  // --------------------------------------------------------------------------
+  // Field Interactions - File Fields
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a file field.
+   */
+  getFileField(idShortPath: string): Locator {
+    return this.getField(idShortPath).locator('.file-field, [data-testid="file-field"]');
+  }
+
+  /**
+   * Set a file URL.
+   */
+  async setFileUrl(idShortPath: string, url: string): Promise<void> {
+    const field = this.getFileField(idShortPath);
+    const urlInput = field.locator('input[type="url"], input[type="text"]');
+    await urlInput.fill(url);
+  }
+
+  /**
+   * Set file content type.
+   */
+  async setFileContentType(idShortPath: string, contentType: string): Promise<void> {
+    const field = this.getFileField(idShortPath);
+    const contentTypeInput = field.locator('input[name*="contentType"], select');
+
+    if (await contentTypeInput.isVisible()) {
+      if ((await contentTypeInput.evaluate((el) => el.tagName)) === 'SELECT') {
+        await contentTypeInput.selectOption(contentType);
+      } else {
+        await contentTypeInput.fill(contentType);
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Field Interactions - Range Fields
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a range field.
+   */
+  getRangeField(idShortPath: string): Locator {
+    return this.getField(idShortPath).locator('.range-field, [data-testid="range-field"]');
+  }
+
+  /**
+   * Fill a range field.
+   */
+  async fillRangeProperty(
+    idShortPath: string,
+    min: string | number,
+    max: string | number
+  ): Promise<void> {
+    const field = this.getRangeField(idShortPath);
+    const minInput = field.locator('input').first();
+    const maxInput = field.locator('input').last();
+
+    await minInput.fill(min.toString());
+    await maxInput.fill(max.toString());
+  }
+
+  // --------------------------------------------------------------------------
+  // Field Interactions - Reference Fields
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a reference field.
+   */
+  getReferenceField(idShortPath: string): Locator {
+    return this.getField(idShortPath).locator('.reference-field, [data-testid="reference-field"]');
+  }
+
+  /**
+   * Fill a reference field with a global reference.
+   */
+  async fillReferenceProperty(idShortPath: string, value: string): Promise<void> {
+    const field = this.getReferenceField(idShortPath);
+    const input = field.locator('input[type="text"]');
+    await input.fill(value);
+  }
+
+  // --------------------------------------------------------------------------
+  // Validation
+  // --------------------------------------------------------------------------
+
+  /**
+   * Trigger validation.
+   */
+  async validate(): Promise<void> {
+    await this.validateButton.click();
+    await this.page.waitForTimeout(500); // Wait for validation to complete
+  }
+
+  /**
+   * Check if the form has validation errors.
+   */
+  async hasValidationErrors(): Promise<boolean> {
+    return await this.validationErrorBanner.isVisible();
+  }
+
+  /**
+   * Check if the form has validation warnings.
+   */
+  async hasValidationWarnings(): Promise<boolean> {
+    return await this.validationWarningBanner.isVisible();
+  }
+
+  /**
+   * Get validation error messages.
+   */
+  async getValidationErrors(): Promise<string[]> {
+    const errors = this.page.locator('.issue-item:has(.issue-badge-error)');
+    const count = await errors.count();
+    const messages: string[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const text = await errors.nth(i).textContent();
+      if (text) messages.push(text.trim());
+    }
+
+    return messages;
+  }
+
+  /**
+   * Get field-level error for a specific field.
+   * AAS fields show errors in .aas-error-message spans.
+   */
+  async getFieldError(idShortPath: string): Promise<string | null> {
+    const field = this.getField(idShortPath);
+    const error = field.locator('.aas-error-message');
+
+    if (await error.isVisible()) {
+      return await error.textContent();
+    }
+
+    return null;
+  }
+
+  // --------------------------------------------------------------------------
+  // Export
+  // --------------------------------------------------------------------------
+
+  /**
+   * Export to AASX format.
+   */
+  async exportAasx(): Promise<void> {
+    const downloadPromise = this.page.waitForEvent('download');
+    await this.exportAasxButton.click();
+    const download = await downloadPromise;
+    await download.saveAs(`/tmp/${download.suggestedFilename()}`);
+  }
+
+  /**
+   * Export to JSON format.
+   */
+  async exportJson(): Promise<void> {
+    const downloadPromise = this.page.waitForEvent('download');
+    await this.exportJsonButton.click();
+    const download = await downloadPromise;
+    await download.saveAs(`/tmp/${download.suggestedFilename()}`);
+  }
+
+  /**
+   * Export and get the download.
+   */
+  async exportAndGetDownload(
+    format: 'aasx' | 'json' | 'pdf'
+  ): Promise<{ filename: string; path: string }> {
+    const downloadPromise = this.page.waitForEvent('download');
+
+    switch (format) {
+      case 'aasx':
+        await this.exportAasxButton.click();
+        break;
+      case 'json':
+        await this.exportJsonButton.click();
+        break;
+      case 'pdf':
+        await this.exportPdfButton.click();
+        break;
+    }
+
+    const download = await downloadPromise;
+    const filename = download.suggestedFilename();
+    const path = `/tmp/${filename}`;
+    await download.saveAs(path);
+
+    return { filename, path };
+  }
+
+  // --------------------------------------------------------------------------
+  // Form State
+  // --------------------------------------------------------------------------
+
+  /**
+   * Reset the form to initial values.
+   */
+  async resetForm(): Promise<void> {
+    await this.resetButton.click();
+
+    // Confirm reset if dialog appears
+    const confirmButton = this.page.getByRole('button', { name: /confirm|yes/i });
+    if (await confirmButton.isVisible({ timeout: 1000 })) {
+      await confirmButton.click();
+    }
+  }
+
+  /**
+   * Check if the form has unsaved changes.
+   */
+  async hasUnsavedChanges(): Promise<boolean> {
+    // Look for dirty state indicator
+    const dirtyIndicator = this.page.locator(
+      '.unsaved-changes, [data-testid="unsaved-changes"], .dirty-indicator'
+    );
+    return await dirtyIndicator.isVisible();
+  }
+
+  /**
+   * Get the current template name from the UI.
+   * In step 2 (Configure Instance), it's in .template-summary .template-summary-title
+   * In step 5 (Fill Fields), it's in .submodel-header h2
+   */
+  async getCurrentTemplateName(): Promise<string> {
+    // Try getting from template summary card (step 2)
+    const summaryTitle = this.page.locator('.template-summary .template-summary-title').first();
+    if (await summaryTitle.isVisible()) {
+      const text = await summaryTitle.textContent();
+      if (text) return text.trim();
+    }
+
+    // Try getting from submodel header (step 5)
+    const submodelHeader = this.page.locator('.submodel-header h2');
+    if (await submodelHeader.isVisible()) {
+      const text = await submodelHeader.textContent();
+      if (text) return text.trim();
+    }
+
+    // Try from wizard sidebar selected template
+    const sidebarTitle = this.page.locator('.wizard-sidebar .template-summary-title').first();
+    if (await sidebarTitle.isVisible()) {
+      const text = await sidebarTitle.textContent();
+      if (text) return text.trim();
+    }
+
+    // Fallback to any h2 in the wizard panel
+    const panelHeader = this.page.locator('.wizard-panel h2').first();
+    const text = await panelHeader.textContent();
+    return text?.trim() ?? '';
+  }
+}

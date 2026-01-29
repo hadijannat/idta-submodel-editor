@@ -1,0 +1,6 @@
+URIOfTheProduct,ManufacturerName,SerialNumber,DateOfManufacture
+not-a-valid-uri,Malformed Test Co,SN-BAD-001,invalid-date
+,Missing URI Corp,SN-BAD-002,2024-01-15
+https://example.com/valid,Valid Entry Inc,SN-GOOD-001,2024-03-20
+https://example.com/partial,,SN-BAD-003,
+"https://example.com/quoted","Quoted ""Company"" Name",SN-QUOTE-001,2024-04-15

@@ -1,0 +1,6 @@
+URIOfTheProduct,ManufacturerName,ManufacturerProductDesignation,SerialNumber,YearOfConstruction,DateOfManufacture,NationalCode,CityTown,Street,Zipcode,PhoneCountryCode,PhoneAreaCode,PhoneNumber,EmailAddress
+https://example.com/products/001,Acme Industrial Inc.,Industrial Sensor Model A,SN-2024-001,2024,2024-01-15,DE,Berlin,Industrial Street 42,10115,+49,30,12345678,contact@acme.com
+https://example.com/products/002,Acme Industrial Inc.,Industrial Sensor Model B,SN-2024-002,2024,2024-02-20,DE,Munich,Innovation Way 15,80331,+49,89,87654321,sales@acme.com
+https://example.com/products/003,Acme Industrial Inc.,Temperature Sensor TS-100,SN-2024-003,2024,2024-03-10,US,Boston,Tech Park Drive 100,02101,+1,617,5551234,support@acme.com
+https://example.com/products/004,Global Manufacturing Ltd.,Pressure Transmitter PT-500,SN-2024-004,2024,2024-04-05,UK,London,Manufacturing Lane 25,EC1A 1BB,+44,20,77778888,info@global-mfg.com
+https://example.com/products/005,Global Manufacturing Ltd.,Flow Meter FM-200,SN-2024-005,2024,2024-05-18,UK,Manchester,Industry Road 88,M1 1AE,+44,161,2223333,orders@global-mfg.com

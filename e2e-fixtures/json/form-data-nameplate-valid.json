@@ -1,0 +1,46 @@
+{
+  "templateName": "Digital Nameplate",
+  "description": "Valid form data for Digital Nameplate template E2E testing",
+  "values": {
+    "URIOfTheProduct": "https://example.com/products/e2e-test-001",
+    "ManufacturerName": {
+      "en": "E2E Test Manufacturer Inc.",
+      "de": "E2E Test Hersteller GmbH"
+    },
+    "ManufacturerProductDesignation": {
+      "en": "Industrial Temperature Sensor TS-500",
+      "de": "Industrieller Temperatursensor TS-500"
+    },
+    "ContactInformation": {
+      "NationalCode": {
+        "en": "DE"
+      },
+      "CityTown": {
+        "en": "Berlin"
+      },
+      "Street": {
+        "en": "Test Street 123"
+      },
+      "Zipcode": {
+        "en": "10115"
+      },
+      "Phone": {
+        "CountryCode": "+49",
+        "AreaCode": "30",
+        "Number": "12345678"
+      },
+      "Email": {
+        "EmailAddress": "e2e-test@manufacturer.example.com"
+      }
+    },
+    "ManufacturerProductFamily": {
+      "en": "Industrial Sensors"
+    },
+    "SerialNumber": "E2E-SN-2024-001",
+    "YearOfConstruction": "2024",
+    "DateOfManufacture": "2024-06-15",
+    "HardwareVersion": "1.0.0",
+    "FirmwareVersion": "2.1.0",
+    "SoftwareVersion": "3.0.0"
+  }
+}

@@ -25,6 +25,17 @@
     "type-check": "tsc --noEmit",
     "test": "npm run test:unit",
     "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test suites/suite-00-smoke",
+    "test:e2e:core": "playwright test suites/suite-01-core-editing suites/suite-02-validation",
+    "test:e2e:mapper": "playwright test suites/suite-03-smart-mapper",
+    "test:e2e:magic-import": "E2E_PROFILE=magic-import playwright test",
+    "test:e2e:dataspace": "E2E_PROFILE=dataspace playwright test",
+    "test:e2e:plc": "E2E_PROFILE=plc playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
     "demo:magic-import": "playwright test e2e/magic-import-demo.spec.ts --headed"
   },
   "dependencies": {

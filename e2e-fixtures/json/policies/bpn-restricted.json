@@ -1,0 +1,35 @@
+{
+  "name": "bpn-restricted",
+  "description": "BPN-restricted access policy for E2E testing",
+  "config": {
+    "access_level": "restricted",
+    "allowed_bpns": [
+      "BPNL000000000001",
+      "BPNL000000000002"
+    ]
+  },
+  "expectedOdrl": {
+    "@context": [
+      "https://www.w3.org/ns/odrl.jsonld",
+      {
+        "cx-policy": "https://w3id.org/catenax/policy/"
+      }
+    ],
+    "@type": "Set",
+    "permission": [
+      {
+        "action": "use",
+        "constraint": [
+          {
+            "leftOperand": "cx-policy:BusinessPartnerNumber",
+            "operator": "isAnyOf",
+            "rightOperand": [
+              "BPNL000000000001",
+              "BPNL000000000002"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
