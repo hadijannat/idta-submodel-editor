@@ -133,15 +133,14 @@ class OCRProcessor:
                     h = ocr_data["height"][i]
 
                     # Normalize to 0..1
+                    word_confidence = max(0.0, min(1.0, conf / 100.0))
                     bbox = BBox(
                         x0=max(0.0, min(1.0, x / img_width)),
                         y0=max(0.0, min(1.0, y / img_height)),
                         x1=max(0.0, min(1.0, (x + w) / img_width)),
                         y1=max(0.0, min(1.0, (y + h) / img_height)),
+                        word_confidence=word_confidence,
                     )
-
-                    # Normalize confidence to 0..1
-                    word_confidence = max(0.0, min(1.0, conf / 100.0))
 
                     new_words.append(
                         PDFWord(
@@ -255,14 +254,14 @@ class OCRProcessor:
                 w = ocr_data["width"][i]
                 h = ocr_data["height"][i]
 
+                word_confidence = max(0.0, min(1.0, conf / 100.0))
                 bbox = BBox(
                     x0=max(0.0, min(1.0, x / img_width)),
                     y0=max(0.0, min(1.0, y / img_height)),
                     x1=max(0.0, min(1.0, (x + w) / img_width)),
                     y1=max(0.0, min(1.0, (y + h) / img_height)),
+                    word_confidence=word_confidence,
                 )
-
-                word_confidence = max(0.0, min(1.0, conf / 100.0))
                 words.append(
                     PDFWord(
                         text=text.strip(),

@@ -1,11 +1,19 @@
 /**
- * PdfViewer - PDF viewer with highlight overlay for evidence.
+ * PdfViewer - PDF viewer with interactive evidence highlighting.
  *
- * Uses pdf.js for rendering and custom overlay for highlighting evidence regions.
+ * Uses pdf.js for rendering and EvidenceBox components for interactive
+ * highlighting with bidirectional PDF-table navigation.
+ *
+ * Features:
+ * - Numbered evidence boxes with confidence-based styling
+ * - Hover tooltips showing evidence quotes
+ * - Click-to-select for bidirectional table navigation
+ * - Page thumbnails for quick navigation
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { EvidenceRef } from '../../services/magicImportApi';
+import EvidenceBox from './EvidenceBox';
 import './MagicImport.css';
 
 // PDF.js types
@@ -39,6 +47,14 @@ interface PdfViewerProps {
   confidence?: number;
   onPageChange?: (page: number) => void;
   focusToken?: number;
+  /** Index of box being focused from external source (e.g., provenance panel) */
+  highlightedBoxIndex?: number | null;
+  /** Highlight all boxes (e.g., "View All" mode) */
+  highlightAllBoxes?: boolean;
+  /** Callback when a box is hovered in the PDF viewer */
+  onBoxHover?: (boxIndex: number | null) => void;
+  /** Callback when a box is clicked in the PDF viewer */
+  onBoxClick?: (boxIndex: number) => void;
 }
 
 export default function PdfViewer({
@@ -47,6 +63,10 @@ export default function PdfViewer({
   confidence,
   onPageChange,
   focusToken,
+  highlightedBoxIndex,
+  highlightAllBoxes = false,
+  onBoxHover,
+  onBoxClick,
 }: PdfViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -65,6 +85,8 @@ export default function PdfViewer({
   const [thumbnails, setThumbnails] = useState<Array<{ page: number; dataUrl: string }>>(
     []
   );
+  // State for interactive box selection within the PDF viewer
+  const [selectedBoxIndex, setSelectedBoxIndex] = useState<number | null>(null);
 
   // Load PDF.js dynamically
   const loadPdfJs = useCallback(async () => {
@@ -302,32 +324,51 @@ export default function PdfViewer({
   const zoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
   const resetZoom = () => setScale(1.0);
 
-  // Get highlight class based on confidence
-  const getHighlightClass = () => {
-    if (confidence === undefined) return 'pdf-viewer__highlight';
-    if (confidence >= 0.9) return 'pdf-viewer__highlight pdf-viewer__highlight--high';
-    if (confidence >= 0.8) return 'pdf-viewer__highlight pdf-viewer__highlight--medium';
-    return 'pdf-viewer__highlight pdf-viewer__highlight--low';
-  };
+  // Handle box hover from within PDF viewer - notifies parent for bidirectional sync
+  const handleBoxHover = useCallback(
+    (boxIndex: number) => {
+      onBoxHover?.(boxIndex);
+    },
+    [onBoxHover]
+  );
 
-  // Render highlights
-  const renderHighlights = () => {
+  // Handle box hover end
+  const handleBoxHoverEnd = useCallback(() => {
+    onBoxHover?.(null);
+  }, [onBoxHover]);
+
+  // Handle box click for bidirectional navigation
+  const handleBoxClick = useCallback(
+    (boxIndex: number) => {
+      setSelectedBoxIndex(boxIndex);
+      onBoxClick?.(boxIndex);
+    },
+    [onBoxClick]
+  );
+
+  // Clear selection when evidence changes
+  useEffect(() => {
+    setSelectedBoxIndex(null);
+  }, [evidence]);
+
+  // Render interactive evidence boxes
+  const renderEvidenceBoxes = () => {
     if (!evidence || !pageViewport || evidence.page + 1 !== currentPage) {
       return null;
     }
 
-    const highlightClass = getHighlightClass();
-
     return evidence.boxes.map((box, idx) => (
-      <div
-        key={idx}
-        className={highlightClass}
-        style={{
-          left: `${box.x0 * 100}%`,
-          top: `${box.y0 * 100}%`,
-          width: `${(box.x1 - box.x0) * 100}%`,
-          height: `${(box.y1 - box.y0) * 100}%`,
-        }}
+      <EvidenceBox
+        key={box.box_id || `box-${idx}`}
+        box={box}
+        index={idx + 1}
+        isSelected={selectedBoxIndex === idx}
+        isHighlightedFromTable={highlightAllBoxes || highlightedBoxIndex === idx}
+        confidence={confidence ?? evidence.locator_score}
+        quote={evidence.quote}
+        onHover={() => handleBoxHover(idx)}
+        onHoverEnd={handleBoxHoverEnd}
+        onClick={() => handleBoxClick(idx)}
       />
     ));
   };
@@ -430,7 +471,7 @@ export default function PdfViewer({
           <div className="pdf-viewer__page" style={{ position: 'relative' }}>
             <canvas ref={canvasRef} className="pdf-viewer__canvas" />
 
-            {/* Highlight overlay */}
+            {/* Interactive evidence overlay */}
             {pageViewport && (
               <div
                 className="pdf-viewer__overlay"
@@ -440,10 +481,10 @@ export default function PdfViewer({
                   left: 0,
                   width: pageViewport.width,
                   height: pageViewport.height,
-                  pointerEvents: 'none',
+                  pointerEvents: 'auto',
                 }}
               >
-                {renderHighlights()}
+                {renderEvidenceBoxes()}
               </div>
             )}
           </div>

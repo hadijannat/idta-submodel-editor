@@ -17,11 +17,13 @@ if TYPE_CHECKING:
 from app.config import get_settings
 from app.schemas.magic_import import (
     BBox,
+    ExtractedTable,
     PDFIndex,
     PDFIndexInfo,
     PDFPageInfo,
     PDFWord,
 )
+from app.services.magic_import.table_extractor import TableExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ class PDFIndexer:
 
     def __init__(self) -> None:
         self.settings = get_settings()
+        self.table_extractor = TableExtractor()
 
     def index_pdf(self, pdf_path: Path, job_id: str) -> PDFIndex:
         """
@@ -125,11 +128,25 @@ class PDFIndexer:
             language_detected=None,  # Could add language detection later
         )
 
+        # Extract tables from the PDF
+        tables: list[ExtractedTable] = []
+        try:
+            table_result = self.table_extractor.extract_tables(pdf_path)
+            tables = table_result.tables
+            logger.info(
+                "Extracted %d tables from PDF %s",
+                table_result.total_tables,
+                pdf_path.name,
+            )
+        except Exception as e:
+            logger.warning("Table extraction failed for %s: %s", pdf_path.name, e)
+
         logger.info(
-            "Indexed PDF %s: %d pages, %d words, %d pages need OCR",
+            "Indexed PDF %s: %d pages, %d words, %d tables, %d pages need OCR",
             pdf_path.name,
             len(pages),
             total_words,
+            len(tables),
             pages_needing_ocr,
         )
 
@@ -139,6 +156,7 @@ class PDFIndexer:
             info=info,
             pages=pages,
             words=words,
+            tables=tables,
         )
 
     def get_text_for_page(self, pdf_path: Path, page_num: int) -> str:

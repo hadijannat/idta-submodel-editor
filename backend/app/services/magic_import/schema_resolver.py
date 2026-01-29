@@ -3,6 +3,8 @@ Schema Resolver - Extract target fields and generate extraction hints from IDTA 
 
 Reuses patterns from mapper/service.py:_extract_target_fields() but generates
 extraction hints with keywords for LLM-based extraction.
+
+Enhanced with Template Knowledge Index for dynamic keyword generation when available.
 """
 
 from __future__ import annotations
@@ -10,10 +12,15 @@ from __future__ import annotations
 import logging
 import re
 from functools import lru_cache
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.schemas.magic_import import ExtractionHint
 from app.services.fetcher import TemplateFetcherService
 from app.services.parser import ParserService
+
+if TYPE_CHECKING:
+    from app.services.template_knowledge import TemplateKnowledgeIndex
 
 logger = logging.getLogger(__name__)
 
@@ -138,10 +145,35 @@ class SchemaResolver:
         self,
         fetcher: TemplateFetcherService | None = None,
         parser: ParserService | None = None,
+        knowledge_index: "TemplateKnowledgeIndex | None" = None,
     ) -> None:
         # Lazy-load services if not provided
         self._fetcher = fetcher
         self._parser = parser
+        self._knowledge_index = knowledge_index
+        self._knowledge_index_checked = False
+
+    @property
+    def knowledge_index(self) -> "TemplateKnowledgeIndex | None":
+        """Get the Template Knowledge Index if available."""
+        if not self._knowledge_index_checked:
+            self._knowledge_index_checked = True
+            if self._knowledge_index is None:
+                try:
+                    from app.config import get_settings
+                    from app.services.template_knowledge import TemplateKnowledgeIndex
+
+                    settings = get_settings()
+                    if settings.template_knowledge_enabled:
+                        db_path = settings.magic_import_cache_dir / "template_knowledge" / "index.db"
+                        if db_path.exists():
+                            self._knowledge_index = TemplateKnowledgeIndex(db_path=db_path)
+                            logger.info("Template Knowledge Index loaded from %s", db_path)
+                        else:
+                            logger.debug("Template Knowledge Index not found at %s", db_path)
+                except Exception as e:
+                    logger.debug("Could not load Template Knowledge Index: %s", e)
+        return self._knowledge_index
 
     @property
     def fetcher(self) -> TemplateFetcherService:
@@ -188,14 +220,18 @@ class SchemaResolver:
         # Parse to UI schema
         schema = self.parser.parse_aasx_to_ui_schema(template_bytes)
 
+        # Extract IDTA number for Knowledge Index lookup
+        template_idta = self._extract_idta_number(template_name)
+
         # Extract hints from schema elements
         elements = schema.get("elements", [])
-        hints = self._extract_hints(elements)
+        hints = self._extract_hints(elements, template_idta=template_idta)
 
         logger.info(
-            "Resolved %d extraction hints for template %s",
+            "Resolved %d extraction hints for template %s (IDTA: %s)",
             len(hints),
             template_name,
+            template_idta,
         )
 
         return hints
@@ -216,6 +252,7 @@ class SchemaResolver:
         self,
         elements: list[dict],
         path: list[str] | None = None,
+        template_idta: str | None = None,
     ) -> list[ExtractionHint]:
         """Recursively extract hints from schema elements."""
         if path is None:
@@ -236,30 +273,41 @@ class SchemaResolver:
                 if template:
                     if template.get("modelType") in self.LEAF_TYPES:
                         leaf_path = list_path + [template.get("idShort", "value")]
-                        result.append(self._make_hint(template, leaf_path))
+                        result.append(self._make_hint(template, leaf_path, template_idta))
                     else:
                         base_path = list_path + [template.get("idShort", "")]
                         if template.get("elements"):
-                            result.extend(self._extract_hints(template["elements"], base_path))
+                            result.extend(self._extract_hints(template["elements"], base_path, template_idta))
                         if template.get("statements"):
-                            result.extend(self._extract_hints(template["statements"], base_path))
+                            result.extend(self._extract_hints(template["statements"], base_path, template_idta))
                 continue
 
             next_path = [*path, id_short]
 
             # Extract leaf elements as hints
             if model_type in self.LEAF_TYPES:
-                result.append(self._make_hint(element, next_path))
+                result.append(self._make_hint(element, next_path, template_idta))
 
             # Recurse into nested elements
             if element.get("elements"):
-                result.extend(self._extract_hints(element["elements"], next_path))
+                result.extend(self._extract_hints(element["elements"], next_path, template_idta))
             if element.get("statements"):
-                result.extend(self._extract_hints(element["statements"], next_path))
+                result.extend(self._extract_hints(element["statements"], next_path, template_idta))
 
         return result
 
-    def _make_hint(self, element: dict, path: list[str]) -> ExtractionHint:
+    @staticmethod
+    def _extract_idta_number(template_name: str) -> str | None:
+        """Extract IDTA number from template name."""
+        # Pattern: IDTA_02006_DigitalNameplate -> 02006
+        match = re.search(r"IDTA[_-]?(\d{5})", template_name, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        return None
+
+    def _make_hint(
+        self, element: dict, path: list[str], template_idta: str | None = None
+    ) -> ExtractionHint:
         """Create an ExtractionHint from a schema element."""
         id_short = element.get("idShort", path[-1] if path else "")
         cardinality = element.get("cardinality", "") or "[1]"
@@ -283,13 +331,14 @@ class SchemaResolver:
         elif sem_ref is not None:
             semantic_id = str(sem_ref)
 
-        # Generate keywords for search
+        # Generate keywords for search (using Knowledge Index if available)
         keywords = self._generate_keywords(
             id_short=id_short,
             path=path,
             semantic_label=semantic_label,
             semantic_id=semantic_id,
             description=description,
+            template_idta=template_idta,
         )
 
         return ExtractionHint(
@@ -310,15 +359,35 @@ class SchemaResolver:
         semantic_label: str | None,
         semantic_id: str | None,
         description: dict | list | str | None,
+        template_idta: str | None = None,
     ) -> list[str]:
         """
         Generate search keywords for a field.
 
         Keywords are used for BM25-style retrieval of relevant snippets.
-        Uses priority: semantic ID > context-aware > global synonyms.
+        Uses priority:
+        1. Template Knowledge Index (if available)
+        2. Semantic ID > context-aware > global synonyms (fallback)
         """
         keywords: list[str] = []
 
+        # Try to get keywords from Knowledge Index first
+        if self.knowledge_index and template_idta:
+            path_str = ".".join(path)
+            try:
+                indexed_keywords = self.knowledge_index.get_keywords_for_field(
+                    template_idta=template_idta,
+                    path=path_str,
+                    include_similar=True,
+                    max_keywords=20,
+                )
+                if indexed_keywords:
+                    logger.debug("Using %d keywords from Knowledge Index for %s", len(indexed_keywords), path_str)
+                    return indexed_keywords
+            except Exception as e:
+                logger.debug("Knowledge Index lookup failed for %s: %s", path_str, e)
+
+        # Fallback to static keyword generation
         # Tokenize idShort (split camelCase and underscores)
         keywords.extend(self._tokenize(id_short))
 

@@ -27,15 +27,14 @@ test('Magic Import demo walkthrough', async ({ page }) => {
 
   // Step 1: Choose template
   await page.getByLabel('Search templates').fill(templateName);
-  const templateOption = page.locator('.template-item-name', { hasText: templateName });
-  await expect(templateOption).toBeVisible({ timeout: 20000 });
-  await templateOption.click();
+  const templateCard = page.locator('.template-item', { hasText: templateName });
+  await expect(templateCard).toBeVisible({ timeout: 20000 });
+  await templateCard.click();
 
-  await page.getByRole('button', { name: /Continue to configuration/i }).click();
-
-  // Step 2: Configure instance
-  const continueToMapper = page.getByRole('button', { name: /Continue to Smart Mapper/i });
-  await expect(continueToMapper).toBeEnabled({ timeout: 30000 });
+  // Step 2: Configure instance (auto-advances on template selection)
+  await expect(page.getByRole('heading', { name: /Configure Instance/i })).toBeVisible({
+    timeout: 30000,
+  });
 
   // Jump to Magic Import via sidebar stepper
   const magicImportStep = page.getByRole('button', { name: /Magic Import/i });
@@ -43,7 +42,7 @@ test('Magic Import demo walkthrough', async ({ page }) => {
   await magicImportStep.click();
 
   // Step 4: Magic Import upload
-  await expect(page.getByText('Magic Import')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Magic Import' })).toBeVisible();
   const fileInput = page.locator('.magic-import-panel__input');
   await fileInput.setInputFiles(pdfPath);
 

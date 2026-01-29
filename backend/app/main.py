@@ -29,7 +29,7 @@ from app.config import get_settings
 from app.errors import APIError, ErrorCode, ErrorResponse
 from app.metrics import set_app_info
 from app.middleware.correlation import CorrelationIdMiddleware, get_correlation_id
-from app.routers import editor, templates, tools
+from app.routers import editor, knowledge, templates, tools
 from app.routers import settings as settings_router
 from app.services.tools.registry import initialize_registry, shutdown_registry, ToolRegistry
 
@@ -151,6 +151,7 @@ def create_application() -> FastAPI:
     app.include_router(editor.router)
     app.include_router(tools.router)
     app.include_router(settings_router.router)
+    app.include_router(knowledge.router)
     _bootstrap_tool_registry(app)
 
     # Health check endpoints

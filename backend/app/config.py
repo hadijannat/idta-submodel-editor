@@ -122,6 +122,13 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/0"
 
     # =========================================================================
+    # Template Knowledge System
+    # =========================================================================
+    template_knowledge_enabled: bool = True
+    template_knowledge_embedding_model: str = "nomic-embed-text"
+    template_knowledge_auto_build: bool = False  # Auto-build index on startup
+
+    # =========================================================================
     # Dataspace Integration
     # =========================================================================
 

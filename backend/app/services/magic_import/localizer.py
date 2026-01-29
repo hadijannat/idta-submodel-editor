@@ -112,12 +112,19 @@ class EvidenceLocalizer:
             # Sort by x position
             sorted_boxes = sorted(line_boxes, key=lambda b: b.x0)
             # Merge into single box per line
+            conf_values = [
+                b.word_confidence for b in sorted_boxes if b.word_confidence is not None
+            ]
+            avg_conf = (
+                sum(conf_values) / len(conf_values) if conf_values else None
+            )
             merged.append(
                 BBox(
                     x0=sorted_boxes[0].x0,
                     y0=min(b.y0 for b in sorted_boxes),
                     x1=sorted_boxes[-1].x1,
                     y1=max(b.y1 for b in sorted_boxes),
+                    word_confidence=avg_conf,
                 )
             )
 

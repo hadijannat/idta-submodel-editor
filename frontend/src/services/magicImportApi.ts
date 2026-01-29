@@ -31,6 +31,10 @@ export interface BBox {
   y0: number;
   x1: number;
   y1: number;
+  /** Unique identifier for interactive highlighting */
+  box_id?: string | null;
+  /** OCR confidence for this bounding box */
+  word_confidence?: number | null;
 }
 
 /**
@@ -624,4 +628,85 @@ export async function downloadAuditReport(
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(downloadUrl);
+}
+
+// ============================================================================
+// Semantic Recommendation API (Template Knowledge System)
+// ============================================================================
+
+/**
+ * Semantic ID recommendation from the Template Knowledge System.
+ */
+export interface SemanticRecommendation {
+  irdi: string;
+  label: string;
+  definition: string | null;
+  confidence: number;
+  source_template: string | null;
+  is_current: boolean;
+  source_field_path: string | null;
+}
+
+/**
+ * Request for semantic ID recommendations.
+ */
+export interface RecommendationRequest {
+  label: string;
+  value?: string | null;
+  context?: string | null;
+  top_k?: number;
+  threshold?: number;
+  current_semantic_id?: string | null;
+}
+
+/**
+ * Response with semantic ID recommendations.
+ */
+export interface RecommendationResponse {
+  label: string;
+  recommendations: SemanticRecommendation[];
+}
+
+/**
+ * Template Knowledge System index status.
+ */
+export interface KnowledgeIndexStatus {
+  templates_indexed: number;
+  fields_indexed: number;
+  patterns_indexed: number;
+  last_updated: string | null;
+  embedding_model: string;
+  ollama_available: boolean;
+}
+
+/**
+ * Get Template Knowledge System status.
+ */
+export async function getKnowledgeIndexStatus(): Promise<KnowledgeIndexStatus> {
+  const response = await fetch(`${API_BASE_URL}/api/knowledge/status`);
+
+  if (!response.ok) {
+    throw new ApiError('Failed to get knowledge index status', response.status);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get semantic ID recommendations for a field.
+ */
+export async function getSemanticRecommendations(
+  request: RecommendationRequest
+): Promise<RecommendationResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/knowledge/recommend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new ApiError('Failed to get semantic recommendations', response.status);
+  }
+
+  return response.json();
 }

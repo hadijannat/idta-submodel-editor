@@ -2,10 +2,12 @@
  * ProvenancePanel - Shows detailed provenance information for a selected extraction.
  *
  * Displays evidence quote, confidence breakdown, reasons, and action buttons.
+ * For extractions with multi-box evidence, includes an EvidenceCarousel for navigation.
  */
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { FieldExtraction } from '../../services/magicImportApi';
+import EvidenceCarousel from './EvidenceCarousel';
 import './MagicImport.css';
 
 interface ProvenancePanelProps {
@@ -16,6 +18,10 @@ interface ProvenancePanelProps {
   onReExtract?: () => void;
   onClose?: () => void;
   isReExtracting?: boolean;
+  /** Callback when user navigates to a specific evidence box */
+  onFocusBox?: (boxIndex: number) => void;
+  /** Callback when "View All" is toggled */
+  onToggleViewAll?: (active: boolean) => void;
 }
 
 /**
@@ -49,14 +55,51 @@ export default function ProvenancePanel({
   onReExtract,
   onClose,
   isReExtracting = false,
+  onFocusBox,
+  onToggleViewAll,
 }: ProvenancePanelProps) {
   const [expanded, setExpanded] = useState(true);
+  const [currentBoxIndex, setCurrentBoxIndex] = useState(0);
+  const [viewAllActive, setViewAllActive] = useState(false);
+
+  // Handle carousel navigation
+  const handleCarouselNavigate = useCallback(
+    (boxIndex: number) => {
+      setCurrentBoxIndex(boxIndex);
+      if (viewAllActive) {
+        setViewAllActive(false);
+        onToggleViewAll?.(false);
+      }
+      onFocusBox?.(boxIndex);
+    },
+    [onFocusBox, onToggleViewAll, viewAllActive]
+  );
+
+  // Toggle "View All" mode
+  const handleToggleViewAll = useCallback(() => {
+    setViewAllActive((prev) => {
+      const next = !prev;
+      onToggleViewAll?.(next);
+      if (!next) {
+        onFocusBox?.(currentBoxIndex);
+      }
+      return next;
+    });
+  }, [currentBoxIndex, onFocusBox, onToggleViewAll]);
+
+  // Reset carousel state when extraction changes
+  useEffect(() => {
+    setCurrentBoxIndex(0);
+    setViewAllActive(false);
+    onToggleViewAll?.(false);
+  }, [extraction?.path, onToggleViewAll]);
 
   if (!extraction) {
     return null;
   }
 
   const { confidence_breakdown, confidence_reasons, evidence } = extraction;
+  const hasMultipleBoxes = evidence && evidence.boxes.length > 1;
 
   // Sort reasons by severity
   const sortedReasons = [...(confidence_reasons || [])].sort((a, b) => {
@@ -104,7 +147,14 @@ export default function ProvenancePanel({
           {/* Evidence quote */}
           {evidence ? (
             <div className="provenance-panel__evidence">
-              <div className="provenance-panel__section-title">Evidence</div>
+              <div className="provenance-panel__section-title">
+                Evidence
+                {hasMultipleBoxes && (
+                  <span className="provenance-panel__box-count">
+                    ({evidence.boxes.length} locations)
+                  </span>
+                )}
+              </div>
               <blockquote className="provenance-panel__quote">
                 "{evidence.quote}"
               </blockquote>
@@ -112,6 +162,17 @@ export default function ProvenancePanel({
                 Page {evidence.page + 1} • {evidence.method} •{' '}
                 {Math.round(evidence.locator_score * 100)}% match
               </div>
+
+              {/* Carousel for multi-box evidence */}
+              {hasMultipleBoxes && (
+                <EvidenceCarousel
+                  evidence={evidence}
+                  currentBoxIndex={currentBoxIndex}
+                  onNavigate={handleCarouselNavigate}
+                  viewAllActive={viewAllActive}
+                  onToggleViewAll={handleToggleViewAll}
+                />
+              )}
             </div>
           ) : (
             <div className="provenance-panel__no-evidence">
