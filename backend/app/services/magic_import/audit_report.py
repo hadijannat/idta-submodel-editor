@@ -114,7 +114,9 @@ class ComplianceSummary(BaseModel):
 
     # Compliance rates
     required_fields_compliance: float = Field(
-        ge=0.0, le=1.0, description="Ratio of required fields successfully extracted"
+        ge=0.0,
+        le=1.0,
+        description="Ratio of required fields successfully extracted (or fill rate if required info unavailable)",
     )
     confidence_threshold_compliance: float = Field(
         ge=0.0, le=1.0, description="Ratio of fields meeting minimum confidence threshold"
@@ -149,10 +151,19 @@ class EvidenceAppendixEntry(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0, description="Extraction confidence")
     # Image data encoded as base64 (for JSON) or raw bytes (for PDF)
     image_base64: str | None = Field(
-        default=None, description="Base64-encoded cropped region image"
+        default=None, description="Base64-encoded cropped region image (PNG)"
     )
     bbox: dict | None = Field(
-        default=None, description="Bounding box coordinates (x0, y0, x1, y1)"
+        default=None,
+        description="Bounding box in PDF points (72 points/inch) with padding applied",
+    )
+    bbox_units: Literal["points"] = Field(
+        default="points",
+        description="Units for bbox coordinates (always 'points' = 72 per inch)",
+    )
+    padding_applied: int = Field(
+        default=10,
+        description="Padding in points added around the original evidence region",
     )
 
 
@@ -225,6 +236,8 @@ class AuditReportGenerator:
         pdf_path: Path | None = None,
         include_evidence_appendix: bool = True,
         confidence_threshold: float = 0.6,
+        required_paths: set[str] | None = None,
+        include_evidence_images: bool | None = None,
     ) -> bytes:
         """
         Generate audit report in the specified format.
@@ -236,6 +249,9 @@ class AuditReportGenerator:
             pdf_path: Optional path to source PDF for evidence region extraction
             include_evidence_appendix: Whether to include cropped evidence regions
             confidence_threshold: Minimum confidence for compliance calculation
+            required_paths: Set of field paths that are required (for accurate compliance)
+            include_evidence_images: Whether to embed base64 images in evidence appendix.
+                                    None (default) = auto: images for PDF, no images for JSON
 
         Returns:
             Report content as bytes
@@ -243,9 +259,12 @@ class AuditReportGenerator:
         report = self._build_report(
             job,
             result,
+            format=format,
             pdf_path=pdf_path,
             include_evidence_appendix=include_evidence_appendix,
             confidence_threshold=confidence_threshold,
+            required_paths=required_paths,
+            include_evidence_images=include_evidence_images,
         )
 
         if format == "json":
@@ -260,9 +279,12 @@ class AuditReportGenerator:
         job: MagicImportJob,
         result: MagicImportResult,
         *,
+        format: Literal["json", "pdf"] = "json",
         pdf_path: Path | None = None,
         include_evidence_appendix: bool = True,
         confidence_threshold: float = 0.6,
+        required_paths: set[str] | None = None,
+        include_evidence_images: bool | None = None,
     ) -> AuditReport:
         """Build the audit report data structure."""
         now = datetime.now(timezone.utc)
@@ -303,6 +325,7 @@ class AuditReportGenerator:
         compliance = self._build_compliance_summary(
             result.extractions,
             confidence_threshold=confidence_threshold,
+            required_paths=required_paths,
         )
 
         # Build confidence distribution
@@ -311,8 +334,14 @@ class AuditReportGenerator:
         # Build evidence appendix (if PDF available)
         evidence_appendix: list[EvidenceAppendixEntry] = []
         if include_evidence_appendix and pdf_path and pdf_path.exists():
+            # For JSON, default to no images; for PDF, include images
+            embed_images = (
+                include_evidence_images
+                if include_evidence_images is not None
+                else (format == "pdf")
+            )
             evidence_appendix = self._build_evidence_appendix(
-                result.extractions, pdf_path
+                result.extractions, pdf_path, include_images=embed_images
             )
 
         metadata = AuditReportMetadata(
@@ -384,6 +413,7 @@ class AuditReportGenerator:
         self,
         extractions: list[FieldExtraction],
         confidence_threshold: float = 0.6,
+        required_paths: set[str] | None = None,
     ) -> ComplianceSummary:
         """Build compliance summary metrics for auditors."""
         if not extractions:
@@ -406,15 +436,20 @@ class AuditReportGenerator:
         medium_conf = sum(1 for e in extractions if 0.60 <= e.confidence < 0.85)
         low_conf = sum(1 for e in extractions if e.confidence < 0.60)
 
-        # Required fields compliance (required = those marked as required in hints)
-        required_extractions = [
-            e for e in extractions if getattr(e, "required", False) or e.status != ExtractionStatus.EMPTY
-        ]
-        filled_required = sum(
-            1 for e in required_extractions
-            if e.status == ExtractionStatus.FILLED
-        )
-        required_compliance = filled_required / len(required_extractions) if required_extractions else 1.0
+        # Required fields compliance
+        # If required_paths provided, use accurate calculation; otherwise report fill rate
+        if required_paths:
+            required_extractions = [e for e in extractions if e.path in required_paths]
+            filled_required = sum(
+                1 for e in required_extractions if e.status == ExtractionStatus.FILLED
+            )
+            required_compliance = (
+                filled_required / len(required_extractions) if required_extractions else 1.0
+            )
+        else:
+            # Fallback: report as "fill rate" if no required info available
+            filled_count = sum(1 for e in extractions if e.status == ExtractionStatus.FILLED)
+            required_compliance = filled_count / total
 
         # Confidence threshold compliance
         above_threshold = sum(1 for e in extractions if e.confidence >= confidence_threshold)
@@ -456,7 +491,8 @@ class AuditReportGenerator:
             flags.append(f"LOW_VERIFICATION: Only {verification_rate*100:.0f}% of fields human-verified")
         if evidence_coverage < 0.7:
             flags.append(f"LOW_EVIDENCE: Only {evidence_coverage*100:.0f}% of fields have supporting evidence")
-        if required_compliance < 0.9:
+        # Only emit MISSING_REQUIRED flag if we have actual required paths info
+        if required_paths and required_compliance < 0.9:
             flags.append(f"MISSING_REQUIRED: {(1-required_compliance)*100:.0f}% of required fields unfilled")
 
         needs_review = sum(
@@ -511,14 +547,23 @@ class AuditReportGenerator:
         extractions: list[FieldExtraction],
         pdf_path: Path,
         max_entries: int = 50,
+        include_images: bool = True,
     ) -> list[EvidenceAppendixEntry]:
         """
         Build evidence appendix with cropped PDF regions.
 
         Uses PyMuPDF (fitz) to extract image regions from the source PDF
         corresponding to evidence bounding boxes.
+
+        Args:
+            extractions: List of field extractions
+            pdf_path: Path to source PDF
+            max_entries: Maximum number of entries to include
+            include_images: Whether to embed base64 images (can be disabled for smaller JSON)
         """
         import base64
+
+        padding = 10  # points (PDF uses 72 points per inch)
 
         try:
             import fitz
@@ -535,6 +580,7 @@ class AuditReportGenerator:
                         confidence=ext.confidence,
                         image_base64=None,
                         bbox=None,
+                        padding_applied=padding,
                     ))
                     if len(entries) >= max_entries:
                         break
@@ -574,10 +620,8 @@ class AuditReportGenerator:
                 if not boxes:
                     continue
 
-                # Convert normalized coordinates to page coordinates
+                # Convert normalized coordinates to page coordinates (in points)
                 # Add padding around the region
-                padding = 10  # pixels
-
                 x0 = min(b.x0 for b in boxes) * page_rect.width - padding
                 y0 = min(b.y0 for b in boxes) * page_rect.height - padding
                 x1 = max(b.x1 for b in boxes) * page_rect.width + padding
@@ -591,16 +635,17 @@ class AuditReportGenerator:
 
                 clip_rect = fitz.Rect(x0, y0, x1, y1)
 
-                # Render the clipped region as an image
-                try:
-                    # Use 2x zoom for better quality
-                    mat = fitz.Matrix(2.0, 2.0)
-                    pix = page.get_pixmap(matrix=mat, clip=clip_rect)
-                    image_bytes = pix.tobytes("png")
-                    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-                except Exception as e:
-                    logger.debug(f"Could not render evidence region: {e}")
-                    image_base64 = None
+                # Render the clipped region as an image (only if requested)
+                image_base64 = None
+                if include_images:
+                    try:
+                        # Use 2x zoom for better quality
+                        mat = fitz.Matrix(2.0, 2.0)
+                        pix = page.get_pixmap(matrix=mat, clip=clip_rect)
+                        image_bytes = pix.tobytes("png")
+                        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+                    except Exception as e:
+                        logger.debug(f"Could not render evidence region: {e}")
 
                 entries.append(EvidenceAppendixEntry(
                     field_path=ext.path,
@@ -614,6 +659,7 @@ class AuditReportGenerator:
                         "x1": round(x1, 2),
                         "y1": round(y1, 2),
                     },
+                    padding_applied=padding,
                 ))
 
         finally:
@@ -779,8 +825,15 @@ class AuditReportGenerator:
         }
         grade_color = grade_colors.get(report.compliance.quality_grade, colors.gray)
 
+        # Create colored grade cell using Paragraph for inline color
+        grade_para = Paragraph(
+            f"{report.compliance.quality_score:.1f}/100 (Grade: "
+            f"<font color='{grade_color.hexval()}'><b>{report.compliance.quality_grade}</b></font>)",
+            styles["Normal"],
+        )
+
         compliance_data = [
-            ["Quality Score", f"{report.compliance.quality_score:.1f}/100 (Grade: {report.compliance.quality_grade})"],
+            ["Quality Score", grade_para],
             ["Required Fields", f"{report.compliance.required_fields_compliance * 100:.1f}% compliant"],
             ["Confidence Threshold", f"{report.compliance.confidence_threshold_compliance * 100:.1f}% above threshold"],
             ["Human Verification", f"{report.compliance.human_verification_rate * 100:.1f}% verified"],
@@ -797,6 +850,7 @@ class AuditReportGenerator:
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
                     ("TEXTCOLOR", (0, 0), (0, -1), colors.darkgray),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ]
             )
         )

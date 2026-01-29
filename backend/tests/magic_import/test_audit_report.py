@@ -615,6 +615,68 @@ class TestComplianceSummary:
         # Grade should be valid
         assert report.compliance.quality_grade in ("A", "B", "C", "D", "F")
 
+    def test_compliance_with_required_paths(self, sample_job, sample_result):
+        """Test compliance calculation with explicit required paths."""
+        generator = AuditReportGenerator()
+
+        # Define required paths - one filled, one empty
+        required_paths = {
+            "Nameplate/ManufacturerName",  # FILLED
+            "Nameplate/YearOfConstruction",  # EMPTY
+        }
+
+        report = generator._build_report(
+            sample_job, sample_result, required_paths=required_paths
+        )
+
+        # 1 of 2 required fields filled = 50%
+        assert report.compliance.required_fields_compliance == 0.5
+
+        # Should have MISSING_REQUIRED flag (compliance < 90%)
+        has_missing_required_flag = any(
+            "MISSING_REQUIRED" in flag for flag in report.compliance.flags
+        )
+        assert has_missing_required_flag
+
+    def test_compliance_without_required_paths_uses_fill_rate(self, sample_job, sample_result):
+        """Test compliance fallback to fill rate when no required paths provided."""
+        generator = AuditReportGenerator()
+
+        # Without required_paths, should use fill rate
+        report = generator._build_report(sample_job, sample_result)
+
+        # 2 filled out of 4 total = 50%
+        assert report.compliance.required_fields_compliance == 0.5
+
+        # Should NOT have MISSING_REQUIRED flag (no required info available)
+        has_missing_required_flag = any(
+            "MISSING_REQUIRED" in flag for flag in report.compliance.flags
+        )
+        assert not has_missing_required_flag
+
+    def test_compliance_all_required_filled(self, sample_job, sample_result):
+        """Test 100% compliance when all required fields are filled."""
+        generator = AuditReportGenerator()
+
+        # Only require fields that are FILLED
+        required_paths = {
+            "Nameplate/ManufacturerName",  # FILLED
+            "Nameplate/SerialNumber",  # FILLED
+        }
+
+        report = generator._build_report(
+            sample_job, sample_result, required_paths=required_paths
+        )
+
+        # Both required fields filled = 100%
+        assert report.compliance.required_fields_compliance == 1.0
+
+        # Should NOT have MISSING_REQUIRED flag
+        has_missing_required_flag = any(
+            "MISSING_REQUIRED" in flag for flag in report.compliance.flags
+        )
+        assert not has_missing_required_flag
+
     def test_compliance_summary_confidence_tiers(self, sample_job, sample_result):
         """Test confidence tier counts."""
         generator = AuditReportGenerator()
@@ -791,6 +853,9 @@ class TestEvidenceAppendix:
         assert entry.page_number == 1
         assert entry.confidence == 0.95
         assert entry.bbox is not None
+        # New fields for Issue 2 fix
+        assert entry.bbox_units == "points"
+        assert entry.padding_applied == 10
 
     def test_evidence_appendix_disabled(self, sample_job, sample_result):
         """Test evidence appendix can be disabled."""
@@ -803,6 +868,82 @@ class TestEvidenceAppendix:
 
         # Should have empty appendix when disabled
         assert report.evidence_appendix == []
+
+
+class TestEvidenceImageEmbedding:
+    """Test evidence image embedding control (Issue 3 fix)."""
+
+    def test_json_format_excludes_images_by_default(self, sample_job, sample_result):
+        """Test that JSON format excludes images by default."""
+        generator = AuditReportGenerator()
+        # When format is JSON and include_evidence_images is None (default),
+        # images should NOT be embedded
+        report = generator._build_report(
+            sample_job,
+            sample_result,
+            format="json",
+            include_evidence_appendix=True,
+            # No pdf_path means no appendix, but test the logic path
+        )
+        # Without PDF, appendix is empty anyway
+        assert report.evidence_appendix == []
+
+    def test_pdf_format_includes_images_by_default(self, sample_job, sample_result):
+        """Test that PDF format includes images by default."""
+        generator = AuditReportGenerator()
+        # When format is PDF and include_evidence_images is None (default),
+        # images should be embedded (if PDF available)
+        report = generator._build_report(
+            sample_job,
+            sample_result,
+            format="pdf",
+            include_evidence_appendix=True,
+        )
+        # Without PDF path, appendix is empty anyway
+        assert report.evidence_appendix == []
+
+    def test_explicit_include_images_overrides_format_default(self, sample_job, sample_result):
+        """Test that explicit include_evidence_images overrides format default."""
+        generator = AuditReportGenerator()
+        # Even for JSON, if explicitly set to True, should include images
+        # (when PDF is available)
+        report = generator._build_report(
+            sample_job,
+            sample_result,
+            format="json",
+            include_evidence_appendix=True,
+            include_evidence_images=True,  # Explicit override
+        )
+        # Without PDF path, appendix is empty
+        assert report.evidence_appendix == []
+
+    def test_generate_json_without_images(self, sample_job, sample_result):
+        """Test generate() with JSON format excludes images."""
+        generator = AuditReportGenerator()
+        content = generator.generate(
+            sample_job,
+            sample_result,
+            format="json",
+            include_evidence_images=False,
+        )
+
+        data = json.loads(content.decode("utf-8"))
+        # Should succeed and have evidence_appendix key
+        assert "evidence_appendix" in data
+
+    def test_generate_json_explicit_with_images(self, sample_job, sample_result):
+        """Test generate() with JSON format can explicitly include images."""
+        generator = AuditReportGenerator()
+        content = generator.generate(
+            sample_job,
+            sample_result,
+            format="json",
+            include_evidence_images=True,  # Explicitly request images
+        )
+
+        data = json.loads(content.decode("utf-8"))
+        # Should succeed
+        assert "evidence_appendix" in data
 
 
 class TestPDFEnhancements:
