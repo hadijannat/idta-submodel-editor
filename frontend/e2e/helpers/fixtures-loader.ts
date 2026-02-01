@@ -59,7 +59,7 @@ export interface PolicyFixture {
 // Path Resolution
 // ============================================================================
 
-const PROJECT_ROOT = path.resolve(__dirname, '../../../..');
+const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 const BACKEND_FIXTURES = path.join(PROJECT_ROOT, 'backend/tests/fixtures');
 const E2E_FIXTURES = path.join(PROJECT_ROOT, 'e2e-fixtures');
 

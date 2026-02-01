@@ -125,7 +125,7 @@ export class MockableAPIClient extends APIClient {
     if (this.useMockMagicImport) {
       return {
         job_id: jobId,
-        status: 'done',
+        status: 'completed',
       };
     }
     return super.getMagicImportJobStatus(jobId);

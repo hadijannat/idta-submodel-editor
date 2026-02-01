@@ -270,7 +270,7 @@ export async function mockMagicImport(page: Page): Promise<void> {
     const jobId = `mock-job-${Date.now()}`;
     const job = {
       job_id: jobId,
-      status: 'done',
+      status: 'completed',
       template: 'Digital Nameplate',
       created_at: new Date().toISOString(),
       extractions: [
@@ -334,7 +334,7 @@ export async function mockMagicImport(page: Page): Promise<void> {
       contentType: 'application/json',
       body: JSON.stringify({
         job_id: jobId,
-        status: 'done',
+        status: 'completed',
         extractions,
       }),
     });
@@ -371,13 +371,13 @@ export async function mockMagicImport(page: Page): Promise<void> {
         body: JSON.stringify(jobs.get(jobId)),
       });
     } else {
-      // Return a default done job for any ID
+      // Return a default completed job for any ID
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           job_id: jobId,
-          status: 'done',
+          status: 'completed',
           template: 'Digital Nameplate',
           extractions: [
             {
@@ -630,7 +630,7 @@ export function getMockMagicImportJob(_template: string): MagicImportJob & {
 } {
   return {
     job_id: `mock-job-${Date.now()}`,
-    status: 'done',
+    status: 'completed',
     extractions: [
       { field: 'ManufacturerName', value: 'ACME Corporation', confidence: 0.95 },
       { field: 'ManufacturerProductDesignation', value: 'Industrial Sensor Model X', confidence: 0.92 },

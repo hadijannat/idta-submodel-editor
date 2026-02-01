@@ -171,6 +171,7 @@ export function PassportView({ schema, formData, children }: PassportViewProps) 
       {/* Passport card - only rendered when in passport mode */}
       <div
         id={passportId}
+        data-testid="passport-view"
         className={`passport-content-area ${isPassport ? 'visible' : 'hidden'}`}
         hidden={!isPassport}
         aria-hidden={!isPassport}
