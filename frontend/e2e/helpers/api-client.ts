@@ -233,11 +233,11 @@ const ELEMENT_FORM_KEYS = new Set([
   'annotations',
 ]);
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isLanguageMap(value: Record<string, unknown>): boolean {
+export function isLanguageMap(value: Record<string, unknown>): boolean {
   const keys = Object.keys(value);
   if (keys.length === 0) return false;
   return keys.every((key) => LANGUAGE_CODES.has(key)) &&
@@ -246,11 +246,11 @@ function isLanguageMap(value: Record<string, unknown>): boolean {
     );
 }
 
-function looksLikeElementFormData(value: Record<string, unknown>): boolean {
+export function looksLikeElementFormData(value: Record<string, unknown>): boolean {
   return Object.keys(value).some((key) => ELEMENT_FORM_KEYS.has(key));
 }
 
-function toElementFormData(value: unknown): ElementFormData {
+export function toElementFormData(value: unknown): ElementFormData {
   if (value === null || value === undefined) {
     return {};
   }
@@ -258,12 +258,20 @@ function toElementFormData(value: unknown): ElementFormData {
     return { items: value.map((item) => toElementFormData(item)) };
   }
   if (isPlainObject(value)) {
+    // Check if it already looks like ElementFormData first
     if (looksLikeElementFormData(value)) {
       return value as ElementFormData;
     }
+    // Empty object = intentionally empty collection
+    // Must check before isLanguageMap since empty objects fail that check
+    if (Object.keys(value).length === 0) {
+      return { elements: {} };
+    }
+    // Language maps (e.g., { en: 'hello', de: 'hallo' }) should be treated as values
     if (isLanguageMap(value)) {
       return { value };
     }
+    // Otherwise, recursively transform nested objects
     const elements: Record<string, ElementFormData> = {};
     for (const [key, nested] of Object.entries(value)) {
       elements[key] = toElementFormData(nested);
@@ -273,7 +281,7 @@ function toElementFormData(value: unknown): ElementFormData {
   return { value };
 }
 
-function toSubmodelFormData(formData: Record<string, unknown>): SubmodelFormData {
+export function toSubmodelFormData(formData: Record<string, unknown>): SubmodelFormData {
   if (isPlainObject(formData) && 'elements' in formData) {
     return formData as SubmodelFormData;
   }
@@ -282,6 +290,20 @@ function toSubmodelFormData(formData: Record<string, unknown>): SubmodelFormData
     elements[key] = toElementFormData(value);
   }
   return { elements };
+}
+
+/**
+ * Checks if an HTTP status code indicates a transient error that should be retried.
+ */
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+/**
+ * Sleep for a specified number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ============================================================================
@@ -381,18 +403,44 @@ export class APIClient {
     formData: Record<string, unknown>,
     options?: { status?: 'published' | 'deprecated'; version?: string }
   ): Promise<ValidationResult> {
-    const params = new URLSearchParams();
-    if (options?.status) params.set('status', options.status);
-    if (options?.version) params.set('version', options.version);
+    const maxRetries = 3;
+    let lastError: Error | undefined;
 
-    const payload = toSubmodelFormData(formData);
-    const response = await this.request.post(
-      `${this.baseURL}/api/editor/validate/${encodeURIComponent(templateName)}${
-        params.toString() ? '?' + params.toString() : ''
-      }`,
-      { data: payload }
-    );
-    return response.json();
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const params = new URLSearchParams();
+        if (options?.status) params.set('status', options.status);
+        if (options?.version) params.set('version', options.version);
+
+        const payload = toSubmodelFormData(formData);
+        const response = await this.request.post(
+          `${this.baseURL}/api/editor/validate/${encodeURIComponent(templateName)}${
+            params.toString() ? '?' + params.toString() : ''
+          }`,
+          { data: payload }
+        );
+
+        if (!response.ok()) {
+          const body = await response.text();
+          // Retry on rate limit or server errors
+          if (isRetryableStatus(response.status())) {
+            lastError = new Error(`HTTP ${response.status()}: ${body}`);
+            await sleep(1000 * attempt);
+            continue;
+          }
+          throw new Error(`Validation request failed: ${body}`);
+        }
+
+        return response.json();
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt < maxRetries) {
+          await sleep(1000 * attempt);
+        }
+      }
+    }
+
+    throw lastError;
   }
 
   // --------------------------------------------------------------------------
@@ -404,23 +452,43 @@ export class APIClient {
     formData: Record<string, unknown>,
     options?: { status?: 'published' | 'deprecated'; version?: string }
   ): Promise<Buffer> {
-    const params = new URLSearchParams({ format: 'aasx' });
-    if (options?.status) params.set('status', options.status);
-    if (options?.version) params.set('version', options.version);
+    const maxRetries = 3;
+    let lastError: Error | undefined;
 
-    const payload = toSubmodelFormData(formData);
-    const response = await this.request.post(
-      `${this.baseURL}/api/export/${encodeURIComponent(templateName)}?${params}`,
-      { data: payload }
-    );
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const params = new URLSearchParams({ format: 'aasx' });
+        if (options?.status) params.set('status', options.status);
+        if (options?.version) params.set('version', options.version);
 
-    // Check for error response
-    if (!response.ok()) {
-      const body = await response.text();
-      throw new Error(`Export failed with status ${response.status()}: ${body}`);
+        const payload = toSubmodelFormData(formData);
+        const response = await this.request.post(
+          `${this.baseURL}/api/export/${encodeURIComponent(templateName)}?${params}`,
+          { data: payload }
+        );
+
+        // Check for error response
+        if (!response.ok()) {
+          const body = await response.text();
+          // Retry on rate limit or server errors
+          if (isRetryableStatus(response.status())) {
+            lastError = new Error(`Export failed with status ${response.status()}: ${body}`);
+            await sleep(1000 * attempt);
+            continue;
+          }
+          throw new Error(`Export failed with status ${response.status()}: ${body}`);
+        }
+
+        return Buffer.from(await response.body());
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt < maxRetries) {
+          await sleep(1000 * attempt);
+        }
+      }
     }
 
-    return Buffer.from(await response.body());
+    throw lastError!;
   }
 
   async exportJson(
@@ -428,16 +496,42 @@ export class APIClient {
     formData: Record<string, unknown>,
     options?: { status?: 'published' | 'deprecated'; version?: string }
   ): Promise<object> {
-    const params = new URLSearchParams({ format: 'json' });
-    if (options?.status) params.set('status', options.status);
-    if (options?.version) params.set('version', options.version);
+    const maxRetries = 3;
+    let lastError: Error | undefined;
 
-    const payload = toSubmodelFormData(formData);
-    const response = await this.request.post(
-      `${this.baseURL}/api/export/${encodeURIComponent(templateName)}?${params}`,
-      { data: payload }
-    );
-    return response.json();
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const params = new URLSearchParams({ format: 'json' });
+        if (options?.status) params.set('status', options.status);
+        if (options?.version) params.set('version', options.version);
+
+        const payload = toSubmodelFormData(formData);
+        const response = await this.request.post(
+          `${this.baseURL}/api/export/${encodeURIComponent(templateName)}?${params}`,
+          { data: payload }
+        );
+
+        if (!response.ok()) {
+          const body = await response.text();
+          // Retry on rate limit or server errors
+          if (isRetryableStatus(response.status())) {
+            lastError = new Error(`Export failed with status ${response.status()}: ${body}`);
+            await sleep(1000 * attempt);
+            continue;
+          }
+          throw new Error(`Export failed with status ${response.status()}: ${body}`);
+        }
+
+        return response.json();
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt < maxRetries) {
+          await sleep(1000 * attempt);
+        }
+      }
+    }
+
+    throw lastError!;
   }
 
   async exportPdf(

@@ -12,7 +12,7 @@ import { createMockableAPIClient, MockableAPIClient } from '../../helpers/mock-a
 import { mockMagicImport } from '../../helpers/mock-services';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
-const TEST_TEMPLATE = 'Digital nameplate';
+const TEST_TEMPLATE = 'Digital Nameplate';
 
 test.describe('Magic Import PDF Upload', () => {
   test.describe('UI Flow', () => {

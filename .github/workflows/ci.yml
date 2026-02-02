@@ -199,13 +199,32 @@ jobs:
       - name: Start backend server
         run: |
           cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          sleep 5
+          # Wait for backend to be healthy
+          for i in {1..30}; do
+            curl -s http://localhost:8000/health && break
+            echo "Waiting for backend... ($i/30)"
+            sleep 2
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and serve frontend
         run: |
           cd frontend && npm run build
           npx serve -s dist -l 8080 &
-          sleep 3
+          # Wait for frontend to be ready
+          for i in {1..15}; do
+            curl -s http://localhost:8080 && break
+            echo "Waiting for frontend... ($i/15)"
+            sleep 2
+          done
+
+      - name: Warm up template cache
+        run: |
+          # Fetch Digital Nameplate schema to prime cache
+          curl -s "http://localhost:8000/api/editor/templates/Digital%20Nameplate/schema" > /dev/null || true
+          sleep 2
+        continue-on-error: true
 
       - name: Run E2E smoke tests
         run: npm run test:e2e:smoke -- --project=chromium

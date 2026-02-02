@@ -19,7 +19,7 @@ import { isConformanceToolAvailable, validateAasx } from '../../helpers/conforma
 import { createMinimalNameplateFormData } from '../../helpers/test-data-factory';
 
 // Test configuration
-const TEST_TEMPLATE = 'Digital nameplate'; // Note: lowercase 'n' as per GitHub repo
+const TEST_TEMPLATE = 'Digital Nameplate';
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 
 test.describe('Smoke Tests', () => {
