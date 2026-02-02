@@ -341,7 +341,11 @@ class HydratorService:
         if "semanticId" in value_data:
             semantic_id = normalize(value_data.get("semanticId"))
             if semantic_id is None:
-                element.semantic_id = None
+                # AASd-118: Can't remove semantic_id if supplemental_semantic_id exists
+                supplemental = getattr(element, "supplemental_semantic_id", None)
+                if not supplemental or len(supplemental) == 0:
+                    element.semantic_id = None
+                # else: keep existing semantic_id to maintain validity
             else:
                 element.semantic_id = self._build_reference(
                     semantic_id, getattr(element, "semantic_id", None)
