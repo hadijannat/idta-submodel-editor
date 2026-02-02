@@ -9,6 +9,7 @@ import { test, expect } from '@playwright/test';
 import { TemplateSelectorPage } from '../../pages/template-selector.page';
 import { FormEditorPage } from '../../pages/form-editor.page';
 import { APIClient } from '../../helpers/api-client';
+import { createMinimalNameplateFormData } from '../../helpers/test-data-factory';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
@@ -182,6 +183,7 @@ test.describe('Property Fields', () => {
 
       const testUri = 'https://example.com/export-test-001';
       const formData = {
+        ...createMinimalNameplateFormData(),
         URIOfTheProduct: testUri,
         ManufacturerName: { en: 'Export Test Manufacturer' },
       };

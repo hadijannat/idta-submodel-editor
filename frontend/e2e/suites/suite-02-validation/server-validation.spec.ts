@@ -86,7 +86,7 @@ test.describe('Server-Side Validation', () => {
   test.describe('Type Validation', () => {
     test('validates string type fields', async () => {
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
+        ...createMinimalNameplateFormData(),
         ManufacturerName: { en: 'Test' },
         SerialNumber: 'SN-001', // String field
       };
@@ -98,7 +98,7 @@ test.describe('Server-Side Validation', () => {
 
     test('validates multi-language property structure', async () => {
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
+        ...createMinimalNameplateFormData(),
         ManufacturerName: { en: 'English', de: 'German' },
       };
 
@@ -111,10 +111,8 @@ test.describe('Server-Side Validation', () => {
   test.describe('Cardinality Validation', () => {
     test('validates minimum cardinality', async () => {
       // Empty required field violates [1..1] or [1..*] cardinality
-      const formData = {
-        // URIOfTheProduct is [1..1]
-        ManufacturerName: { en: 'Test' },
-      };
+      const { URIOfTheProduct, ...formData } = createMinimalNameplateFormData();
+      formData.ManufacturerName = { en: 'Test' };
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
 
@@ -147,8 +145,7 @@ test.describe('Server-Side Validation', () => {
   test.describe('Nested Structure Validation', () => {
     test('validates nested collection structure', async () => {
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
+        ...createMinimalNameplateFormData(),
         ContactInformation: {
           NationalCode: { en: 'DE' },
           CityTown: { en: 'Berlin' },
@@ -162,8 +159,7 @@ test.describe('Server-Side Validation', () => {
 
     test('validates deeply nested properties', async () => {
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
+        ...createMinimalNameplateFormData(),
         ContactInformation: {
           Phone: {
             CountryCode: '+49',

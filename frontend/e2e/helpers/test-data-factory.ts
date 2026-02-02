@@ -13,6 +13,7 @@ export interface NameplateFormData {
   URIOfTheProduct?: string;
   ManufacturerName?: Record<string, string>;
   ManufacturerProductDesignation?: Record<string, string>;
+  AddressInformation?: Record<string, unknown>;
   ContactInformation?: {
     NationalCode?: Record<string, string>;
     CityTown?: Record<string, string>;
@@ -21,6 +22,7 @@ export interface NameplateFormData {
     Phone?: { CountryCode?: string; AreaCode?: string; Number?: string };
     Email?: { EmailAddress?: string };
   };
+  OrderCodeOfManufacturer?: string;
   ManufacturerProductFamily?: Record<string, string>;
   SerialNumber?: string;
   YearOfConstruction?: string;
@@ -73,6 +75,7 @@ export function createNameplateFormData(
       en: 'Test Product Model X1',
       de: 'Testprodukt Modell X1',
     },
+    AddressInformation: {},
     ContactInformation: {
       NationalCode: { en: 'DE' },
       CityTown: { en: 'Berlin' },
@@ -87,6 +90,7 @@ export function createNameplateFormData(
         EmailAddress: 'contact@test-manufacturer.com',
       },
     },
+    OrderCodeOfManufacturer: 'OC-2024-TEST-001',
     ManufacturerProductFamily: {
       en: 'Industrial Sensors',
     },
@@ -105,6 +109,9 @@ export function createMinimalNameplateFormData(): NameplateFormData {
   return {
     URIOfTheProduct: 'https://example.com/products/minimal-001',
     ManufacturerName: { en: 'Minimal Manufacturer' },
+    ManufacturerProductDesignation: { en: 'Minimal Product' },
+    AddressInformation: {},
+    OrderCodeOfManufacturer: 'OC-MIN-001',
   };
 }
 

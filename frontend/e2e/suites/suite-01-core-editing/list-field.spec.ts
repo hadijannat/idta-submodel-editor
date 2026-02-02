@@ -9,6 +9,7 @@ import { test, expect } from '@playwright/test';
 import { TemplateSelectorPage } from '../../pages/template-selector.page';
 import { FormEditorPage } from '../../pages/form-editor.page';
 import { APIClient } from '../../helpers/api-client';
+import { createMinimalNameplateFormData } from '../../helpers/test-data-factory';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
@@ -284,6 +285,7 @@ test.describe('List Fields', () => {
 
       // Use API to export with list data
       const formData = {
+        ...createMinimalNameplateFormData(),
         URIOfTheProduct: 'https://example.com/list-test',
         ManufacturerName: { en: 'List Test Manufacturer' },
         // Add list data if the schema supports it

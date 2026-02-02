@@ -68,6 +68,29 @@ export interface ValidationResult {
   warnings: ValidationWarning[];
 }
 
+export interface ElementFormData {
+  value?: unknown;
+  semanticId?: string | null;
+  valueId?: string | null;
+  elements?: Record<string, ElementFormData>;
+  items?: ElementFormData[];
+  semanticIdListElement?: string | null;
+  min?: unknown;
+  max?: unknown;
+  globalAssetId?: string;
+  statements?: Record<string, ElementFormData>;
+  contentType?: string;
+  first?: string;
+  second?: string;
+  annotations?: ElementFormData[];
+  [key: string]: unknown;
+}
+
+export interface SubmodelFormData {
+  elements: Record<string, ElementFormData>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SemanticSearchResult {
   irdi: string;
   preferredName: string;
@@ -181,6 +204,86 @@ export interface PCFCalculationResult {
   }[];
 }
 
+const LANGUAGE_CODES = new Set([
+  'en',
+  'de',
+  'fr',
+  'es',
+  'it',
+  'zh',
+  'ja',
+  'ko',
+  'pt',
+]);
+
+const ELEMENT_FORM_KEYS = new Set([
+  'value',
+  'semanticId',
+  'valueId',
+  'elements',
+  'items',
+  'semanticIdListElement',
+  'min',
+  'max',
+  'globalAssetId',
+  'statements',
+  'contentType',
+  'first',
+  'second',
+  'annotations',
+]);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isLanguageMap(value: Record<string, unknown>): boolean {
+  const keys = Object.keys(value);
+  if (keys.length === 0) return false;
+  return keys.every((key) => LANGUAGE_CODES.has(key)) &&
+    Object.values(value).every(
+      (val) => typeof val === 'string' || val === null || val === undefined
+    );
+}
+
+function looksLikeElementFormData(value: Record<string, unknown>): boolean {
+  return Object.keys(value).some((key) => ELEMENT_FORM_KEYS.has(key));
+}
+
+function toElementFormData(value: unknown): ElementFormData {
+  if (value === null || value === undefined) {
+    return {};
+  }
+  if (Array.isArray(value)) {
+    return { items: value.map((item) => toElementFormData(item)) };
+  }
+  if (isPlainObject(value)) {
+    if (looksLikeElementFormData(value)) {
+      return value as ElementFormData;
+    }
+    if (isLanguageMap(value)) {
+      return { value };
+    }
+    const elements: Record<string, ElementFormData> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      elements[key] = toElementFormData(nested);
+    }
+    return { elements };
+  }
+  return { value };
+}
+
+function toSubmodelFormData(formData: Record<string, unknown>): SubmodelFormData {
+  if (isPlainObject(formData) && 'elements' in formData) {
+    return formData as SubmodelFormData;
+  }
+  const elements: Record<string, ElementFormData> = {};
+  for (const [key, value] of Object.entries(formData || {})) {
+    elements[key] = toElementFormData(value);
+  }
+  return { elements };
+}
+
 // ============================================================================
 // API Client
 // ============================================================================
@@ -282,11 +385,12 @@ export class APIClient {
     if (options?.status) params.set('status', options.status);
     if (options?.version) params.set('version', options.version);
 
+    const payload = toSubmodelFormData(formData);
     const response = await this.request.post(
       `${this.baseURL}/api/editor/validate/${encodeURIComponent(templateName)}${
         params.toString() ? '?' + params.toString() : ''
       }`,
-      { data: { values: formData } }
+      { data: payload }
     );
     return response.json();
   }
@@ -304,9 +408,10 @@ export class APIClient {
     if (options?.status) params.set('status', options.status);
     if (options?.version) params.set('version', options.version);
 
+    const payload = toSubmodelFormData(formData);
     const response = await this.request.post(
       `${this.baseURL}/api/export/${encodeURIComponent(templateName)}?${params}`,
-      { data: { values: formData } }
+      { data: payload }
     );
 
     // Check for error response
@@ -327,9 +432,10 @@ export class APIClient {
     if (options?.status) params.set('status', options.status);
     if (options?.version) params.set('version', options.version);
 
+    const payload = toSubmodelFormData(formData);
     const response = await this.request.post(
       `${this.baseURL}/api/export/${encodeURIComponent(templateName)}?${params}`,
-      { data: { values: formData } }
+      { data: payload }
     );
     return response.json();
   }
@@ -350,9 +456,10 @@ export class APIClient {
       params.set('include_conformance', String(options.include_conformance));
     }
 
+    const payload = toSubmodelFormData(formData);
     const response = await this.request.post(
       `${this.baseURL}/api/export/${encodeURIComponent(templateName)}?${params}`,
-      { data: { values: formData } }
+      { data: payload }
     );
     return Buffer.from(await response.body());
   }

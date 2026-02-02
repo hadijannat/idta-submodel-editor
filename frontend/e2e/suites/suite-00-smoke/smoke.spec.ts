@@ -16,6 +16,7 @@ import { TemplateSelectorPage } from '../../pages/template-selector.page';
 import { FormEditorPage } from '../../pages/form-editor.page';
 import { APIClient } from '../../helpers/api-client';
 import { isConformanceToolAvailable, validateAasx } from '../../helpers/conformance-runner';
+import { createMinimalNameplateFormData } from '../../helpers/test-data-factory';
 
 // Test configuration
 const TEST_TEMPLATE = 'Digital nameplate'; // Note: lowercase 'n' as per GitHub repo
@@ -131,6 +132,7 @@ test.describe('Smoke Tests', () => {
 
     // Minimal valid form data
     const formData = {
+      ...createMinimalNameplateFormData(),
       URIOfTheProduct: 'https://example.com/products/test-001',
       ManufacturerName: { en: 'Test Manufacturer' },
     };
@@ -158,6 +160,7 @@ test.describe('Smoke Tests', () => {
 
     // Form data for export
     const formData = {
+      ...createMinimalNameplateFormData(),
       URIOfTheProduct: 'https://example.com/products/smoke-test-001',
       ManufacturerName: { en: 'Smoke Test Manufacturer' },
       ManufacturerProductDesignation: { en: 'Smoke Test Product' },
@@ -199,6 +202,7 @@ test.describe('Smoke Tests', () => {
 
     // Form data for export
     const formData = {
+      ...createMinimalNameplateFormData(),
       URIOfTheProduct: 'https://example.com/products/conformance-test-001',
       ManufacturerName: { en: 'Conformance Test Manufacturer' },
       ManufacturerProductDesignation: { en: 'Conformance Test Product' },

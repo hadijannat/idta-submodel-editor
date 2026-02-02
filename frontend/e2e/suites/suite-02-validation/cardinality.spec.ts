@@ -9,6 +9,7 @@ import { test, expect } from '@playwright/test';
 import { TemplateSelectorPage } from '../../pages/template-selector.page';
 import { FormEditorPage } from '../../pages/form-editor.page';
 import { APIClient } from '../../helpers/api-client';
+import { createMinimalNameplateFormData } from '../../helpers/test-data-factory';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
@@ -23,10 +24,8 @@ test.describe('Cardinality Validation', () => {
   test.describe('[1..1] - Exactly One Required', () => {
     test('missing required field fails validation', async () => {
       // URIOfTheProduct is typically [1..1]
-      const formData = {
-        // Missing URIOfTheProduct
-        ManufacturerName: { en: 'Test' },
-      };
+      const { URIOfTheProduct, ...formData } = createMinimalNameplateFormData();
+      formData.ManufacturerName = { en: 'Test' };
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
 
@@ -36,8 +35,8 @@ test.describe('Cardinality Validation', () => {
 
     test('present required field passes validation', async () => {
       const formData = {
+        ...createMinimalNameplateFormData(),
         URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
       };
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
@@ -52,11 +51,7 @@ test.describe('Cardinality Validation', () => {
   test.describe('[0..1] - Optional Single', () => {
     test('empty optional field passes validation', async () => {
       // SerialNumber is typically [0..1]
-      const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
-        // SerialNumber not provided
-      };
+      const formData = createMinimalNameplateFormData();
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
 
@@ -68,8 +63,7 @@ test.describe('Cardinality Validation', () => {
 
     test('provided optional field passes validation', async () => {
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
+        ...createMinimalNameplateFormData(),
         SerialNumber: 'SN-001',
       };
 
@@ -81,11 +75,7 @@ test.describe('Cardinality Validation', () => {
 
   test.describe('[0..*] - Optional Multiple', () => {
     test('empty optional list passes validation', async () => {
-      const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
-        // No list items
-      };
+      const formData = createMinimalNameplateFormData();
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
 
@@ -94,11 +84,7 @@ test.describe('Cardinality Validation', () => {
     });
 
     test('multiple items in optional list passes validation', async () => {
-      const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
-        // If there's a [0..*] list field, add multiple items
-      };
+      const formData = createMinimalNameplateFormData();
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
 
@@ -121,8 +107,7 @@ test.describe('Cardinality Validation', () => {
       }
 
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
+        ...createMinimalNameplateFormData(),
         [requiredListField.idShort]: [], // Empty required list
       };
 
@@ -144,8 +129,7 @@ test.describe('Cardinality Validation', () => {
       }
 
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
+        ...createMinimalNameplateFormData(),
         [requiredListField.idShort]: [{ value: 'item1' }],
       };
 
@@ -299,8 +283,7 @@ test.describe('Cardinality Validation', () => {
     test('cardinality enforced in nested collections', async () => {
       // ContactInformation is a collection with nested required fields
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
+        ...createMinimalNameplateFormData(),
         ContactInformation: {
           // Provide empty collection
         },
@@ -328,8 +311,7 @@ test.describe('Cardinality Validation', () => {
       }
 
       const formData = {
-        URIOfTheProduct: 'https://example.com/test',
-        ManufacturerName: { en: 'Test' },
+        ...createMinimalNameplateFormData(),
         [collectionWithList.idShort]: {},
       };
 

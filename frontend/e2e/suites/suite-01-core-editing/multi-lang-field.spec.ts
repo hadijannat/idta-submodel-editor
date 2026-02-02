@@ -9,6 +9,7 @@ import { test, expect } from '@playwright/test';
 import { TemplateSelectorPage } from '../../pages/template-selector.page';
 import { FormEditorPage } from '../../pages/form-editor.page';
 import { APIClient } from '../../helpers/api-client';
+import { createMinimalNameplateFormData } from '../../helpers/test-data-factory';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
@@ -249,6 +250,7 @@ test.describe('Multi-Language Property Fields', () => {
       const api = new APIClient(request, API_BASE_URL);
 
       const formData = {
+        ...createMinimalNameplateFormData(),
         URIOfTheProduct: 'https://example.com/multilang-test',
         ManufacturerName: {
           en: 'English Manufacturer Name',
