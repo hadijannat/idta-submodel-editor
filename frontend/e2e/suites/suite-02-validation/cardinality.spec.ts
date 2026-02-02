@@ -252,8 +252,9 @@ test.describe('Cardinality Validation', () => {
       for (const element of schema.elements.slice(0, 5)) {
         // Cardinality should be present
         // Default is [1..1] if not specified
+        // Formats: [1], [0..1], [1..1], [0..*], [1..*], etc.
         if (element.cardinality) {
-          expect(element.cardinality).toMatch(/\[\d+\.\.[\d*]+\]/);
+          expect(element.cardinality).toMatch(/\[\d+(?:\.\.[\d*]+)?\]/);
         }
       }
     });
@@ -262,6 +263,7 @@ test.describe('Cardinality Validation', () => {
       const schema = await api.getTemplateSchema(TEST_TEMPLATE);
 
       const validPatterns = [
+        /^\[\d+\]$/,         // [1] - shorthand for [1..1]
         /^\[0\.\.1\]$/,      // [0..1]
         /^\[1\.\.1\]$/,      // [1..1]
         /^\[0\.\.\*\]$/,     // [0..*]
