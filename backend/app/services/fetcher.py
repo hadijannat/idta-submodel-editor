@@ -78,6 +78,92 @@ class TemplateFetcherService:
         """Check if cached data is still within TTL."""
         return datetime.now() - cache_time < timedelta(hours=self.cache_ttl_hours)
 
+    def _normalize_template_key(self, name: str) -> str:
+        """Normalize template names for loose matching."""
+        return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+    def _extract_idta_number(self, name: str) -> str | None:
+        """Extract IDTA number from a template name if present."""
+        match = re.search(r"(?:IDTA\s*)?(\d{5})", name, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        return None
+
+    async def resolve_template(
+        self,
+        template_name: str,
+        statuses: list[str] | None = None,
+        include_local: bool = False,
+    ) -> dict | None:
+        """
+        Resolve a template name to a known template entry.
+
+        Matches case-insensitively and by normalized keys to avoid GitHub path
+        mismatches (e.g., "Digital Nameplate" vs "Digital nameplate").
+        """
+        roots = statuses or ["published"]
+        templates, _ = await self.list_available_templates(
+            roots, include_local=include_local
+        )
+        if not templates:
+            return None
+
+        # Exact match
+        for template in templates:
+            if template.get("name") == template_name:
+                return template
+
+        # Case-insensitive match
+        name_lower = template_name.lower()
+        for template in templates:
+            if template.get("name", "").lower() == name_lower:
+                return template
+
+        # Normalized match against name/title
+        target_key = self._normalize_template_key(template_name)
+        if target_key:
+            for template in templates:
+                for field in ("name", "title"):
+                    value = template.get(field) or ""
+                    if value and self._normalize_template_key(value) == target_key:
+                        return template
+
+        # IDTA number match
+        idta_number = self._extract_idta_number(template_name)
+        if idta_number:
+            for template in templates:
+                if template.get("idta_number") == idta_number:
+                    return template
+
+        return None
+
+    async def resolve_template_path(self, template_path: str) -> str:
+        """
+        Resolve a template path to the canonical name.
+
+        Keeps version suffixes intact while fixing case/format mismatches.
+        """
+        if template_path.startswith("local/"):
+            return template_path
+
+        parts = template_path.split("/", 2)
+        if len(parts) < 2:
+            return template_path
+
+        status, name = parts[0], parts[1]
+        remainder = parts[2] if len(parts) > 2 else ""
+        resolved = await self.resolve_template(name, [status], include_local=False)
+        if not resolved:
+            return template_path
+
+        resolved_name = resolved.get("name") or name
+        if resolved_name == name:
+            return template_path
+
+        if remainder:
+            return f"{status}/{resolved_name}/{remainder}"
+        return f"{status}/{resolved_name}"
+
     def _add_ref_param(self, url: str, ref: str) -> str:
         """Add or update the ref query parameter in a URL."""
         parsed = urlparse(url)
@@ -321,6 +407,8 @@ class TemplateFetcherService:
         """
         import time
         fetch_start = time.perf_counter()
+
+        template_path = await self.resolve_template_path(template_path)
 
         # Handle local templates
         if template_path.startswith("local/"):
@@ -583,6 +671,7 @@ class TemplateFetcherService:
         Returns:
             List of version metadata.
         """
+        template_path = await self.resolve_template_path(template_path)
         async with httpx.AsyncClient(timeout=30.0) as client:
             url = (
                 "https://api.github.com/repos/"

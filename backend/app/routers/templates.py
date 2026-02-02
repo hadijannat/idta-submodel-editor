@@ -98,8 +98,7 @@ async def get_template_info(
         else:
             statuses = ["published"]
 
-        templates, _ = await fetcher.list_available_templates(statuses)
-        template = next((t for t in templates if t["name"] == template_name), None)
+        template = await fetcher.resolve_template(template_name, statuses)
 
         if not template:
             raise APIError(
