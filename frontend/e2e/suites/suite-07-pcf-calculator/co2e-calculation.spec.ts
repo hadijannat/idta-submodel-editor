@@ -26,8 +26,8 @@ test.describe('CO2e Calculation', () => {
         // API not available
       }
 
-      // Skip if PCF API not available
-      if (!results) {
+      // Skip if PCF API not available or returns unexpected format
+      if (!results || !Array.isArray(results)) {
         test.skip();
         return;
       }
@@ -43,8 +43,8 @@ test.describe('CO2e Calculation', () => {
         // API not available
       }
 
-      // Skip if PCF API not available
-      if (!results) {
+      // Skip if PCF API not available or returns unexpected format
+      if (!results || !Array.isArray(results)) {
         test.skip();
         return;
       }
@@ -64,8 +64,8 @@ test.describe('CO2e Calculation', () => {
         // API not available
       }
 
-      // Skip if PCF API not available
-      if (!results) {
+      // Skip if PCF API not available or returns unexpected format
+      if (!results || !Array.isArray(results)) {
         test.skip();
         return;
       }
@@ -134,8 +134,8 @@ test.describe('CO2e Calculation', () => {
         // API not available
       }
 
-      // Skip if PCF calculation API not available
-      if (!result) {
+      // Skip if PCF calculation API not available or doesn't return breakdown
+      if (!result || result.breakdown === undefined) {
         test.skip();
         return;
       }

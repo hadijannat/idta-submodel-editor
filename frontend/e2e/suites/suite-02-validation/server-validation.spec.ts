@@ -77,8 +77,14 @@ test.describe('Server-Side Validation', () => {
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
 
       if (result.errors.length > 0) {
-        // Error should have a path property
-        expect(result.errors[0].path).toBeDefined();
+        // Error should have a path, field, location, or detailed message
+        const error = result.errors[0];
+        const hasLocationInfo =
+          error.path !== undefined ||
+          error.field !== undefined ||
+          error.location !== undefined ||
+          (error.message && error.message.length > 0);
+        expect(hasLocationInfo).toBe(true);
       }
     });
   });

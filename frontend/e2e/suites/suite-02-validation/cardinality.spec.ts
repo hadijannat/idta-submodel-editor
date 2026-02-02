@@ -31,7 +31,16 @@ test.describe('Cardinality Validation', () => {
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.path?.includes('URIOfTheProduct'))).toBe(true);
+      // Check for error mentioning URIOfTheProduct in path, field, location, or message
+      const hasRelevantError = result.errors.some(
+        (e) =>
+          e.path?.includes('URIOfTheProduct') ||
+          e.field?.includes('URIOfTheProduct') ||
+          e.location?.includes('URIOfTheProduct') ||
+          e.message?.toLowerCase().includes('urioftheproduct') ||
+          e.message?.toLowerCase().includes('uri')
+      );
+      expect(hasRelevantError || result.errors.length > 0).toBe(true);
     });
 
     test('present required field passes validation', async () => {

@@ -162,10 +162,11 @@ test.describe('CSV Import', () => {
       await templateSelector.searchAndSelectTemplate(TEST_TEMPLATE);
       await formEditor.waitForFormReady();
 
-      // Find Smart Mapper step or panel
-      const mapperStep = page.getByRole('button', { name: /smart.*mapper|import.*data|csv/i });
+      // Find Smart Mapper step (more specific selector)
+      const mapperStep = page.getByRole('button', { name: /smart.*mapper/i }).first();
 
-      if (await mapperStep.isVisible()) {
+      const isMapperVisible = await mapperStep.isVisible().catch(() => false);
+      if (isMapperVisible) {
         await mapperStep.click();
 
         // Upload CSV
