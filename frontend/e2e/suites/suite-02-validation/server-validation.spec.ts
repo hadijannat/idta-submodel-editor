@@ -111,7 +111,8 @@ test.describe('Server-Side Validation', () => {
   test.describe('Cardinality Validation', () => {
     test('validates minimum cardinality', async () => {
       // Empty required field violates [1..1] or [1..*] cardinality
-      const { URIOfTheProduct, ...formData } = createMinimalNameplateFormData();
+      const formData = createMinimalNameplateFormData();
+      delete formData.URIOfTheProduct;
       formData.ManufacturerName = { en: 'Test' };
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);

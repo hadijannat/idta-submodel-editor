@@ -24,7 +24,8 @@ test.describe('Cardinality Validation', () => {
   test.describe('[1..1] - Exactly One Required', () => {
     test('missing required field fails validation', async () => {
       // URIOfTheProduct is typically [1..1]
-      const { URIOfTheProduct, ...formData } = createMinimalNameplateFormData();
+      const formData = createMinimalNameplateFormData();
+      delete formData.URIOfTheProduct;
       formData.ManufacturerName = { en: 'Test' };
 
       const result = await api.validateFormData(TEST_TEMPLATE, formData);
