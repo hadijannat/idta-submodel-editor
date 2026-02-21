@@ -8,6 +8,7 @@ that the frontend can render without knowledge of AAS specifics.
 """
 
 import logging
+import base64
 from io import BytesIO
 from typing import Any, Protocol
 
@@ -371,9 +372,25 @@ class ParserService:
 
     def _blob_schema(self, element: model.Blob) -> dict[str, Any]:
         """Generate schema for Blob element."""
+        if not element.value:
+            return {
+                "contentType": element.content_type,
+                "value": None,
+                "valueEncoding": None,
+            }
+
+        try:
+            value = element.value.decode("utf-8")
+            value_encoding = "utf-8"
+        except UnicodeDecodeError:
+            encoded = base64.b64encode(element.value).decode("ascii")
+            value = f"base64:{encoded}"
+            value_encoding = "base64"
+
         return {
             "contentType": element.content_type,
-            "value": element.value.decode("utf-8") if element.value else None,
+            "value": value,
+            "valueEncoding": value_encoding,
         }
 
     def _range_schema(

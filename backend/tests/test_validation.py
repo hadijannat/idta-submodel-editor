@@ -2,7 +2,7 @@
 Tests for form validation helpers.
 """
 
-from app.services.validation import validate_form_data
+from app.services.validation import _is_valid_reference, validate_form_data
 
 
 def _schema(elements):
@@ -106,3 +106,96 @@ def test_multilang_whitespace_is_invalid():
 
     assert any(e.code == "required_translation" for e in errors)
     assert warnings == []
+
+
+def test_collection_with_none_elements_does_not_raise():
+    schema = _schema(
+        [
+            {
+                "idShort": "Coll",
+                "modelType": "SubmodelElementCollection",
+                "cardinality": "[0..1]",
+                "elements": [
+                    {
+                        "idShort": "Inner",
+                        "modelType": "Property",
+                        "cardinality": "[1]",
+                        "valueType": "xs:string",
+                    }
+                ],
+            }
+        ]
+    )
+    form_data = {"elements": {"Coll": {"elements": None}}}
+    errors, warnings = validate_form_data(schema, form_data)
+
+    assert any(e.code == "required" and e.field == "Coll.Inner" for e in errors)
+    assert warnings == []
+
+
+def test_list_with_none_items_does_not_raise():
+    schema = _schema(
+        [
+            {
+                "idShort": "Items",
+                "modelType": "SubmodelElementList",
+                "cardinality": "[1..*]",
+                "itemTemplate": {
+                    "idShort": "",
+                    "modelType": "Property",
+                    "cardinality": "[1]",
+                    "valueType": "xs:string",
+                },
+            }
+        ]
+    )
+    form_data = {"elements": {"Items": {"items": None}}}
+    errors, warnings = validate_form_data(schema, form_data)
+
+    assert any(e.code == "min_items" and e.field == "Items" for e in errors)
+    assert warnings == []
+
+
+def test_entity_with_none_statements_does_not_raise():
+    schema = _schema(
+        [
+            {
+                "idShort": "EntityX",
+                "modelType": "Entity",
+                "cardinality": "[0..1]",
+                "statements": [
+                    {
+                        "idShort": "Inner",
+                        "modelType": "Property",
+                        "cardinality": "[1]",
+                        "valueType": "xs:string",
+                    }
+                ],
+            }
+        ]
+    )
+    form_data = {"elements": {"EntityX": {"statements": None}}}
+    errors, warnings = validate_form_data(schema, form_data)
+
+    assert any(e.code == "required" and e.field == "EntityX.Inner" for e in errors)
+    assert warnings == []
+
+
+def test_reference_validation_accepts_valid_irdi():
+    assert _is_valid_reference("0173-1#02-AAA123#001")
+
+
+def test_reference_validation_rejects_invalid_irdi():
+    assert not _is_valid_reference("0173-1#2-AAA123#001")
+
+
+def test_reference_validation_accepts_https_uri():
+    assert _is_valid_reference("https://example.com/semantic/123")
+
+
+def test_reference_validation_accepts_urn_uri():
+    assert _is_valid_reference("urn:example:semantic:123")
+
+
+def test_reference_validation_rejects_non_uri_value():
+    assert not _is_valid_reference("not a valid reference")

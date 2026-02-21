@@ -40,6 +40,7 @@ class ElementFormData(BaseModel):
 
     # For File
     contentType: str | None = None
+    valueEncoding: str | None = None
 
     # For Relationship
     first: str | None = None

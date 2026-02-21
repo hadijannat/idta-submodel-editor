@@ -72,6 +72,7 @@ class ElementSchema(BaseModel):
 
     # File-specific fields
     contentType: str | None = None
+    valueEncoding: str | None = None
 
     # Range-specific fields
     min: Any = None

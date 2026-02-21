@@ -1,4 +1,4 @@
-import io
+import base64
 
 import pytest
 from basyx.aas import model
@@ -44,3 +44,26 @@ async def test_hydrator_clears_reference_and_relationship():
     assert ref.value is None
     assert rel.first is None
     assert rel.second is None
+
+
+def test_hydrator_decodes_base64_blob_values():
+    hydrator = HydratorService()
+    blob = model.Blob(id_short="blob", content_type="application/octet-stream")
+    original = b"\xff\xfe\x00\x01"
+    encoded = base64.b64encode(original).decode("ascii")
+
+    hydrator._hydrate_blob(
+        blob,
+        {"value": f"base64:{encoded}", "valueEncoding": "base64"},
+    )
+
+    assert blob.value == original
+
+
+def test_hydrator_keeps_utf8_blob_behavior():
+    hydrator = HydratorService()
+    blob = model.Blob(id_short="blob", content_type="text/plain")
+
+    hydrator._hydrate_blob(blob, {"value": "hello"})
+
+    assert blob.value == b"hello"
