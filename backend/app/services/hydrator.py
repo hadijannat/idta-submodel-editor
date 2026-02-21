@@ -11,6 +11,7 @@ the UI didn't render.
 import copy
 import json
 import logging
+import base64
 from io import BytesIO
 from typing import Any
 
@@ -554,10 +555,28 @@ class HydratorService:
     ) -> None:
         """Hydrate a Blob element."""
         if "value" in value_data:
-            if value_data["value"]:
-                element.value = value_data["value"].encode("utf-8")
-            else:
+            raw_value = value_data["value"]
+            if raw_value in (None, ""):
                 element.value = None
+            elif isinstance(raw_value, bytes):
+                element.value = raw_value
+            else:
+                raw_text = str(raw_value)
+                value_encoding = str(value_data.get("valueEncoding") or "").lower()
+                if value_encoding == "base64" or raw_text.startswith("base64:"):
+                    encoded = (
+                        raw_text.split(":", 1)[1]
+                        if raw_text.startswith("base64:")
+                        else raw_text
+                    )
+                    try:
+                        element.value = base64.b64decode(encoded, validate=True)
+                    except Exception:
+                        # Keep the payload representable even if an invalid base64
+                        # marker is submitted.
+                        element.value = raw_text.encode("utf-8")
+                else:
+                    element.value = raw_text.encode("utf-8")
         if "contentType" in value_data:
             element.content_type = value_data["contentType"]
 

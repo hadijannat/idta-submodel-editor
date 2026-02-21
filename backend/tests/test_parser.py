@@ -6,7 +6,44 @@ import pytest
 from unittest.mock import MagicMock, patch
 from io import BytesIO
 
+from basyx.aas import model
+from basyx.aas.adapter import aasx
+
 from app.services.parser import ParserService
+
+
+def _create_aasx_with_blob(blob_value: bytes) -> bytes:
+    blob = model.Blob(
+        id_short="BlobValue",
+        content_type="application/octet-stream",
+        value=blob_value,
+    )
+    submodel = model.Submodel(
+        id_="urn:test:submodel",
+        id_short="TestSubmodel",
+        submodel_element=[blob],
+    )
+    aas_obj = model.AssetAdministrationShell(
+        id_="urn:test:aas",
+        id_short="TestAAS",
+        asset_information=model.AssetInformation(
+            asset_kind=model.AssetKind.INSTANCE,
+            global_asset_id="urn:test:asset",
+        ),
+        submodel={model.ModelReference.from_referable(submodel)},
+    )
+
+    object_store: model.DictObjectStore = model.DictObjectStore([aas_obj, submodel])
+    file_store = aasx.DictSupplementaryFileContainer()
+    output = BytesIO()
+    with aasx.AASXWriter(output) as writer:
+        writer.write_all_aas_objects(
+            "/aasx/data.xml",
+            object_store,
+            file_store,
+            write_json=False,
+        )
+    return output.getvalue()
 
 
 class TestParserService:
@@ -24,6 +61,30 @@ class TestParserService:
 
         with pytest.raises(Exception):
             parser.parse_aasx_to_ui_schema(b"not a valid aasx file")
+
+    def test_parse_aasx_blob_non_utf8_is_base64_payload(self):
+        """Binary blob values should be represented deterministically."""
+        parser = ParserService()
+        aasx_bytes = _create_aasx_with_blob(b"\xff\xfe\x00\x01")
+
+        schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+        blob = schema["elements"][0]
+
+        assert blob["modelType"] == "Blob"
+        assert blob["valueEncoding"] == "base64"
+        assert blob["value"].startswith("base64:")
+
+    def test_parse_aasx_blob_utf8_marks_utf8_encoding(self):
+        """UTF-8 blob values should preserve plain-text representation."""
+        parser = ParserService()
+        aasx_bytes = _create_aasx_with_blob("hello".encode("utf-8"))
+
+        schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+        blob = schema["elements"][0]
+
+        assert blob["modelType"] == "Blob"
+        assert blob["valueEncoding"] == "utf-8"
+        assert blob["value"] == "hello"
 
     def test_serialize_reference_none(self):
         """Test serializing None reference."""

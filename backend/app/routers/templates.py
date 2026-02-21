@@ -35,7 +35,8 @@ async def list_templates(
     List all available IDTA submodel templates.
 
     Templates are fetched from the admin-shell-io/submodel-templates
-    GitHub repository and cached locally.
+    GitHub repository and cached locally. Local templates are listed via
+    `/api/editor/templates/local`.
     """
     try:
         if status == "deprecated":
@@ -45,7 +46,9 @@ async def list_templates(
         else:
             statuses = ["published"]
 
-        templates, cached = await fetcher.list_available_templates(statuses)
+        templates, cached = await fetcher.list_available_templates(
+            statuses, include_local=False
+        )
 
         # Apply filters
         if search:
@@ -166,5 +169,6 @@ async def invalidate_template_cache(
     """
     Invalidate cache for a specific template.
     """
-    result = fetcher.invalidate_template(f"published/{template_name}")
+    template_path = await fetcher.resolve_template_path(f"published/{template_name}")
+    result = fetcher.invalidate_template(template_path)
     return {"invalidated": result}

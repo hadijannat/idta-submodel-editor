@@ -4,9 +4,13 @@ Shared validation helpers for submodel form data.
 Keeps API validation logic consistent across validate/export/hydrate endpoints.
 """
 
+import re
 from typing import Any
 
 from app.schemas.form_data import ValidationError
+
+_URI_SCHEME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:[^\s]+$")
+_IRDI_PATTERN = re.compile(r"^\d{4}-\d#\d{2}-[A-Z]{3}\d{3}#\d{3}$")
 
 
 def validate_form_data(
@@ -35,12 +39,15 @@ def validate_form_data(
 
 def _validate_elements(
     schema_elements: list[dict[str, Any]],
-    form_elements: dict[str, Any],
+    form_elements: dict[str, Any] | None,
     errors: list[ValidationError],
     warnings: list[ValidationError],
     path: str,
 ) -> None:
     """Recursively validate form elements against schema."""
+    if not isinstance(form_elements, dict):
+        form_elements = {}
+
     for schema_elem in schema_elements:
         id_short = schema_elem["idShort"]
         elem_path = f"{path}.{id_short}" if path else id_short
@@ -76,11 +83,12 @@ def _validate_element(
 
     if model_type == "SubmodelElementCollection":
         nested_schema = schema_elem.get("elements", [])
-        nested_form = form_elem.get("elements", {}) if form_elem else {}
+        nested_form = form_elem.get("elements") or {}
         _validate_elements(nested_schema, nested_form, errors, warnings, elem_path)
 
     elif model_type == "SubmodelElementList":
-        items = form_elem.get("items", []) if form_elem else []
+        items_raw = form_elem.get("items")
+        items = items_raw if isinstance(items_raw, list) else []
 
         if min_items >= 1 and len(items) == 0:
             errors.append(
@@ -127,7 +135,8 @@ def _validate_element(
                 )
 
     elif model_type == "MultiLanguageProperty":
-        value = form_elem.get("value", {}) if form_elem else {}
+        value_raw = form_elem.get("value")
+        value = value_raw if isinstance(value_raw, dict) else {}
         has_translation = any(
             str(v).strip() for v in value.values() if v is not None
         )
@@ -226,7 +235,10 @@ def _validate_element(
 
         if model_type == "AnnotatedRelationshipElement":
             annotations_schema = schema_elem.get("annotations", []) or []
-            annotations_form = form_elem.get("annotations", []) or []
+            annotations_form_raw = form_elem.get("annotations")
+            annotations_form = (
+                annotations_form_raw if isinstance(annotations_form_raw, list) else []
+            )
             for idx, annotation_schema in enumerate(annotations_schema):
                 if idx >= len(annotations_form):
                     continue
@@ -241,7 +253,7 @@ def _validate_element(
 
     elif model_type == "Entity":
         nested_schema = schema_elem.get("statements", []) or []
-        nested_form = form_elem.get("statements", {}) if form_elem else {}
+        nested_form = form_elem.get("statements") or {}
         _validate_elements(nested_schema, nested_form, errors, warnings, elem_path)
 
 
@@ -270,8 +282,6 @@ def _normalize_cardinality_value(value: str | None) -> str | None:
 
 
 def _parse_cardinality(cardinality: str) -> tuple[int, int | None]:
-    import re
-
     normalized = _normalize_cardinality_value(cardinality) or "[1]"
     match = re.match(r"^\[(\d+)(?:\.\.(\d+|\*))?\]$", normalized)
     if not match:
@@ -317,10 +327,9 @@ def _value_matches_type(value: Any, value_type: str | None) -> bool:
 
 
 def _is_valid_reference(value: str) -> bool:
-    import re
-
     if not value:
         return True
-    iri_pattern = re.compile(r"^https?://.+", re.IGNORECASE)
-    irdi_pattern = re.compile(r"^\\d{4}-\\d#\\d{2}-[A-Z]{3}\\d{3}#\\d{3}$")
-    return bool(iri_pattern.match(value) or irdi_pattern.match(value))
+    normalized = value.strip()
+    if not normalized:
+        return True
+    return bool(_URI_SCHEME_PATTERN.match(normalized) or _IRDI_PATTERN.match(normalized))
