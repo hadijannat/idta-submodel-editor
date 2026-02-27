@@ -12,11 +12,6 @@ on:
 
 jobs:
   claude:
-    if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -30,7 +25,36 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Evaluate Claude trigger
+        id: trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHOULD_RUN="false"
+          EVENT="${GITHUB_EVENT_NAME}"
+          PAYLOAD="${GITHUB_EVENT_PATH}"
+          TEXT=""
+
+          case "${EVENT}" in
+            issue_comment|pull_request_review_comment)
+              TEXT="$(jq -r '.comment.body // ""' "${PAYLOAD}")"
+              ;;
+            pull_request_review)
+              TEXT="$(jq -r '.review.body // ""' "${PAYLOAD}")"
+              ;;
+            issues)
+              TEXT="$(jq -r '(.issue.title // "") + "\n" + (.issue.body // "")' "${PAYLOAD}")"
+              ;;
+          esac
+
+          if echo "${TEXT}" | grep -qi '@claude'; then
+            SHOULD_RUN="true"
+          fi
+
+          echo "should_run=${SHOULD_RUN}" >> "${GITHUB_OUTPUT}"
+
       - name: Run Claude Code
+        if: steps.trigger.outputs.should_run == 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -48,3 +72,6 @@ jobs:
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
 
+      - name: No-op when Claude is not requested
+        if: steps.trigger.outputs.should_run != 'true'
+        run: echo "No @claude trigger found; marking workflow as successful no-op."
