@@ -105,6 +105,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Cleanup on shutdown
+    await knowledge.shutdown_knowledge_index(app)
     logger.info("Shutting down tool registry...")
     await shutdown_registry()
     logger.info("Tool registry shut down")
