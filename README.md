@@ -1,5 +1,11 @@
 # Universal IDTA Submodel Template Editor
 
+[![CI](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml)
+[![Docs](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/docs.yml/badge.svg)](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/docs.yml)
+[![Release](https://img.shields.io/github/v/release/hadijannat/idta-submodel-editor)](https://github.com/hadijannat/idta-submodel-editor/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18374723.svg)](https://doi.org/10.5281/zenodo.18374723)
+
 A metamodel-driven application for editing IDTA submodel templates without code changes. It combines a FastAPI backend, a React + TypeScript frontend, and profile-based integrations for Magic Import, Dataspace publishing, and PLC connectivity.
 
 ## What It Does
