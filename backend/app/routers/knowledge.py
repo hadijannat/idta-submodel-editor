@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -44,7 +44,7 @@ def get_index_path(settings: Settings) -> Path:
 
 async def get_knowledge_index(
     settings: Annotated[Settings, Depends(get_settings)],
-) -> TemplateKnowledgeIndex:
+) -> AsyncIterator[TemplateKnowledgeIndex]:
     """
     Get the template knowledge index instance.
 
@@ -62,8 +62,11 @@ async def get_knowledge_index(
         base_url=settings.ollama_base_url,
         model="nomic-embed-text",
     )
-
-    return TemplateKnowledgeIndex(db_path=db_path, embedding_client=embedding_client)
+    index = TemplateKnowledgeIndex(db_path=db_path, embedding_client=embedding_client)
+    try:
+        yield index
+    finally:
+        await index.close()
 
 
 # -------------------------------------------------------------------------

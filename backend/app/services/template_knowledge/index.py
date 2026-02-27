@@ -417,3 +417,9 @@ class TemplateKnowledgeIndex:
     def vacuum(self) -> None:
         """Optimize database storage."""
         self.storage.vacuum()
+
+    async def close(self) -> None:
+        """Close underlying clients/resources."""
+        close_fn = getattr(self.embedding_client, "close", None)
+        if callable(close_fn):
+            await close_fn()
