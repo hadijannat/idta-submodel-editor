@@ -65,6 +65,33 @@ class LateWizardTool(BaseTool):
         return {"late": True}
 
 
+class AlphaWizardTool(BaseTool):
+    """Tool sharing wizard step with test-tool for tie-break validation."""
+
+    metadata: ClassVar[ToolMetadata] = ToolMetadata(
+        id="alpha-tool",
+        name="Alpha Tool",
+        description="A first wizard tool",
+        category="core",
+        wizard_step=1,
+    )
+
+    async def initialize(self) -> None:
+        await super().initialize()
+
+    async def shutdown(self) -> None:
+        await super().shutdown()
+
+    async def health_check(self) -> tuple[bool, str | None]:
+        return True, None
+
+    def get_router(self):
+        return None
+
+    def get_capabilities(self) -> dict:
+        return {"alpha": True}
+
+
 @pytest.fixture
 def context():
     """Create a test tool context."""
@@ -77,6 +104,7 @@ def mock_registry(context):
     registry = ToolRegistry(context)
     registry.register(LateWizardTool)
     registry.register(MockTool)
+    registry.register(AlphaWizardTool)
     return registry
 
 
@@ -153,7 +181,7 @@ class TestToolsManifestEndpoint:
         assert response.status_code == 200
 
         ids = [item["id"] for item in response.json()]
-        assert ids == ["test-tool", "late-tool"]
+        assert ids == ["alpha-tool", "test-tool", "late-tool"]
 
 
 class TestToolDetailEndpoint:

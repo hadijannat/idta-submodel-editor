@@ -5,6 +5,7 @@ from collections import Counter
 from fastapi.testclient import TestClient
 
 from app.main import create_application
+from app.routers.tools import get_registry
 
 
 def _route_duplicates(app) -> list[tuple[tuple[str, str], int]]:
@@ -17,6 +18,14 @@ def _route_duplicates(app) -> list[tuple[tuple[str, str], int]]:
     ]
     counts = Counter(keys)
     return [(key, count) for key, count in counts.items() if count > 1]
+
+
+def _route_occurrences(app, *, path: str, method: str) -> int:
+    return sum(
+        1
+        for route in app.routes
+        if route.path == path and method in (route.methods or set())
+    )
 
 
 def test_tool_routes_not_duplicated_after_startup():
@@ -33,21 +42,33 @@ def test_tool_routes_not_duplicated_after_startup():
 def test_route_count_stable_across_startup_and_openapi():
     """Startup and OpenAPI generation should not register routes repeatedly."""
     app = create_application()
-    count_before = len(app.routes)
+    manifest_count_before = _route_occurrences(
+        app,
+        path="/api/tools/manifest",
+        method="GET",
+    )
+    tools_count_before = _route_occurrences(app, path="/api/tools", method="GET")
 
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
-        count_after_startup = len(app.routes)
-        assert count_after_startup == count_before
+        assert _route_duplicates(app) == []
+        schema = app.openapi()
+        assert "paths" in schema
+        assert _route_duplicates(app) == []
+        assert _route_occurrences(app, path="/api/tools/manifest", method="GET") == (
+            manifest_count_before
+        )
+        assert _route_occurrences(app, path="/api/tools", method="GET") == (
+            tools_count_before
+        )
 
-        openapi = client.get("/api/openapi.json")
-        assert openapi.status_code == 200
-        count_after_openapi = len(app.routes)
-        assert count_after_openapi == count_before
 
-        tool_manifest_routes = [
-            route
-            for route in app.routes
-            if route.path == "/api/tools/manifest" and "GET" in (route.methods or set())
-        ]
-        assert len(tool_manifest_routes) == 1
+def test_tool_registry_bootstrapped_before_lifespan_startup():
+    """Global tool registry should be available before lifespan startup runs."""
+    app = create_application()
+
+    registry = get_registry()
+    payload = registry.get_tool_manifest()
+    assert isinstance(payload, list)
+    assert payload
+    assert all(item["initialized"] is False for item in payload)

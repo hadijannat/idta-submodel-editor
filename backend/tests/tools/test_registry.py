@@ -83,6 +83,24 @@ class StepThreeTool(BaseTool):
     )
 
 
+class StepThreeAlphaTool(BaseTool):
+    metadata = ToolMetadata(
+        id="step-3-alpha",
+        name="Step Three Alpha",
+        description="Wizard step three alpha",
+        wizard_step=3,
+    )
+
+
+class StepThreeBetaTool(BaseTool):
+    metadata = ToolMetadata(
+        id="step-3-beta",
+        name="Step Three Beta",
+        description="Wizard step three beta",
+        wizard_step=3,
+    )
+
+
 class UtilityZTool(BaseTool):
     metadata = ToolMetadata(
         id="utility-z",
@@ -164,3 +182,13 @@ def test_manifest_cache_invalidates_on_new_registration():
     registry.register(StepThreeTool)
     second_manifest = registry.get_tool_manifest()
     assert [entry["id"] for entry in second_manifest] == ["step-3", "step-10"]
+
+
+def test_manifest_order_tie_breaks_by_id_with_same_step():
+    context = ToolContext(Settings())
+    registry = ToolRegistry(context=context)
+    registry.register(StepThreeBetaTool)
+    registry.register(StepThreeAlphaTool)
+
+    manifest = registry.get_tool_manifest()
+    assert [entry["id"] for entry in manifest] == ["step-3-alpha", "step-3-beta"]
