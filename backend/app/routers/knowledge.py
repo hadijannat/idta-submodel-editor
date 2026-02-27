@@ -10,14 +10,16 @@ Provides endpoints for:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Annotated, AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
+from app.dependencies import get_current_user
 from app.services.template_knowledge import (
     FieldInfo,
     OllamaEmbeddingClient,
@@ -29,7 +31,15 @@ from app.services.template_knowledge.models import IndexStatus
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/knowledge", tags=["Template Knowledge"])
+router = APIRouter(
+    prefix="/api/knowledge",
+    tags=["Template Knowledge"],
+    dependencies=[Depends(get_current_user)],
+)
+
+APP_STATE_INDEX_KEY = "_knowledge_index"
+APP_STATE_INDEX_PATH_KEY = "_knowledge_index_path"
+APP_STATE_INDEX_LOCK_KEY = "_knowledge_index_lock"
 
 
 # -------------------------------------------------------------------------
@@ -43,6 +53,7 @@ def get_index_path(settings: Settings) -> Path:
 
 
 async def get_knowledge_index(
+    request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AsyncIterator[TemplateKnowledgeIndex]:
     """
@@ -58,15 +69,51 @@ async def get_knowledge_index(
             detail="Template knowledge index not built. Run 'python -m app.cli.knowledge_index build' first.",
         )
 
-    embedding_client = OllamaEmbeddingClient(
-        base_url=settings.ollama_base_url,
-        model="nomic-embed-text",
-    )
-    index = TemplateKnowledgeIndex(db_path=db_path, embedding_client=embedding_client)
+    state = request.app.state
+    lock = getattr(state, APP_STATE_INDEX_LOCK_KEY, None)
+    if lock is None:
+        lock = asyncio.Lock()
+        setattr(state, APP_STATE_INDEX_LOCK_KEY, lock)
+
+    async with lock:
+        index = getattr(state, APP_STATE_INDEX_KEY, None)
+        index_path = getattr(state, APP_STATE_INDEX_PATH_KEY, None)
+        if index is None or index_path != db_path:
+            if index is not None:
+                await _safe_close_index(index)
+            embedding_client = OllamaEmbeddingClient(
+                base_url=settings.ollama_base_url,
+                model="nomic-embed-text",
+            )
+            index = TemplateKnowledgeIndex(db_path=db_path, embedding_client=embedding_client)
+            setattr(state, APP_STATE_INDEX_KEY, index)
+            setattr(state, APP_STATE_INDEX_PATH_KEY, db_path)
+
+    yield index
+
+
+async def _safe_close_index(index: TemplateKnowledgeIndex) -> None:
+    """Close index resources without raising cleanup errors."""
     try:
-        yield index
-    finally:
         await index.close()
+    except Exception as e:
+        logger.warning("Failed to close template knowledge index cleanly: %s", e)
+
+
+async def shutdown_knowledge_index(app: FastAPI) -> None:
+    """Close and clear cached knowledge index for the application."""
+    state = app.state
+    lock = getattr(state, APP_STATE_INDEX_LOCK_KEY, None)
+    if lock is None:
+        lock = asyncio.Lock()
+        setattr(state, APP_STATE_INDEX_LOCK_KEY, lock)
+
+    async with lock:
+        index = getattr(state, APP_STATE_INDEX_KEY, None)
+        if index is not None:
+            await _safe_close_index(index)
+            setattr(state, APP_STATE_INDEX_KEY, None)
+            setattr(state, APP_STATE_INDEX_PATH_KEY, None)
 
 
 # -------------------------------------------------------------------------
@@ -223,14 +270,15 @@ async def search_by_semantic_similarity(
     Uses Ollama embeddings (nomic-embed-text) for vector similarity search.
     Falls back to keyword search if Ollama is unavailable.
     """
-    status = await index.get_status()
-
     results = await index.find_similar_fields_by_text(
         query=request.query,
         top_k=request.top_k,
         threshold=request.threshold,
         exclude_template=request.exclude_template,
     )
+    ollama_available = index.last_ollama_available
+    if ollama_available is None:
+        ollama_available = (await index.get_status()).ollama_available
 
     return SemanticSearchResponse(
         query=request.query,
@@ -238,7 +286,7 @@ async def search_by_semantic_similarity(
             SemanticSearchResult(field=field, similarity=score) for field, score in results
         ],
         total=len(results),
-        ollama_available=status.ollama_available,
+        ollama_available=ollama_available,
     )
 
 
