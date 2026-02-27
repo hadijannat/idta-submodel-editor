@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
 from app.dependencies import get_current_user
@@ -30,6 +30,7 @@ from app.utils.upload_security import FileType, UploadValidator, read_upload_fil
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/magic-import", tags=["magic-import"])
+PYDANTIC_PROTECTED_NAMESPACES = ("model_validate", "model_dump")
 
 
 class RecordCorrectionRequest(BaseModel):
@@ -516,6 +517,8 @@ class ProviderInfoResponse(BaseModel):
 class ModelRecommendationResponse(BaseModel):
     """Model recommendation with system requirements."""
 
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
+
     model_id: str
     display_name: str
     description: str
@@ -529,6 +532,8 @@ class ModelRecommendationResponse(BaseModel):
 
 class ProviderDetailResponse(BaseModel):
     """Extended provider details with recommendations."""
+
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
 
     providers: list[ProviderInfoResponse]
     active_provider: str | None
