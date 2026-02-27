@@ -20,6 +20,8 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_FEATURE_FLAGS_CACHE: dict[str, "FeatureFlags"] = {}
+
 
 # Provider types
 ProviderType = Literal["openai", "anthropic", "openrouter", "local"]
@@ -140,14 +142,27 @@ def _get_settings_path() -> Path:
     return settings.settings_storage_dir / "llm_settings.json"
 
 
-def _get_feature_flags_path(settings: object | None = None) -> Path:
+def _get_feature_flags_path(
+    settings: object | None = None, *, create_dir: bool = False
+) -> Path:
     """Get the path to the feature flags JSON file."""
     resolved_settings = settings if settings is not None else get_settings()
     storage_dir = getattr(resolved_settings, "settings_storage_dir", None)
     if not storage_dir:
         storage_dir = get_settings().settings_storage_dir
-    Path(storage_dir).mkdir(parents=True, exist_ok=True)
-    return Path(storage_dir) / "feature_flags.json"
+    path = Path(storage_dir)
+    if create_dir:
+        path.mkdir(parents=True, exist_ok=True)
+    return path / "feature_flags.json"
+
+
+def _get_feature_flags_cache_key(settings: object | None = None) -> str | None:
+    """Build a stable cache key for feature flags storage."""
+    try:
+        return str(_get_feature_flags_path(settings, create_dir=False))
+    except Exception as e:
+        logger.warning("Invalid feature flags path configuration: %s", e)
+        return None
 
 
 def has_llm_settings(settings: object | None = None) -> bool:
@@ -196,14 +211,28 @@ def load_feature_flags(settings: object | None = None) -> FeatureFlags:
     if settings is not None and not hasattr(settings, "settings_storage_dir"):
         return FeatureFlags()
 
-    path = _get_feature_flags_path(settings)
+    cache_key = _get_feature_flags_cache_key(settings)
+    if cache_key and cache_key in _FEATURE_FLAGS_CACHE:
+        return _FEATURE_FLAGS_CACHE[cache_key].model_copy(deep=True)
+
+    try:
+        path = _get_feature_flags_path(settings, create_dir=False)
+    except Exception as e:
+        logger.warning("Failed to resolve feature flags path: %s", e)
+        return FeatureFlags()
 
     if not path.exists():
-        return FeatureFlags()
+        flags = FeatureFlags()
+        if cache_key:
+            _FEATURE_FLAGS_CACHE[cache_key] = flags
+        return flags.model_copy(deep=True)
 
     try:
         data = json.loads(path.read_text())
-        return FeatureFlags.model_validate(data)
+        flags = FeatureFlags.model_validate(data)
+        if cache_key:
+            _FEATURE_FLAGS_CACHE[cache_key] = flags
+        return flags.model_copy(deep=True)
     except Exception as e:
         logger.warning("Failed to load feature flags: %s", e)
         return FeatureFlags()
@@ -211,11 +240,14 @@ def load_feature_flags(settings: object | None = None) -> FeatureFlags:
 
 def save_feature_flags(flags: FeatureFlags, settings: object | None = None) -> None:
     """Save runtime feature flags to storage."""
-    path = _get_feature_flags_path(settings)
+    path = _get_feature_flags_path(settings, create_dir=True)
 
     try:
         path.write_text(flags.model_dump_json(indent=2))
         os.chmod(path, 0o600)
+        cache_key = _get_feature_flags_cache_key(settings)
+        if cache_key:
+            _FEATURE_FLAGS_CACHE[cache_key] = flags.model_copy(deep=True)
     except Exception as e:
         logger.error("Failed to save feature flags: %s", e)
         raise

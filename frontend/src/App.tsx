@@ -102,6 +102,39 @@ function App() {
 
   const canConfigure = !!selectedTemplate;
   const canEdit = !!schema && !loading && !error;
+  const enabledStepIds = useMemo(
+    () =>
+      wizardSteps
+        .filter((step) => step.toolId === null || step.enabled)
+        .map((step) => step.id)
+        .sort((a, b) => a - b),
+    [wizardSteps]
+  );
+  const enabledStepIdSet = useMemo(() => new Set(enabledStepIds), [enabledStepIds]);
+  const stepNavigation = useMemo(() => {
+    const next = new Map<number, number>();
+    const previous = new Map<number, number>();
+
+    for (let index = 0; index < enabledStepIds.length; index += 1) {
+      const current = enabledStepIds[index];
+      const prev = enabledStepIds[index - 1] ?? current;
+      const nextStep = enabledStepIds[index + 1] ?? current;
+      previous.set(current, prev);
+      next.set(current, nextStep);
+    }
+
+    return { next, previous };
+  }, [enabledStepIds]);
+
+  const getNextStepId = useCallback(
+    (stepId: number) => stepNavigation.next.get(stepId) ?? stepId,
+    [stepNavigation]
+  );
+
+  const getPreviousStepId = useCallback(
+    (stepId: number) => stepNavigation.previous.get(stepId) ?? stepId,
+    [stepNavigation]
+  );
 
   const handleStepChange = useCallback(
     (step: number) => {
@@ -114,16 +147,13 @@ function App() {
         return;
       }
       if (step >= 3 && canEdit) {
-        // Check if the step's tool is enabled
-        const stepInfo = wizardSteps.find((s) => s.id === step);
-        if (stepInfo && stepInfo.toolId && !stepInfo.enabled) {
-          // Skip disabled tool steps
+        if (!enabledStepIdSet.has(step)) {
           return;
         }
         setWizardStep(step);
       }
     },
-    [canConfigure, canEdit, wizardSteps]
+    [canConfigure, canEdit, enabledStepIdSet]
   );
 
   const handleDataspaceToggle = useCallback(async () => {
@@ -208,16 +238,27 @@ function App() {
       templateVersion: selectedVersion,
       form,
       schema,
-      onComplete: () => handleStepChange(wizardStep + 1),
+      onComplete: () => handleStepChange(getNextStepId(wizardStep)),
       onNavigate: handleStepChange,
     }),
-    [selectedTemplate, templateStatus, selectedVersion, form, schema, wizardStep, handleStepChange]
+    [
+      selectedTemplate,
+      templateStatus,
+      selectedVersion,
+      form,
+      schema,
+      wizardStep,
+      handleStepChange,
+      getNextStepId,
+    ]
   );
 
   /**
    * Render a tool step using the registry.
    */
-  const renderToolStep = (toolId: string, backStep: number, nextStep: number) => {
+  const renderToolStep = (toolId: string) => {
+    const backStep = getPreviousStepId(wizardStep);
+    const nextStep = getNextStepId(wizardStep);
     const tool = toolRegistry.getTool(toolId);
 
     if (!tool) {
@@ -290,13 +331,15 @@ function App() {
           >
             Back
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => handleStepChange(nextStep)}
-          >
-            Continue
-          </button>
+          {nextStep !== wizardStep && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => handleStepChange(nextStep)}
+            >
+              Continue
+            </button>
+          )}
         </div>
       </div>
     );
@@ -478,24 +521,14 @@ function App() {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => handleStepChange(3)}
+              onClick={() => handleStepChange(getNextStepId(2))}
               disabled={!schema}
             >
-              Continue to Smart Mapper
+              Continue
             </button>
           </div>
         </div>
       );
-    }
-
-    // Step 3: Smart Mapper (dynamic tool)
-    if (wizardStep === 3) {
-      return renderToolStep('smart-mapper', 2, 4);
-    }
-
-    // Step 4: Magic Import (dynamic tool)
-    if (wizardStep === 4) {
-      return renderToolStep('magic-import', 3, 5);
     }
 
     // Step 5: Fill Required Fields (hardcoded - contains form editor)
@@ -564,16 +597,16 @@ function App() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => handleStepChange(4)}
+              onClick={() => handleStepChange(getPreviousStepId(5))}
             >
-              Back to Magic Import
+              Back
             </button>
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => handleStepChange(6)}
+              onClick={() => handleStepChange(getNextStepId(5))}
             >
-              Review & export
+              Continue
             </button>
           </div>
         </div>
@@ -582,6 +615,8 @@ function App() {
 
     // Step 6: Review & Export (hardcoded - contains validation UI)
     if (wizardStep === 6) {
+      const nextAfterReview = getNextStepId(6);
+
       return (
         <div className="wizard-panel">
           <div className="wizard-panel-header">
@@ -656,17 +691,17 @@ function App() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => handleStepChange(5)}
+              onClick={() => handleStepChange(getPreviousStepId(6))}
             >
               Back to fields
             </button>
-            {isToolEnabled('dataspace-connector') && (
+            {nextAfterReview !== 6 && (
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => handleStepChange(7)}
+                onClick={() => handleStepChange(nextAfterReview)}
               >
-                Continue to Dataspace Publishing
+                Continue
               </button>
             )}
           </div>
@@ -674,9 +709,9 @@ function App() {
       );
     }
 
-    // Step 7: Dataspace Connector (dynamic tool)
-    if (wizardStep === 7) {
-      return renderToolStep('dataspace-connector', 6, 7);
+    const stepInfo = wizardSteps.find((step) => step.id === wizardStep);
+    if (stepInfo?.toolId) {
+      return renderToolStep(stepInfo.toolId);
     }
 
     return null;

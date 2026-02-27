@@ -39,6 +39,11 @@ const TOOL_COMPONENTS: Record<string, LazyExoticComponent<ToolComponent>> = {
       default: m.DataspaceConnectorPanel as ToolComponent,
     }))
   ),
+  'dpp-builder': lazy(() =>
+    import('../components/DppBuilder/DppBuilderPanel').then((m) => ({
+      default: m.DppBuilderPanel as ToolComponent,
+    }))
+  ),
   'template-ops': lazy(() =>
     import('../components/TemplateOps').then((m) => ({
       default: m.TemplateOpsToolWrapper as ToolComponent,
@@ -198,10 +203,15 @@ class ToolRegistryImpl {
   /**
    * Get tools that have wizard steps, sorted by step number.
    */
-  getWizardTools(): ToolRegistryEntry[] {
-    return this.getEnabledTools()
+  getWizardTools(includeDisabled = false): ToolRegistryEntry[] {
+    const source = includeDisabled ? this.getAllTools() : this.getEnabledTools();
+    return source
       .filter((t) => t.metadata.wizardStep !== null)
-      .sort((a, b) => (a.metadata.wizardStep ?? 0) - (b.metadata.wizardStep ?? 0));
+      .sort((a, b) => {
+        const stepDiff = (a.metadata.wizardStep ?? 0) - (b.metadata.wizardStep ?? 0);
+        if (stepDiff !== 0) return stepDiff;
+        return a.metadata.id.localeCompare(b.metadata.id);
+      });
   }
 
   /**

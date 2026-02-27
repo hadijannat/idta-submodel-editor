@@ -36,6 +36,7 @@ describe('MnestixBrowser', () => {
       mnestix_url: null,
       basyx_registry_url: null,
       dataspace_enabled: false,
+      dpp_enabled: false,
     });
 
     render(<MnestixBrowser />);
@@ -51,6 +52,7 @@ describe('MnestixBrowser', () => {
       mnestix_url: null,
       basyx_registry_url: null,
       dataspace_enabled: false,
+      dpp_enabled: false,
     });
 
     render(<MnestixBrowser />);
@@ -67,6 +69,7 @@ describe('MnestixBrowser', () => {
       mnestix_url: 'http://mnestix:3000',
       basyx_registry_url: 'http://registry:4002',
       dataspace_enabled: true,
+      dpp_enabled: false,
     });
 
     render(<MnestixBrowser />);
@@ -87,6 +90,7 @@ describe('MnestixBrowser', () => {
       mnestix_url: 'http://mnestix:3000',
       basyx_registry_url: null,
       dataspace_enabled: false,
+      dpp_enabled: false,
     });
 
     const user = userEvent.setup();
@@ -118,6 +122,7 @@ describe('MnestixBrowser', () => {
       mnestix_url: 'http://mnestix:3000',
       basyx_registry_url: 'http://registry:4002',
       dataspace_enabled: false,
+      dpp_enabled: false,
     });
 
     render(<MnestixBrowser />);
