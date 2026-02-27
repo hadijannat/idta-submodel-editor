@@ -5,6 +5,7 @@ Swagger UI is available at `/api/docs` and ReDoc at `/api/redoc` when backend `E
 ## Security Model
 
 - If `OIDC_ENABLED=false`, API routes are effectively unauthenticated by default.
+- In `ENV=production`, startup requires `OIDC_ENABLED=true` unless `ALLOW_INSECURE_PROD_AUTH=true` is explicitly set.
 - If `OIDC_ENABLED=true`, bearer-token authentication is enforced on routes that depend on current-user validation.
 - `PUT /api/settings/features` requires admin privileges when `ENV != development`.
 - Expose `/health*` and `/metrics` only on private networks or behind gateway auth/allowlists.
@@ -25,7 +26,7 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/settings` | Public frontend settings (`mnestix_enabled`, `mnestix_url`, `dataspace_enabled`, etc.) |
+| `GET /api/settings` | Public frontend settings (`mnestix_enabled`, `dataspace_enabled`, `magic_import_enabled`, etc.) |
 
 ## Templates
 
@@ -59,6 +60,12 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 | `GET /api/export/{template_name}/preview` | Template preview |
 | `POST /api/export/batch` | Batch export ZIP |
 
+## Conformance
+
+| Endpoint | Description |
+|---|---|
+| `POST /api/conformance/check` | Run AAS conformance check on uploaded AASX/JSON artifacts |
+
 ## Template Operations
 
 | Endpoint | Description |
@@ -78,7 +85,7 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 |---|---|---|
 | `GET /api/tools` | List tools with metadata | No per-route auth dependency; protect at gateway/network level |
 | `GET /api/tools/health` | Overall tool health | No per-route auth dependency; protect at gateway/network level |
-| `GET /api/tools/manifest` | Tool manifest used by frontend | No per-route auth dependency; protect at gateway/network level |
+| `GET /api/tools/manifest` | Tool manifest used by frontend (includes `schema_version`, `disabled_reason`) | No per-route auth dependency; protect at gateway/network level |
 | `GET /api/tools/{tool_id}` | Tool capability report | No per-route auth dependency; protect at gateway/network level |
 | `GET /api/tools/{tool_id}/health` | Tool-specific health | No per-route auth dependency; protect at gateway/network level |
 | `GET /api/tools/{tool_id}/capabilities` | Tool capabilities details | No per-route auth dependency; protect at gateway/network level |
@@ -121,6 +128,7 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 
 | Endpoint | Description |
 |---|---|
+| `POST /api/magic-import/jobs/preview` | Preview snippets/token estimate before extraction |
 | `POST /api/magic-import/jobs` | Create extraction job |
 | `GET /api/magic-import/jobs` | List jobs |
 | `GET /api/magic-import/jobs/{job_id}` | Job status |

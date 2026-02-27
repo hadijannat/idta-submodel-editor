@@ -30,6 +30,7 @@ from app.errors import APIError, ErrorCode, ErrorResponse
 from app.metrics import set_app_info
 from app.middleware.correlation import CorrelationIdMiddleware, get_correlation_id
 from app.routers import editor, knowledge, templates, tools
+from app.routers import conformance
 from app.routers import settings as settings_router
 from app.services import settings_service
 from app.services.tools.registry import initialize_registry, shutdown_registry, ToolRegistry
@@ -115,6 +116,11 @@ async def lifespan(app: FastAPI):
 def create_application() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
+    if not settings.settings_encryption_key:
+        logger.warning(
+            "SETTINGS_ENCRYPTION_KEY is not configured. Auto-generated key files are "
+            "not HA-safe for multi-instance deployments."
+        )
 
     app = FastAPI(
         title="IDTA Submodel Template Editor",
@@ -148,6 +154,7 @@ def create_application() -> FastAPI:
     # Include routers
     app.include_router(templates.router)
     app.include_router(editor.router)
+    app.include_router(conformance.router)
     app.include_router(tools.router)
     app.include_router(settings_router.router)
     app.include_router(knowledge.router)
@@ -187,11 +194,16 @@ def create_application() -> FastAPI:
             "dataspace_enabled",
             settings=settings,
         )
+        magic_import_enabled = settings_service.get_effective_feature_flag(
+            "magic_import_enabled",
+            settings=settings,
+        )
         return {
             "mnestix_enabled": settings.mnestix_enabled,
             "mnestix_url": settings.mnestix_url if settings.mnestix_enabled else None,
             "basyx_registry_url": settings.basyx_registry_url if settings.mnestix_enabled else None,
             "dataspace_enabled": dataspace_enabled,
+            "magic_import_enabled": magic_import_enabled,
             "dpp_enabled": settings.dpp_enabled,
         }
 

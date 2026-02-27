@@ -73,6 +73,8 @@ function App() {
     exportJson,
     exportPdf,
     verifyExport,
+    conformanceChecking,
+    conformanceResult,
     resetForm,
   } = useSubmodelForm({
     templateName: selectedTemplate?.name,
@@ -287,6 +289,11 @@ function App() {
           <div className="app-welcome">
             <h2>{tool.metadata.name} is disabled</h2>
             <p>{tool.metadata.description}</p>
+            {tool.metadata.disabledReason && (
+              <p className="wizard-step-disabled-reason">
+                {tool.metadata.disabledReason}
+              </p>
+            )}
           </div>
           <div className="wizard-actions">
             <button
@@ -901,6 +908,8 @@ function App() {
               onExportJson={exportJson}
               onExportPdf={exportPdf}
               onVerify={verifyExport}
+              conformanceChecking={conformanceChecking}
+              conformanceResult={conformanceResult}
               onValidate={validate}
               onReset={resetForm}
               validating={validating}
