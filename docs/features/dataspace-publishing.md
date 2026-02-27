@@ -21,13 +21,13 @@ Connect your submodels to a dataspace with a guided wizard, Vault-backed credent
 
 ```bash
 # Start core stack
-docker-compose up -d
+docker compose up -d
 
 # Enable dataspace in backend + configure Vault token
-DATASPACE_ENABLED=true VAULT_TOKEN=dev-root-token docker-compose up -d backend
+DATASPACE_ENABLED=true VAULT_TOKEN=dev-root-token docker compose up -d backend
 
 # Start Vault (dataspace profile)
-docker-compose --profile dataspace up -d vault
+docker compose --profile dataspace up -d vault
 ```
 
 ## Full Dataspace Stack (EDC + DTR + BaSyx)
@@ -36,7 +36,7 @@ The full dataspace profile pulls EDC images from GHCR. You must authenticate fir
 
 ```bash
 docker login ghcr.io
-docker-compose --profile dataspace up -d
+docker compose --profile dataspace up -d
 ```
 
 ---
@@ -55,7 +55,7 @@ The connector supports multiple dataspace environments:
 
 ```bash
 # Via environment variable
-DATASPACE_DEFAULT_ENVIRONMENT=catena-x-test docker-compose up
+DATASPACE_DEFAULT_ENVIRONMENT=catena-x-test docker compose up
 
 # Or via API
 curl -X POST /api/dataspace/connections \

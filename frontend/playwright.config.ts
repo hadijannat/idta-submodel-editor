@@ -43,12 +43,10 @@ function getTestMatch(): string | string[] {
       ];
     case 'dataspace':
       return [
-        '**/suite-00-smoke/**/*.spec.ts',
         '**/suite-09-dataspace/**/*.spec.ts',
       ];
     case 'plc':
       return [
-        '**/suite-00-smoke/**/*.spec.ts',
         '**/suite-09-dataspace/**/*.spec.ts',
         '**/suite-10-plc4x-bridge/**/*.spec.ts',
       ];

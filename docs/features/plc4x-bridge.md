@@ -55,7 +55,7 @@ Plus 20+ additional protocols. See [PLC4X documentation](https://plc4x.apache.or
 
 ```bash
 # Start with dataspace + PLC bridge
-docker-compose --profile dataspace --profile plc up
+docker compose --profile dataspace --profile plc up
 ```
 
 ### Manual Setup

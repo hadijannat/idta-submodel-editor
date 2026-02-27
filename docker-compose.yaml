@@ -36,7 +36,7 @@ services:
       - SEMANTIC_SEARCH_RATE_LIMIT_PER_MIN=${SEMANTIC_SEARCH_RATE_LIMIT_PER_MIN:-60}
       - SEMANTIC_RESOLVE_RATE_LIMIT_PER_MIN=${SEMANTIC_RESOLVE_RATE_LIMIT_PER_MIN:-120}
       # Magic Import
-      - MAGIC_IMPORT_ENABLED=true
+      - MAGIC_IMPORT_ENABLED=${MAGIC_IMPORT_ENABLED:-true}
       - MAGIC_IMPORT_LLM_PROVIDER=${MAGIC_IMPORT_LLM_PROVIDER:-openai}
       - MAGIC_IMPORT_LLM_MODEL=${MAGIC_IMPORT_LLM_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -103,7 +103,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-development-secret-key-change-in-production}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - MAGIC_IMPORT_ENABLED=true
+      - MAGIC_IMPORT_ENABLED=${MAGIC_IMPORT_ENABLED:-true}
       - MAGIC_IMPORT_LLM_PROVIDER=${MAGIC_IMPORT_LLM_PROVIDER:-openai}
       - MAGIC_IMPORT_LLM_MODEL=${MAGIC_IMPORT_LLM_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -122,7 +122,7 @@ services:
     networks:
       - idta-network
     profiles:
-      - magic-import  # Only start with: docker-compose --profile magic-import up
+      - magic-import  # Only start with: docker compose --profile magic-import up
 
   # Redis for caching (optional)
   redis:
@@ -145,7 +145,7 @@ services:
     image: quay.io/keycloak/keycloak:latest
     command: start-dev
     ports:
-      - "8080:8080"
+      - "${KEYCLOAK_HOST_PORT:-8081}:8080"
     environment:
       - KEYCLOAK_ADMIN=admin
       - KEYCLOAK_ADMIN_PASSWORD=admin
@@ -154,16 +154,16 @@ services:
     networks:
       - idta-network
     profiles:
-      - auth  # Only start with: docker-compose --profile auth up
+      - auth  # Only start with: docker compose --profile auth up
 
   # ==========================================================================
   # Dataspace Profile Services
-  # Start with: docker-compose --profile dataspace up
+  # Start with: docker compose --profile dataspace up
   # ==========================================================================
 
   # BaSyx AAS Server - Hosts Asset Administration Shell instances
   basyx-aas-server:
-    image: eclipsebasyx/aas-server:2.0.0-SNAPSHOT
+    image: eclipsebasyx/aas-server:1.5.1
     container_name: basyx-aas-server
     ports:
       - "4001:4001"
@@ -190,7 +190,7 @@ services:
 
   # BaSyx AAS Registry - Service discovery for AAS instances
   basyx-registry:
-    image: eclipsebasyx/aas-registry:2.0.0-SNAPSHOT
+    image: eclipsebasyx/aas-registry:1.5.1
     container_name: basyx-registry
     ports:
       - "4002:4002"
@@ -242,7 +242,7 @@ services:
     image: hashicorp/vault:1.15
     container_name: vault
     ports:
-      - "8200:8200"
+      - "${VAULT_HOST_PORT:-8200}:8200"
     environment:
       - VAULT_DEV_ROOT_TOKEN_ID=dev-root-token
       - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
@@ -288,12 +288,10 @@ services:
 
   # EDC Control Plane - Policy management and catalog
   edc-control-plane:
-    image: ghcr.io/eclipse-tractusx/edc-controlplane-postgresql-hashicorp-vault:0.7.3
+    image: tractusx/edc-controlplane-postgresql-hashicorp-vault:0.7.3
     container_name: edc-control-plane
     ports:
       - "19192:19192"  # Management API
-      - "19193:19193"  # Protocol API
-      - "19194:19194"  # Public API
     environment:
       # EDC Identity
       - EDC_PARTICIPANT_ID=${EDC_PARTICIPANT_ID:-BPNL000000000001}
@@ -344,11 +342,10 @@ services:
 
   # EDC Data Plane - Actual data transfer
   edc-data-plane:
-    image: ghcr.io/eclipse-tractusx/edc-dataplane-hashicorp-vault:0.7.3
+    image: tractusx/edc-dataplane-hashicorp-vault:0.7.3
     container_name: edc-data-plane
     ports:
       - "19291:19291"  # Public API
-      - "19292:19292"  # Control API
     environment:
       # Data plane ports
       - WEB_HTTP_PORT=19290
@@ -379,7 +376,7 @@ services:
 
   # Mnestix AAS Browser - Web UI for browsing AAS
   mnestix:
-    image: mnestix/mnestix-browser:3.2.1
+    image: mnestix/mnestix-browser:2.1.1
     container_name: mnestix
     ports:
       - "3001:3000"
@@ -408,8 +405,8 @@ services:
 
   # ==========================================================================
   # PLC4X Bridge - Industrial PLC to BaSyx AAS Bridge
-  # Start with: docker-compose --profile plc up
-  # Or with dataspace: docker-compose --profile dataspace --profile plc up
+  # Start with: docker compose --profile plc up
+  # Or with dataspace: docker compose --profile dataspace --profile plc up
   # ==========================================================================
 
   plc4x-bridge:
@@ -445,7 +442,6 @@ services:
     networks:
       - idta-network
     profiles:
-      - dataspace
       - plc
 
 volumes:

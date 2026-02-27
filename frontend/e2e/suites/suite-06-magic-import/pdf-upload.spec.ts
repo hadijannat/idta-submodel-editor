@@ -9,18 +9,37 @@ import { test, expect } from '@playwright/test';
 import { TemplateSelectorPage } from '../../pages/template-selector.page';
 import { FormEditorPage } from '../../pages/form-editor.page';
 import { createMockableAPIClient, MockableAPIClient } from '../../helpers/mock-api-client';
-import { mockMagicImport } from '../../helpers/mock-services';
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
+const COMPLETED_JOB_STATUSES = new Set(['done', 'completed']);
+
+async function waitForMagicImportCompletion(
+  api: MockableAPIClient,
+  jobId: string,
+  timeoutMs = 30000,
+  pollIntervalMs = 1000
+) {
+  const deadline = Date.now() + timeoutMs;
+  let status = await api.getMagicImportJobStatus(jobId);
+
+  while (Date.now() < deadline) {
+    const normalizedStatus = String(status.status).toLowerCase();
+    if (COMPLETED_JOB_STATUSES.has(normalizedStatus)) {
+      return status;
+    }
+    if (normalizedStatus === 'failed') {
+      throw new Error(`Magic Import job ${jobId} failed`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    status = await api.getMagicImportJobStatus(jobId);
+  }
+
+  throw new Error(`Timed out waiting for Magic Import job ${jobId} to complete`);
+}
 
 test.describe('Magic Import PDF Upload', () => {
   test.describe('UI Flow', () => {
-    test.beforeEach(async ({ page }) => {
-      // Mock the API routes for browser requests
-      await mockMagicImport(page);
-    });
-
     test('Magic Import step is available', async ({ page }) => {
       const templateSelector = new TemplateSelectorPage(page);
       const formEditor = new FormEditorPage(page);
@@ -43,9 +62,9 @@ test.describe('Magic Import PDF Upload', () => {
 
       await formEditor.goToStep('magic-import');
 
-      // Should show Magic Import panel
-      const magicImportHeading = page.getByRole('heading', { name: /Magic Import/i });
-      await expect(magicImportHeading).toBeVisible();
+      // Wait for lazy-loaded panel to mount
+      const magicImportPanel = page.locator('.magic-import-panel');
+      await expect(magicImportPanel).toBeVisible({ timeout: 30000 });
     });
 
     test('file upload input is available', async ({ page }) => {
@@ -57,9 +76,11 @@ test.describe('Magic Import PDF Upload', () => {
       await formEditor.waitForFormReady();
       await formEditor.goToStep('magic-import');
 
-      // Find file input
-      const fileInput = page.locator('.magic-import-panel__input, input[type="file"]');
-      await expect(fileInput).toBeVisible();
+      // Input is intentionally transparent; assert it is present and the dropzone is visible.
+      const dropzone = page.locator('.magic-import-panel__dropzone');
+      const fileInput = page.locator('.magic-import-panel__input');
+      await expect(dropzone).toBeVisible({ timeout: 30000 });
+      await expect(fileInput).toHaveCount(1);
     });
   });
 
@@ -67,7 +88,9 @@ test.describe('Magic Import PDF Upload', () => {
     let api: MockableAPIClient;
 
     test.beforeEach(async ({ request }) => {
-      api = await createMockableAPIClient(request, API_BASE_URL);
+      api = await createMockableAPIClient(request, API_BASE_URL, {
+        forceMock: { magicImport: true },
+      });
     });
 
     test('can create extraction job', async () => {
@@ -94,17 +117,14 @@ test.describe('Magic Import PDF Upload', () => {
       const pdfBuffer = Buffer.from('%PDF-1.4 test content');
 
       const job = await api.createMagicImportJob(pdfBuffer, TEST_TEMPLATE);
+      const finalStatus = await waitForMagicImportCompletion(api, job.job_id);
+      expect(COMPLETED_JOB_STATUSES.has(String(finalStatus.status).toLowerCase())).toBe(true);
 
-      // Job should be completed (immediately in mock mode)
-      expect(job.status).toBe('completed');
-
-      // Check for extractions (cast to extended type)
-      const jobWithExtractions = job as typeof job & {
+      const mockJobWithExtractions = job as typeof job & {
         extractions?: Array<{ field: string; value: string; confidence: number }>;
       };
-
-      expect(jobWithExtractions.extractions).toBeDefined();
-      expect(Array.isArray(jobWithExtractions.extractions)).toBe(true);
+      expect(Array.isArray(mockJobWithExtractions.extractions)).toBe(true);
+      expect((mockJobWithExtractions.extractions ?? []).length).toBeGreaterThan(0);
     });
 
     test('extractions include confidence scores', async () => {

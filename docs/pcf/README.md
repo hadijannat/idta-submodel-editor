@@ -31,7 +31,7 @@ The following screenshots are referenced in the main README and should be captur
 
 1. Start the application:
    ```bash
-   docker-compose up
+   docker compose up
    ```
 
 2. Navigate to `http://localhost:8080`

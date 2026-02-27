@@ -135,7 +135,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start services with magic-import profile
-        run: docker-compose --profile magic-import up -d
+        run: docker compose --profile magic-import up -d
 
       - name: Wait for services
         run: sleep 30
@@ -157,7 +157,7 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker-compose --profile magic-import down
+        run: docker compose --profile magic-import down
 
   # Weekly: Dataspace tests
   e2e-dataspace:
@@ -186,7 +186,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start services with dataspace profile
-        run: docker-compose --profile dataspace up -d
+        run: docker compose --profile dataspace up -d
 
       - name: Wait for services
         run: |
@@ -210,7 +210,7 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker-compose --profile dataspace down
+        run: docker compose --profile dataspace down
 
   # Weekly: PLC tests
   e2e-plc:
@@ -239,7 +239,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start services with dataspace and PLC profiles
-        run: docker-compose --profile dataspace --profile plc up -d
+        run: docker compose --profile dataspace --profile plc up -d
 
       - name: Wait for services
         run: sleep 120
@@ -261,7 +261,7 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker-compose --profile dataspace --profile plc down
+        run: docker compose --profile dataspace --profile plc down
 
   # Cross-browser testing (weekly - Sunday only)
   e2e-cross-browser:

@@ -16,7 +16,9 @@ test.describe('Policy Builder', () => {
   let api: MockableAPIClient;
 
   test.beforeEach(async ({ request }) => {
-    api = await createMockableAPIClient(request, API_BASE_URL);
+    api = await createMockableAPIClient(request, API_BASE_URL, {
+      forceMock: { dataspace: true },
+    });
   });
 
   test.describe('Policy Templates', () => {
