@@ -115,7 +115,7 @@ def _validate_element(
 
     elif model_type == "Property":
         value = form_elem.get("value") if form_elem else None
-        if min_items >= 1 and (value is None or value == ""):
+        if min_items >= 1 and _is_blank_value(value):
             errors.append(
                 ValidationError(
                     field=elem_path,
@@ -123,7 +123,7 @@ def _validate_element(
                     code="required_value",
                 )
             )
-        elif value not in (None, ""):
+        elif not _is_blank_value(value):
             value_type = schema_elem.get("valueType")
             if not _value_matches_type(value, value_type):
                 errors.append(
@@ -161,7 +161,7 @@ def _validate_element(
         min_val = form_elem.get("min") if form_elem else None
         max_val = form_elem.get("max") if form_elem else None
         value_type = schema_elem.get("valueType")
-        if min_items >= 1 and (min_val in (None, "") or max_val in (None, "")):
+        if min_items >= 1 and (_is_blank_value(min_val) or _is_blank_value(max_val)):
             errors.append(
                 ValidationError(
                     field=elem_path,
@@ -170,7 +170,7 @@ def _validate_element(
                 )
             )
         else:
-            if min_val not in (None, "") and not _value_matches_type(
+            if not _is_blank_value(min_val) and not _value_matches_type(
                 min_val, value_type
             ):
                 errors.append(
@@ -180,7 +180,7 @@ def _validate_element(
                         code="type_mismatch",
                     )
                 )
-            if max_val not in (None, "") and not _value_matches_type(
+            if not _is_blank_value(max_val) and not _value_matches_type(
                 max_val, value_type
             ):
                 errors.append(
@@ -193,7 +193,7 @@ def _validate_element(
 
     elif model_type == "File":
         value = form_elem.get("value") if form_elem else None
-        if min_items >= 1 and (value is None or value == ""):
+        if min_items >= 1 and _is_blank_value(value):
             errors.append(
                 ValidationError(
                     field=elem_path,
@@ -204,7 +204,7 @@ def _validate_element(
 
     elif model_type == "ReferenceElement":
         value = form_elem.get("value") if form_elem else None
-        if min_items >= 1 and (value is None or value == ""):
+        if min_items >= 1 and _is_blank_value(value):
             errors.append(
                 ValidationError(
                     field=elem_path,
@@ -212,7 +212,9 @@ def _validate_element(
                     code="required_value",
                 )
             )
-        elif value and not _is_valid_reference(value):
+        elif _is_blank_value(value):
+            return
+        elif not _is_valid_reference(value):
             errors.append(
                 ValidationError(
                     field=elem_path,
@@ -301,24 +303,25 @@ def _value_matches_type(value: Any, value_type: str | None) -> bool:
         return True
 
     type_str = str(value_type).lower()
+    normalized_value = value.strip() if isinstance(value, str) else value
     try:
         if "int" in type_str or "integer" in type_str:
-            num = float(value)
+            num = float(normalized_value)
             return num.is_integer()
         if any(t in type_str for t in ("float", "double", "decimal")):
-            float(value)
+            float(normalized_value)
             return True
         if "bool" in type_str:
-            if isinstance(value, bool):
+            if isinstance(normalized_value, bool):
                 return True
-            return str(value).lower() in ("true", "false", "1", "0", "yes", "no")
+            return str(normalized_value).lower() in ("true", "false", "1", "0", "yes", "no")
         if "datetime" in type_str or "date" in type_str:
             from datetime import date, datetime
 
             if "datetime" in type_str:
-                datetime.fromisoformat(str(value))
+                datetime.fromisoformat(str(normalized_value))
             else:
-                date.fromisoformat(str(value))
+                date.fromisoformat(str(normalized_value))
             return True
     except Exception:
         return False
@@ -328,8 +331,14 @@ def _value_matches_type(value: Any, value_type: str | None) -> bool:
 
 def _is_valid_reference(value: str) -> bool:
     if not value:
-        return True
+        return False
     normalized = value.strip()
     if not normalized:
-        return True
+        return False
     return bool(_URI_SCHEME_PATTERN.match(normalized) or _IRDI_PATTERN.match(normalized))
+
+
+def _is_blank_value(value: Any) -> bool:
+    if value is None:
+        return True
+    return isinstance(value, str) and value.strip() == ""

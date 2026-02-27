@@ -27,6 +27,26 @@ def test_required_property_string_empty_is_error():
     assert warnings == []
 
 
+def test_required_property_whitespace_only_is_error():
+    schema = _schema(
+        [
+            {
+                "idShort": "Name",
+                "modelType": "Property",
+                "cardinality": "[1]",
+                "valueType": "xs:string",
+            }
+        ]
+    )
+    form_data = {"elements": {"Name": {"value": "   "}}}
+    errors, warnings = validate_form_data(schema, form_data)
+
+    assert len(errors) == 1
+    assert errors[0].field == "Name"
+    assert errors[0].code == "required_value"
+    assert warnings == []
+
+
 def test_optional_property_missing_is_ok():
     schema = _schema(
         [
@@ -219,7 +239,9 @@ def test_cardinality_symbolic_one_to_many_requires_items():
     )
     form_data = {"elements": {"Documents": {"items": []}}}
     errors, _ = validate_form_data(schema, form_data)
-    assert any(e.code == "min_items" for e in errors)
+    assert len(errors) == 1
+    assert errors[0].field == "Documents"
+    assert errors[0].code == "min_items"
 
 
 def test_reference_element_rejects_invalid_reference():
@@ -234,7 +256,27 @@ def test_reference_element_rejects_invalid_reference():
     )
     form_data = {"elements": {"RelatedAsset": {"value": "not-an-iri"}}}
     errors, warnings = validate_form_data(schema, form_data)
-    assert any(e.code == "invalid_reference" for e in errors)
+    assert len(errors) == 1
+    assert errors[0].field == "RelatedAsset"
+    assert errors[0].code == "invalid_reference"
+    assert warnings == []
+
+
+def test_reference_element_whitespace_required_is_error():
+    schema = _schema(
+        [
+            {
+                "idShort": "RelatedAsset",
+                "modelType": "ReferenceElement",
+                "cardinality": "[1]",
+            }
+        ]
+    )
+    form_data = {"elements": {"RelatedAsset": {"value": "   "}}}
+    errors, warnings = validate_form_data(schema, form_data)
+    assert len(errors) == 1
+    assert errors[0].field == "RelatedAsset"
+    assert errors[0].code == "required_value"
     assert warnings == []
 
 
@@ -251,4 +293,6 @@ def test_property_date_type_mismatch_is_reported():
     )
     form_data = {"elements": {"ManufacturedOn": {"value": "31-12-2025"}}}
     errors, _ = validate_form_data(schema, form_data)
-    assert any(e.code == "type_mismatch" for e in errors)
+    assert len(errors) == 1
+    assert errors[0].field == "ManufacturedOn"
+    assert errors[0].code == "type_mismatch"

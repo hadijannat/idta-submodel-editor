@@ -27,18 +27,31 @@ def _map_upstream_http_error(
     detail: dict | None = None,
 ) -> APIError:
     status = exc.response.status_code
-    response_text = exc.response.text[:500] if exc.response is not None else None
+    request_url = str(exc.request.url)
+    retry_after = exc.response.headers.get("Retry-After")
+    body_preview = (
+        exc.response.content[:256].decode(exc.response.encoding or "utf-8", errors="replace")
+        if exc.response is not None
+        else None
+    )
+    logger.warning(
+        "Template upstream HTTP error status=%s url=%s body_preview=%s",
+        status,
+        request_url,
+        body_preview,
+    )
     context = {
+        "error": fallback_message,
         "upstream_status": status,
-        "upstream_url": str(exc.request.url),
-        "upstream_body": response_text,
         **(detail or {}),
     }
+    if retry_after:
+        context["retry_after"] = retry_after
 
     if status == 404:
         return APIError(
-            code=ErrorCode.RESOURCE_NOT_FOUND,
-            message="Requested template resource was not found upstream",
+            code=ErrorCode.UPSTREAM_ERROR,
+            message="Template upstream returned not found",
             detail=context,
         )
     if status == 429:
