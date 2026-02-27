@@ -108,6 +108,25 @@ class TestFieldInfo:
         assert field.embedding_vector is None
         assert field.is_required is False
 
+    def test_field_info_uses_narrow_protected_namespaces(self):
+        """Keep model_* fields while still protecting core pydantic methods."""
+        protected_namespaces = FieldInfo.model_config.get("protected_namespaces")
+        assert protected_namespaces == ("model_validate", "model_dump")
+
+    def test_field_info_model_dump_preserves_model_type(self):
+        """Ensure model_type remains part of serialized output."""
+        field = FieldInfo(
+            template_idta="02006",
+            path="OperatingMode",
+            id_short="OperatingMode",
+            model_type="Property",
+            value_type="xs:string",
+        )
+
+        payload = field.model_dump()
+        assert payload["model_type"] == "Property"
+        assert payload["id_short"] == "OperatingMode"
+
 
 class TestExtractionPattern:
     """Tests for ExtractionPattern model."""

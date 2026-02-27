@@ -42,6 +42,7 @@ nav:
       - Configuration: reference/configuration.md
       - API Endpoints: reference/api-endpoints.md
       - Element Types: reference/element-types.md
+      - Review Playbook: reference/review-playbook.md
 
 markdown_extensions:
   - pymdownx.highlight:

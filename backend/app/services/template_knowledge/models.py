@@ -10,7 +10,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+PYDANTIC_PROTECTED_NAMESPACES = ("model_validate", "model_dump")
 
 
 class TemplateInfo(BaseModel):
@@ -37,6 +39,8 @@ class TemplateInfo(BaseModel):
 
 class FieldInfo(BaseModel):
     """Comprehensive field metadata from a template."""
+
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
 
     template_idta: str = Field(description="Parent template IDTA number")
     path: str = Field(description="Full idShortPath to the field")

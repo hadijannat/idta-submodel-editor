@@ -93,7 +93,10 @@ class OllamaEmbeddingClient:
             return embedding
 
         except httpx.TimeoutException:
-            logger.warning("Ollama embedding request timed out for text: %s...", text[:50])
+            logger.warning(
+                "Ollama embedding request timed out (text_length=%d)",
+                len(text.strip()),
+            )
             raise
         except httpx.HTTPStatusError as e:
             logger.error("Ollama embedding failed with status %d: %s", e.response.status_code, e)

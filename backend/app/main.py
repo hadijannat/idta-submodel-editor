@@ -65,8 +65,8 @@ def _bootstrap_tool_registry(app: FastAPI) -> ToolRegistry:
         from app.services.tools import registry as registry_module
 
         registry_module._registry = registry  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    except Exception as exc:  # pragma: no cover - defensive import path
+        logger.warning("Failed to set global tool registry during bootstrap: %s", exc)
 
     for router in registry.get_all_routers():
         app.include_router(router)
@@ -103,12 +103,10 @@ async def lifespan(app: FastAPI):
         len(registry.get_all()),
     )
 
-    for router in registry.get_all_routers():
-        app.include_router(router)
-
     yield
 
     # Cleanup on shutdown
+    await knowledge.shutdown_knowledge_index(app)
     logger.info("Shutting down tool registry...")
     await shutdown_registry()
     logger.info("Tool registry shut down")

@@ -4,31 +4,24 @@ TDD: Tests written first.
 """
 
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-
-pytestmark = pytest.mark.asyncio
+from fastapi.testclient import TestClient
 
 
-@pytest_asyncio.fixture
-async def client():
+@pytest.fixture(scope="module")
+def client():
     """Create test client with PCF router."""
     from fastapi import FastAPI
     from app.routers.pcf import router
 
     app = FastAPI()
     app.include_router(router)
-    transport = ASGITransport(app=app)
-    client = AsyncClient(transport=transport, base_url="http://testserver")
-    try:
-        yield client
-    finally:
-        await client.aclose()
+    with TestClient(app) as test_client:
+        yield test_client
 
 
-async def test_calculate_endpoint_success(client):
+def test_calculate_endpoint_success(client):
     """POST /api/pcf/calculate returns calculated CO2e."""
-    response = await client.post(
+    response = client.post(
         "/api/pcf/calculate",
         json={
             "activities": [
@@ -52,9 +45,9 @@ async def test_calculate_endpoint_success(client):
     assert data["activities"][0]["co2e_kg"] == pytest.approx(420.0)
 
 
-async def test_calculate_endpoint_multiple_activities(client):
+def test_calculate_endpoint_multiple_activities(client):
     """POST /api/pcf/calculate handles multiple activities."""
-    response = await client.post(
+    response = client.post(
         "/api/pcf/calculate",
         json={
             "activities": [
@@ -85,9 +78,9 @@ async def test_calculate_endpoint_multiple_activities(client):
     assert data["total_co2e_kg"] == pytest.approx(70.0)  # 50 + 20
 
 
-async def test_calculate_endpoint_empty_activities(client):
+def test_calculate_endpoint_empty_activities(client):
     """POST /api/pcf/calculate with empty list returns zero."""
-    response = await client.post(
+    response = client.post(
         "/api/pcf/calculate",
         json={"activities": []},
     )
@@ -98,9 +91,9 @@ async def test_calculate_endpoint_empty_activities(client):
     assert data["activities"] == []
 
 
-async def test_calculate_endpoint_invalid_category(client):
+def test_calculate_endpoint_invalid_category(client):
     """POST /api/pcf/calculate rejects invalid category."""
-    response = await client.post(
+    response = client.post(
         "/api/pcf/calculate",
         json={
             "activities": [
@@ -118,11 +111,17 @@ async def test_calculate_endpoint_invalid_category(client):
     )
 
     assert response.status_code == 422  # Validation error
+    data = response.json()
+    assert "detail" in data
+    assert any(
+        error["loc"][-1] == "category" and error["type"] == "literal_error"
+        for error in data["detail"]
+    )
 
 
-async def test_calculate_endpoint_missing_required_field(client):
+def test_calculate_endpoint_missing_required_field(client):
     """POST /api/pcf/calculate requires all fields."""
-    response = await client.post(
+    response = client.post(
         "/api/pcf/calculate",
         json={
             "activities": [
@@ -137,11 +136,15 @@ async def test_calculate_endpoint_missing_required_field(client):
     )
 
     assert response.status_code == 422
+    data = response.json()
+    assert "detail" in data
+    missing_fields = {error["loc"][-1] for error in data["detail"]}
+    assert {"quantity", "unit", "factor_value", "factor_unit"} <= missing_fields
 
 
-async def test_validate_endpoint_structure(client):
+def test_validate_endpoint_structure(client):
     """POST /api/pcf/validate returns validation structure."""
-    response = await client.post(
+    response = client.post(
         "/api/pcf/validate",
         json={
             "form_data": {"elements": {}},
@@ -157,11 +160,11 @@ async def test_validate_endpoint_structure(client):
     assert "completeness_score" in data
 
 
-async def test_validate_endpoint_missing_required_pcf_field(client):
+def test_validate_endpoint_missing_required_pcf_field(client):
     """POST /api/pcf/validate flags missing PcfCO2eq as error."""
     # This validates that the PCF validator is wired up
     # Detailed validation logic is tested in test_pcf_validator.py
-    response = await client.post(
+    response = client.post(
         "/api/pcf/validate",
         json={
             "form_data": {"elements": {}},
@@ -186,9 +189,9 @@ async def test_validate_endpoint_missing_required_pcf_field(client):
     assert len(data["errors"]) >= 1
 
 
-async def test_health_check(client):
+def test_health_check(client):
     """GET /api/pcf/health returns service status."""
-    response = await client.get("/api/pcf/health")
+    response = client.get("/api/pcf/health")
 
     assert response.status_code == 200
     data = response.json()

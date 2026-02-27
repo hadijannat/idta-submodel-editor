@@ -31,8 +31,10 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run Claude Code Review
-        id: claude-review
+      # External SDK/plugin failures are intermittent and outside repo code quality.
+      # Keep this review signal, but prevent infrastructure flakiness from blocking PRs.
+      - name: Run Claude Code Review (attempt 1)
+        id: claude-review-attempt-1
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
@@ -44,7 +46,20 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
-      - name: Mark non-blocking Claude review outcome
-        if: always() && steps.claude-review.outcome == 'failure'
+      - name: Run Claude Code Review (attempt 2)
+        id: claude-review-attempt-2
+        if: steps.claude-review-attempt-1.outcome == 'failure'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+
+      - name: Report Claude review instability
+        if: >
+          steps.claude-review-attempt-1.outcome == 'failure' &&
+          (steps.claude-review-attempt-2.outcome == 'failure' || steps.claude-review-attempt-2.outcome == '')
         run: |
-          echo "::warning::Claude review failed due to external action instability; proceeding without blocking CI."
+          echo "::warning::Claude review action failed after retries due external runtime/plugin instability. This check is non-blocking."

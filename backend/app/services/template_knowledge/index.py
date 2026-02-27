@@ -7,6 +7,7 @@ for the Magic Import extraction pipeline.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -58,6 +59,7 @@ class TemplateKnowledgeIndex:
 
         # In-memory embedding cache for fast similarity search
         self._embedding_cache: list[tuple[FieldInfo, list[float]]] | None = None
+        self._last_ollama_available: bool | None = None
 
     # -------------------------------------------------------------------------
     # Template operations
@@ -187,7 +189,9 @@ class TemplateKnowledgeIndex:
             List of (FieldInfo, similarity_score) tuples
         """
         # Check Ollama availability
-        if not await self.embedding_client.is_available():
+        ollama_available = await self.embedding_client.is_available()
+        self._last_ollama_available = ollama_available
+        if not ollama_available:
             logger.warning("Ollama not available. Falling back to keyword search.")
             return self._fallback_keyword_search(query, top_k, exclude_template)
 
@@ -204,6 +208,7 @@ class TemplateKnowledgeIndex:
             )
 
         except Exception as e:
+            self._last_ollama_available = False
             logger.warning("Embedding search failed: %s. Falling back to keywords.", e)
             return self._fallback_keyword_search(query, top_k, exclude_template)
 
@@ -399,6 +404,11 @@ class TemplateKnowledgeIndex:
         return self.storage.get_status()
 
     @property
+    def last_ollama_available(self) -> bool | None:
+        """Most recent Ollama availability observed during semantic search."""
+        return self._last_ollama_available
+
+    @property
     def last_updated(self) -> str | None:
         """When the index was last updated."""
         status = self.storage.get_status()
@@ -417,3 +427,11 @@ class TemplateKnowledgeIndex:
     def vacuum(self) -> None:
         """Optimize database storage."""
         self.storage.vacuum()
+
+    async def close(self) -> None:
+        """Close underlying clients/resources."""
+        close_fn = getattr(self.embedding_client, "close", None)
+        if callable(close_fn):
+            result = close_fn()
+            if inspect.isawaitable(result):
+                await result
