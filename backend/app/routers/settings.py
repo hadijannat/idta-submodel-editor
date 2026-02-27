@@ -102,6 +102,15 @@ class FeatureFlagsUpdate(BaseModel):
     )
 
 
+def _is_admin_user(user: dict | None) -> bool:
+    """Return True when the authenticated user has admin privileges."""
+    if user is None:
+        return False
+    permissions = user.get("permissions", [])
+    roles = user.get("roles", [])
+    return "admin" in permissions or any("role:admin" in str(role) for role in roles)
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -216,9 +225,21 @@ async def update_feature_flags(
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> FeatureFlagsResponse:
     """Update runtime feature flags."""
+    app_settings = get_settings()
+    if app_settings.env != "development" and not _is_admin_user(user):
+        raise HTTPException(
+            status_code=403 if user is not None else 401,
+            detail="Admin authentication is required to update runtime feature flags",
+        )
+
     if request.dataspace_enabled is not None:
         settings_service.update_feature_flags(
             dataspace_enabled=request.dataspace_enabled,
+        )
+        logger.info(
+            "Updated runtime feature flag dataspace_enabled=%s by user=%s",
+            request.dataspace_enabled,
+            user.get("sub", "unknown") if user else "anonymous",
         )
 
     return await get_feature_flags(user)
