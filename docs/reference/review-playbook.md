@@ -21,6 +21,10 @@ This playbook standardizes security/correctness reviews for the IDTA Submodel Ed
 
 No fix ships without a test.
 
+## Deployment Governance Prerequisite
+
+Repository admins must enforce branch protection/rulesets on `main` with required status checks and required pull requests. This playbook assumes those controls are active.
+
 ## Baseline Verification
 
 Run before review coding begins. Execute commands from repo root.

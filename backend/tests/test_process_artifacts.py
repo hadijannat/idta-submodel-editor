@@ -46,3 +46,18 @@ def test_docs_workflow_validates_docs_on_pull_requests_without_deploying():
     assert (
         "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in workflow
     )
+
+
+def test_ci_workflow_avoids_duplicate_push_and_pull_request_runs():
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "push:" in workflow
+    assert "branches: [main]" in workflow
+    assert "pull_request:" in workflow
+
+
+def test_review_playbook_documents_branch_protection_prerequisite():
+    playbook = _read("docs/reference/review-playbook.md")
+
+    assert "Deployment Governance Prerequisite" in playbook
+    assert "branch protection/rulesets on `main`" in playbook
