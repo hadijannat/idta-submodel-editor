@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
 from app.dependencies import get_current_user, get_fetcher, get_parser
@@ -180,6 +180,8 @@ async def import_nodeset_file(
 class NodeSetExportRequest(BaseModel):
     """Request to export AAS template as NodeSet."""
 
+    model_config = ConfigDict(protected_namespaces=())
+
     template_name: str = Field(description="AAS template name")
     template_status: Literal["published", "deprecated"] = Field(default="published")
     template_version: str | None = Field(default=None)
@@ -339,6 +341,8 @@ async def download_nodeset(
 
 class DirectExportRequest(BaseModel):
     """Request to export UI schema directly to NodeSet."""
+
+    model_config = ConfigDict(protected_namespaces=())
 
     ui_schema: dict = Field(description="UI schema to export")
     namespace_uri: str | None = Field(default=None)

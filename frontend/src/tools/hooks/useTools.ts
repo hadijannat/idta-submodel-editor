@@ -51,6 +51,20 @@ export interface WizardStep {
   enabled: boolean;
 }
 
+const TOOL_STEP_LABEL_OVERRIDES: Record<
+  string,
+  { title: string; description: string }
+> = {
+  'export-panel': {
+    title: 'Review & Export',
+    description: 'Validate and export',
+  },
+  'dataspace-connector': {
+    title: 'Dataspace Publishing',
+    description: 'Publish to Manufacturing-X/Catena-X',
+  },
+};
+
 /**
  * Hook for accessing the tool registry.
  *
@@ -128,21 +142,51 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
   // Build wizard steps with tool info
   const wizardSteps = useMemo((): WizardStep[] => {
     void version;
-    const defaultSteps = getDefaultWizardSteps();
+    const anchors = getDefaultWizardSteps();
+    const stepMap = new Map<
+      number,
+      { id: number; title: string; description: string; toolId: string | null }
+    >();
 
-    return defaultSteps.map((step) => {
-      const tool = step.toolId ? toolRegistry.getTool(step.toolId) ?? null : null;
-      const enabled = step.toolId === null || (tool?.metadata.enabled ?? false);
+    for (const anchor of anchors) {
+      stepMap.set(anchor.id, anchor);
+    }
 
-      return {
-        id: step.id,
-        title: step.title,
-        description: step.description,
-        toolId: step.toolId,
-        tool,
-        enabled,
-      };
-    });
+    const manifestSteps = toolRegistry.getWizardTools(true);
+    for (const toolEntry of manifestSteps) {
+      const wizardStep = toolEntry.metadata.wizardStep;
+      if (wizardStep === null) continue;
+      if (stepMap.has(wizardStep) && stepMap.get(wizardStep)?.toolId === null) {
+        continue;
+      }
+      const labels =
+        TOOL_STEP_LABEL_OVERRIDES[toolEntry.metadata.id] ?? {
+          title: toolEntry.metadata.name,
+          description: toolEntry.metadata.description,
+        };
+      stepMap.set(wizardStep, {
+        id: wizardStep,
+        title: labels.title,
+        description: labels.description,
+        toolId: toolEntry.metadata.id,
+      });
+    }
+
+    return Array.from(stepMap.values())
+      .sort((a, b) => a.id - b.id)
+      .map((step) => {
+        const tool = step.toolId ? toolRegistry.getTool(step.toolId) ?? null : null;
+        const enabled = step.toolId === null || (tool?.metadata.enabled ?? false);
+
+        return {
+          id: step.id,
+          title: step.title,
+          description: step.description,
+          toolId: step.toolId,
+          tool,
+          enabled,
+        };
+      });
   }, [version]);
 
   // Get tool by ID

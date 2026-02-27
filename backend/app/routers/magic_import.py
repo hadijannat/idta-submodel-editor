@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
 from app.dependencies import get_current_user
@@ -516,6 +516,8 @@ class ProviderInfoResponse(BaseModel):
 class ModelRecommendationResponse(BaseModel):
     """Model recommendation with system requirements."""
 
+    model_config = ConfigDict(protected_namespaces=())
+
     model_id: str
     display_name: str
     description: str
@@ -529,6 +531,8 @@ class ModelRecommendationResponse(BaseModel):
 
 class ProviderDetailResponse(BaseModel):
     """Extended provider details with recommendations."""
+
+    model_config = ConfigDict(protected_namespaces=())
 
     providers: list[ProviderInfoResponse]
     active_provider: str | None

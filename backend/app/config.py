@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -226,7 +226,16 @@ class Settings(BaseSettings):
         # Validate Git ref naming convention (branches, tags, commit SHAs)
         if not re.match(r"^[a-zA-Z0-9._/-]+$", value):
             raise ValueError(f"Invalid git ref: {value}")
-        if value.startswith("/") or value.endswith("/") or ".." in value:
+        if (
+            value.startswith("/")
+            or value.endswith("/")
+            or value.startswith("-")
+            or value.endswith(".lock")
+            or ".." in value
+            or "//" in value
+            or "@{" in value
+            or "\\" in value
+        ):
             raise ValueError(f"Invalid git ref path: {value}")
         return value
 
@@ -253,6 +262,17 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.strip():
             return Path(v)
         return None
+
+    @model_validator(mode="after")
+    def validate_security_defaults(self):
+        if (
+            self.env == "production"
+            and self.secret_key == "change-me-in-production-please-update"
+        ):
+            raise ValueError(
+                "SECRET_KEY must be overridden in production environments."
+            )
+        return self
 
     model_config = {
         "env_file": ".env",

@@ -59,6 +59,17 @@ export const STATIC_TOOLS: Record<string, Omit<ToolMetadata, 'enabled' | 'initia
     requiresAuth: false,
     dependencies: [],
   },
+  'dpp-builder': {
+    id: 'dpp-builder',
+    name: 'DPP Builder',
+    description: 'Assemble Digital Product Passports for EU ESPR compliance',
+    version: '1.0.0',
+    category: 'export',
+    wizardStep: 8,
+    featureFlag: 'dpp_enabled',
+    requiresAuth: false,
+    dependencies: ['export-panel'],
+  },
   'semantic': {
     id: 'semantic',
     name: 'Semantic Lookup',
@@ -103,11 +114,7 @@ export const STATIC_TOOLS: Record<string, Omit<ToolMetadata, 'enabled' | 'initia
 export const WIZARD_STEPS = {
   TEMPLATE_SELECTION: 1,
   CONFIGURATION: 2,
-  SMART_MAPPER: 3,
-  MAGIC_IMPORT: 4,
   FORM_EDITING: 5,
-  EXPORT: 6,
-  DATASPACE: 7,
 } as const;
 
 /**
@@ -128,34 +135,10 @@ export function getDefaultWizardSteps() {
       toolId: null,
     },
     {
-      id: WIZARD_STEPS.SMART_MAPPER,
-      title: 'Smart Mapper',
-      description: 'Import and map CSV/XLSX data',
-      toolId: 'smart-mapper',
-    },
-    {
-      id: WIZARD_STEPS.MAGIC_IMPORT,
-      title: 'Magic Import',
-      description: 'Extract fields from PDF datasheets',
-      toolId: 'magic-import',
-    },
-    {
       id: WIZARD_STEPS.FORM_EDITING,
       title: 'Fill Required Fields',
       description: 'Complete mandatory elements',
       toolId: null,
-    },
-    {
-      id: WIZARD_STEPS.EXPORT,
-      title: 'Review & Export',
-      description: 'Validate and export',
-      toolId: 'export-panel',
-    },
-    {
-      id: WIZARD_STEPS.DATASPACE,
-      title: 'Dataspace Publishing',
-      description: 'Publish to Manufacturing-X/Catena-X',
-      toolId: 'dataspace-connector',
     },
   ];
 }

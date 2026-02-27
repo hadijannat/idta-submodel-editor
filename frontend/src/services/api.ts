@@ -420,6 +420,7 @@ export interface PublicSettings {
   mnestix_url: string | null;
   basyx_registry_url: string | null;
   dataspace_enabled: boolean;
+  dpp_enabled: boolean;
 }
 
 /**

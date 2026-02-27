@@ -38,6 +38,33 @@ class MockTool(BaseTool):
         return {"test": True}
 
 
+class LateWizardTool(BaseTool):
+    """Additional tool to verify manifest ordering."""
+
+    metadata: ClassVar[ToolMetadata] = ToolMetadata(
+        id="late-tool",
+        name="Late Tool",
+        description="A later wizard tool",
+        category="core",
+        wizard_step=9,
+    )
+
+    async def initialize(self) -> None:
+        await super().initialize()
+
+    async def shutdown(self) -> None:
+        await super().shutdown()
+
+    async def health_check(self) -> tuple[bool, str | None]:
+        return True, None
+
+    def get_router(self):
+        return None
+
+    def get_capabilities(self) -> dict:
+        return {"late": True}
+
+
 @pytest.fixture
 def context():
     """Create a test tool context."""
@@ -48,6 +75,7 @@ def context():
 def mock_registry(context):
     """Create a mock registry with test tools."""
     registry = ToolRegistry(context)
+    registry.register(LateWizardTool)
     registry.register(MockTool)
     return registry
 
@@ -119,6 +147,13 @@ class TestToolsManifestEndpoint:
         assert "category" in tool
         assert "enabled" in tool
         assert "initialized" in tool
+
+    def test_manifest_is_sorted_stably(self, test_client):
+        response = test_client.get("/api/tools/manifest")
+        assert response.status_code == 200
+
+        ids = [item["id"] for item in response.json()]
+        assert ids == ["test-tool", "late-tool"]
 
 
 class TestToolDetailEndpoint:

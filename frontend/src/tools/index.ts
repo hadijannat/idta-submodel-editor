@@ -198,8 +198,9 @@ class ToolRegistryImpl {
   /**
    * Get tools that have wizard steps, sorted by step number.
    */
-  getWizardTools(): ToolRegistryEntry[] {
-    return this.getEnabledTools()
+  getWizardTools(includeDisabled = false): ToolRegistryEntry[] {
+    const source = includeDisabled ? this.getAllTools() : this.getEnabledTools();
+    return source
       .filter((t) => t.metadata.wizardStep !== null)
       .sort((a, b) => (a.metadata.wizardStep ?? 0) - (b.metadata.wizardStep ?? 0));
   }

@@ -31,6 +31,7 @@ from app.metrics import set_app_info
 from app.middleware.correlation import CorrelationIdMiddleware, get_correlation_id
 from app.routers import editor, knowledge, templates, tools
 from app.routers import settings as settings_router
+from app.services import settings_service
 from app.services.tools.registry import initialize_registry, shutdown_registry, ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,8 @@ def _bootstrap_tool_registry(app: FastAPI) -> ToolRegistry:
         from app.services.tools import registry as registry_module
 
         registry_module._registry = registry  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    except Exception as exc:  # pragma: no cover - defensive import path
+        logger.warning("Failed to set global tool registry during bootstrap: %s", exc)
 
     for router in registry.get_all_routers():
         app.include_router(router)
@@ -101,9 +102,6 @@ async def lifespan(app: FastAPI):
         "Tool registry initialized with %d tools",
         len(registry.get_all()),
     )
-
-    for router in registry.get_all_routers():
-        app.include_router(router)
 
     yield
 
@@ -184,11 +182,15 @@ def create_application() -> FastAPI:
     @app.get("/api/settings", tags=["settings"])
     async def get_public_settings():
         """Return public settings needed by the frontend."""
+        dataspace_enabled = settings_service.get_effective_feature_flag(
+            "dataspace_enabled",
+            settings=settings,
+        )
         return {
             "mnestix_enabled": settings.mnestix_enabled,
             "mnestix_url": settings.mnestix_url if settings.mnestix_enabled else None,
             "basyx_registry_url": settings.basyx_registry_url if settings.mnestix_enabled else None,
-            "dataspace_enabled": settings.dataspace_enabled,
+            "dataspace_enabled": dataspace_enabled,
             "dpp_enabled": settings.dpp_enabled,
         }
 
