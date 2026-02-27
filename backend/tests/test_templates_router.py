@@ -1,5 +1,6 @@
 """Tests for template listing and cache invalidation routes."""
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -89,3 +90,62 @@ def test_invalidate_template_cache_uses_canonical_path(client: TestClient):
     assert response.json()["invalidated"] is True
     assert fetcher.resolve_calls == ["published/Digital Nameplate"]
     assert fetcher.invalidate_calls == ["published/Digital nameplate"]
+
+
+def _http_status_error(status_code: int, text: str = "upstream failure") -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://api.github.com/repos/example/templates")
+    response = httpx.Response(status_code, request=request, text=text)
+    return httpx.HTTPStatusError("upstream failed", request=request, response=response)
+
+
+def test_list_templates_maps_upstream_504_to_upstream_unavailable(client: TestClient):
+    class MockFetcher:
+        async def list_available_templates(self, statuses, include_local=True):
+            raise _http_status_error(504, text="upstream gateway timeout")
+
+    app.dependency_overrides[get_fetcher] = lambda: MockFetcher()
+    response = client.get("/api/templates")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["code"] == "UPSTREAM_UNAVAILABLE"
+    assert payload["detail"] == {
+        "error": "Failed to fetch templates",
+        "upstream_status": 504,
+    }
+
+
+def test_get_template_info_maps_upstream_404_to_upstream_error(client: TestClient):
+    class MockFetcher:
+        async def resolve_template(self, template_name, statuses):
+            raise _http_status_error(404, text="not found upstream")
+
+    app.dependency_overrides[get_fetcher] = lambda: MockFetcher()
+    response = client.get("/api/templates/Digital%20nameplate")
+
+    assert response.status_code == 502
+    payload = response.json()
+    assert payload["code"] == "UPSTREAM_ERROR"
+    assert payload["detail"] == {
+        "error": "Failed to fetch template info",
+        "upstream_status": 404,
+        "template_name": "Digital nameplate",
+    }
+
+
+def test_get_template_versions_maps_upstream_429_to_rate_limited(client: TestClient):
+    class MockFetcher:
+        async def get_template_versions(self, template_path: str):
+            raise _http_status_error(429, text="too many requests")
+
+    app.dependency_overrides[get_fetcher] = lambda: MockFetcher()
+    response = client.get("/api/templates/Digital%20nameplate/versions")
+
+    assert response.status_code == 429
+    payload = response.json()
+    assert payload["code"] == "UPSTREAM_RATE_LIMITED"
+    assert payload["detail"] == {
+        "error": "Failed to fetch template versions",
+        "upstream_status": 429,
+        "template_name": "Digital nameplate",
+    }

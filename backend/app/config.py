@@ -8,9 +8,9 @@ from functools import lru_cache
 import json
 import re
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -190,6 +190,12 @@ class Settings(BaseSettings):
     # =========================================================================
     opcua_bridge_enabled: bool = True
     opcua_default_namespace: str = "urn:idta:generated:aas"
+    _KNOWN_INSECURE_SECRET_KEYS: ClassVar[set[str]] = {
+        "change-me-in-production-please-update",
+        "development-secret-key-change-in-production",
+        "change-this-to-a-secure-random-string-in-production",
+        "your-secret-key-here-change-in-production",
+    }
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -226,7 +232,18 @@ class Settings(BaseSettings):
         # Validate Git ref naming convention (branches, tags, commit SHAs)
         if not re.match(r"^[a-zA-Z0-9._/-]+$", value):
             raise ValueError(f"Invalid git ref: {value}")
-        if value.startswith("/") or value.endswith("/") or ".." in value:
+        if (
+            value.startswith("/")
+            or value.endswith("/")
+            or value.startswith("-")
+            or ".." in value
+            or "//" in value
+            or "@{" in value
+            or "\\" in value
+        ):
+            raise ValueError(f"Invalid git ref path: {value}")
+        segments = value.split("/")
+        if any(segment.endswith(".lock") for segment in segments):
             raise ValueError(f"Invalid git ref path: {value}")
         return value
 
@@ -253,6 +270,15 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.strip():
             return Path(v)
         return None
+
+    @model_validator(mode="after")
+    def validate_security_defaults(self):
+        normalized_secret = self.secret_key.strip().lower()
+        if self.env == "production" and normalized_secret in self._KNOWN_INSECURE_SECRET_KEYS:
+            raise ValueError(
+                "SECRET_KEY must be overridden in production environments."
+            )
+        return self
 
     model_config = {
         "env_file": ".env",
