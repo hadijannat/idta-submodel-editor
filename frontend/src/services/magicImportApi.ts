@@ -317,13 +317,65 @@ export interface MagicImportResult {
 }
 
 /**
+ * Snippet preview payload shown before extraction.
+ */
+export interface SnippetPreview {
+  snippet_id: string;
+  text: string;
+  page: number;
+  start_word_idx: number;
+  end_word_idx: number;
+  score: number;
+  context_before: string;
+  context_after: string;
+}
+
+export interface MagicImportPreviewResult {
+  template_name: string;
+  snippet_count: number;
+  token_estimate: number;
+  snippets: SnippetPreview[];
+}
+
+/**
+ * Get a preview of snippets that would be sent to the LLM.
+ */
+export async function previewMagicImportJob(
+  file: File,
+  templateName: string,
+  templateStatus: 'published' | 'deprecated' = 'published',
+  templateVersion?: string
+): Promise<MagicImportPreviewResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('template_name', templateName);
+  formData.append('template_status', templateStatus);
+  if (templateVersion) {
+    formData.append('template_version', templateVersion);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/magic-import/jobs/preview`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const details = await response.json().catch(() => response.statusText);
+    throw new ApiError('Failed to preview Magic Import snippets', response.status, details);
+  }
+
+  return response.json();
+}
+
+/**
  * Create a new Magic Import job by uploading a PDF.
  */
 export async function createMagicImportJob(
   file: File,
   templateName: string,
   templateStatus: 'published' | 'deprecated' = 'published',
-  templateVersion?: string
+  templateVersion?: string,
+  snippetOverrides?: SnippetPreview[]
 ): Promise<MagicImportJob> {
   const formData = new FormData();
   formData.append('file', file);
@@ -331,6 +383,9 @@ export async function createMagicImportJob(
   formData.append('template_status', templateStatus);
   if (templateVersion) {
     formData.append('template_version', templateVersion);
+  }
+  if (snippetOverrides) {
+    formData.append('snippet_overrides', JSON.stringify(snippetOverrides));
   }
 
   const response = await fetch(`${API_BASE_URL}/api/magic-import/jobs`, {

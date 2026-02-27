@@ -8,6 +8,7 @@ import type { SubmodelFormData, ElementFormData } from '../../types/aas-elements
 import type { SubmodelUISchema, UIElementSchema } from '../../types/ui-schema';
 import {
   createMagicImportJob,
+  previewMagicImportJob,
   getMagicImportJob,
   getMagicImportResult,
   deleteMagicImportJob,
@@ -17,6 +18,7 @@ import {
   type MagicImportResult,
   type FieldExtraction,
   type UnmappedFinding,
+  type SnippetPreview,
 } from '../../services/magicImportApi';
 
 interface UseMagicImportOptions {
@@ -35,12 +37,21 @@ interface UseMagicImportReturn {
   unmappedFindings: UnmappedFinding[];
   selectedExtractionPath: string | null;
   isUploading: boolean;
+  isPreparingPreview: boolean;
   isProcessing: boolean;
   isReextracting: boolean;
   error: string | null;
+  previewSnippets: SnippetPreview[];
+  previewTokenEstimate: number;
+  hasPreview: boolean;
 
   // Actions
-  uploadPdf: (file: File) => Promise<void>;
+  preparePreview: (file: File) => Promise<void>;
+  startImportFromPreview: () => Promise<void>;
+  updatePreviewSnippet: (snippetId: string, text: string) => void;
+  removePreviewSnippet: (snippetId: string) => void;
+  clearPreview: () => void;
+  uploadPdf: (file: File, snippetOverrides?: SnippetPreview[]) => Promise<boolean>;
   cancelJob: () => Promise<void>;
   selectExtraction: (path: string | null) => void;
   updateExtraction: (path: string, value: string) => void;
@@ -69,9 +80,14 @@ export function useMagicImport({
   const [unmappedFindings, setUnmappedFindings] = useState<UnmappedFinding[]>([]);
   const [selectedExtractionPath, setSelectedExtractionPath] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isPreparingPreview, setIsPreparingPreview] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isReextracting, setIsReextracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [previewSnippets, setPreviewSnippets] = useState<SnippetPreview[]>([]);
+  const [previewTokenEstimate, setPreviewTokenEstimate] = useState(0);
+  const [previewReady, setPreviewReady] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -120,7 +136,7 @@ export function useMagicImport({
 
   // Upload PDF and start processing
   const uploadPdf = useCallback(
-    async (file: File) => {
+    async (file: File, snippetOverrides?: SnippetPreview[]) => {
       setIsUploading(true);
       setError(null);
 
@@ -129,7 +145,8 @@ export function useMagicImport({
           file,
           templateName,
           templateStatus,
-          templateVersion ?? undefined
+          templateVersion ?? undefined,
+          snippetOverrides
         );
 
         setJob(newJob);
@@ -138,13 +155,76 @@ export function useMagicImport({
 
         // Start polling
         startPolling(newJob.job_id);
+        return true;
       } catch (err) {
         setIsUploading(false);
         setError(err instanceof Error ? err.message : 'Upload failed');
+        return false;
       }
     },
     [templateName, templateStatus, templateVersion, startPolling]
   );
+
+  const preparePreview = useCallback(
+    async (file: File) => {
+      setIsPreparingPreview(true);
+      setError(null);
+      setPendingFile(file);
+      setPreviewReady(false);
+
+      try {
+        const preview = await previewMagicImportJob(
+          file,
+          templateName,
+          templateStatus,
+          templateVersion ?? undefined
+        );
+        setPreviewSnippets(preview.snippets);
+        setPreviewTokenEstimate(preview.token_estimate);
+        setPreviewReady(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Preview generation failed');
+        setPendingFile(null);
+        setPreviewSnippets([]);
+        setPreviewTokenEstimate(0);
+      } finally {
+        setIsPreparingPreview(false);
+      }
+    },
+    [templateName, templateStatus, templateVersion]
+  );
+
+  const startImportFromPreview = useCallback(async () => {
+    if (!pendingFile) return;
+    const started = await uploadPdf(pendingFile, previewSnippets);
+    if (started) {
+      setPendingFile(null);
+      setPreviewSnippets([]);
+      setPreviewTokenEstimate(0);
+      setPreviewReady(false);
+    }
+  }, [pendingFile, previewSnippets, uploadPdf]);
+
+  const updatePreviewSnippet = useCallback((snippetId: string, text: string) => {
+    setPreviewSnippets((prev) =>
+      prev.map((snippet) =>
+        snippet.snippet_id === snippetId ? { ...snippet, text } : snippet
+      )
+    );
+  }, []);
+
+  const removePreviewSnippet = useCallback((snippetId: string) => {
+    setPreviewSnippets((prev) =>
+      prev.filter((snippet) => snippet.snippet_id !== snippetId)
+    );
+  }, []);
+
+  const clearPreview = useCallback(() => {
+    setPendingFile(null);
+    setPreviewSnippets([]);
+    setPreviewTokenEstimate(0);
+    setPreviewReady(false);
+  }, []);
 
   // Cancel current job
   const cancelJob = useCallback(async () => {
@@ -162,9 +242,10 @@ export function useMagicImport({
     setResult(null);
     setExtractions([]);
     setUnmappedFindings([]);
+    clearPreview();
     setIsProcessing(false);
     setError(null);
-  }, [job, stopPolling]);
+  }, [job, stopPolling, clearPreview]);
 
   // Select an extraction for highlighting
   const selectExtraction = useCallback((path: string | null) => {
@@ -344,9 +425,11 @@ export function useMagicImport({
     setUnmappedFindings([]);
     setSelectedExtractionPath(null);
     setIsUploading(false);
+    setIsPreparingPreview(false);
     setIsProcessing(false);
     setError(null);
-  }, [stopPolling]);
+    clearPreview();
+  }, [stopPolling, clearPreview]);
 
   // PDF URL for viewer
   const pdfUrl = job ? getMagicImportPdfUrl(job.job_id) : null;
@@ -358,9 +441,18 @@ export function useMagicImport({
     unmappedFindings,
     selectedExtractionPath,
     isUploading,
+    isPreparingPreview,
     isProcessing,
     isReextracting,
     error,
+    previewSnippets,
+    previewTokenEstimate,
+    hasPreview: pendingFile !== null && previewReady,
+    preparePreview,
+    startImportFromPreview,
+    updatePreviewSnippet,
+    removePreviewSnippet,
+    clearPreview,
     uploadPdf,
     cancelJob,
     selectExtraction,
