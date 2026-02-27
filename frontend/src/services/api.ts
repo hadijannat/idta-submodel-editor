@@ -423,11 +423,41 @@ export interface PublicSettings {
   dpp_enabled: boolean;
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function parsePublicSettings(payload: unknown): PublicSettings {
+  if (!payload || typeof payload !== 'object') {
+    throw new ApiError('Invalid /api/settings response shape', 502, payload);
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  if (
+    typeof candidate.mnestix_enabled !== 'boolean' ||
+    !isNullableString(candidate.mnestix_url) ||
+    !isNullableString(candidate.basyx_registry_url) ||
+    typeof candidate.dataspace_enabled !== 'boolean' ||
+    typeof candidate.dpp_enabled !== 'boolean'
+  ) {
+    throw new ApiError('Invalid /api/settings response contract', 502, payload);
+  }
+
+  return {
+    mnestix_enabled: candidate.mnestix_enabled,
+    mnestix_url: candidate.mnestix_url,
+    basyx_registry_url: candidate.basyx_registry_url,
+    dataspace_enabled: candidate.dataspace_enabled,
+    dpp_enabled: candidate.dpp_enabled,
+  };
+}
+
 /**
  * Get public settings from the backend.
  */
 export async function getPublicSettings(): Promise<PublicSettings> {
-  return apiFetch<PublicSettings>('/api/settings');
+  const payload = await apiFetch<unknown>('/api/settings');
+  return parsePublicSettings(payload);
 }
 
 // ============================================================================

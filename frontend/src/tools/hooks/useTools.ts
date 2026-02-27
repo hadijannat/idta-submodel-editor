@@ -65,6 +65,12 @@ const TOOL_STEP_LABEL_OVERRIDES: Record<
   },
 };
 
+const MAX_RUNTIME_WIZARD_STEP = 20;
+
+function isValidRuntimeWizardStep(step: number): boolean {
+  return Number.isInteger(step) && step >= 1 && step <= MAX_RUNTIME_WIZARD_STEP;
+}
+
 /**
  * Hook for accessing the tool registry.
  *
@@ -156,7 +162,10 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
     for (const toolEntry of manifestSteps) {
       const wizardStep = toolEntry.metadata.wizardStep;
       if (wizardStep === null) continue;
-      if (stepMap.has(wizardStep) && stepMap.get(wizardStep)?.toolId === null) {
+      if (!isValidRuntimeWizardStep(wizardStep)) {
+        continue;
+      }
+      if (stepMap.has(wizardStep)) {
         continue;
       }
       const labels =

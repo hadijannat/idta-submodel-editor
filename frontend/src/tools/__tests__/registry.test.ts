@@ -28,6 +28,7 @@ describe('toolRegistry static initialization', () => {
     expect(tool).toBeDefined();
     expect(tool?.metadata.wizardStep).toBe(8);
     expect(tool?.metadata.featureFlag).toBe('dpp_enabled');
+    expect(toolRegistry.hasComponent('dpp-builder')).toBe(true);
   });
 
   it('merges server manifest and keeps wizard order', async () => {
@@ -85,5 +86,55 @@ describe('toolRegistry static initialization', () => {
 
     await expect(toolRegistry.loadServerManifest(true)).resolves.toBeUndefined();
     expect(toolRegistry.getTool('export-panel')).toBeDefined();
+  });
+
+  it('uses deterministic tie-break ordering for tools on the same wizard step', async () => {
+    const manifest = [
+      {
+        id: 'zeta-tool',
+        name: 'Zeta Tool',
+        description: 'A test tool',
+        version: '1.0.0',
+        category: 'core',
+        wizard_step: 9,
+        feature_flag: null,
+        requires_auth: false,
+        dependencies: [],
+        enabled: true,
+        initialized: true,
+      },
+      {
+        id: 'alpha-tool',
+        name: 'Alpha Tool',
+        description: 'A test tool',
+        version: '1.0.0',
+        category: 'core',
+        wizard_step: 9,
+        feature_flag: null,
+        requires_auth: false,
+        dependencies: [],
+        enabled: true,
+        initialized: true,
+      },
+    ];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => manifest,
+      })
+    );
+
+    await toolRegistry.loadServerManifest(true);
+
+    const stepNineIds = toolRegistry
+      .getWizardTools(true)
+      .filter((entry) => entry.metadata.wizardStep === 9)
+      .map((entry) => entry.metadata.id);
+
+    expect(stepNineIds).toEqual(['alpha-tool', 'zeta-tool']);
   });
 });

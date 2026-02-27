@@ -110,18 +110,30 @@ function App() {
         .sort((a, b) => a - b),
     [wizardSteps]
   );
+  const enabledStepIdSet = useMemo(() => new Set(enabledStepIds), [enabledStepIds]);
+  const stepNavigation = useMemo(() => {
+    const next = new Map<number, number>();
+    const previous = new Map<number, number>();
+
+    for (let index = 0; index < enabledStepIds.length; index += 1) {
+      const current = enabledStepIds[index];
+      const prev = enabledStepIds[index - 1] ?? current;
+      const nextStep = enabledStepIds[index + 1] ?? current;
+      previous.set(current, prev);
+      next.set(current, nextStep);
+    }
+
+    return { next, previous };
+  }, [enabledStepIds]);
 
   const getNextStepId = useCallback(
-    (stepId: number) => enabledStepIds.find((candidate) => candidate > stepId) ?? stepId,
-    [enabledStepIds]
+    (stepId: number) => stepNavigation.next.get(stepId) ?? stepId,
+    [stepNavigation]
   );
 
   const getPreviousStepId = useCallback(
-    (stepId: number) => {
-      const previous = enabledStepIds.filter((candidate) => candidate < stepId);
-      return previous.length > 0 ? previous[previous.length - 1] : stepId;
-    },
-    [enabledStepIds]
+    (stepId: number) => stepNavigation.previous.get(stepId) ?? stepId,
+    [stepNavigation]
   );
 
   const handleStepChange = useCallback(
@@ -135,16 +147,13 @@ function App() {
         return;
       }
       if (step >= 3 && canEdit) {
-        // Check if the step's tool is enabled
-        const stepInfo = wizardSteps.find((s) => s.id === step);
-        if (stepInfo && stepInfo.toolId && !stepInfo.enabled) {
-          // Skip disabled tool steps
+        if (!enabledStepIdSet.has(step)) {
           return;
         }
         setWizardStep(step);
       }
     },
-    [canConfigure, canEdit, wizardSteps]
+    [canConfigure, canEdit, enabledStepIdSet]
   );
 
   const handleDataspaceToggle = useCallback(async () => {

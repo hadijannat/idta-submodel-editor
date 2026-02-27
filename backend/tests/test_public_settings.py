@@ -14,6 +14,7 @@ def test_public_settings_reflect_effective_dataspace_flag():
     with tempfile.TemporaryDirectory() as tmp_dir:
         settings = Settings(
             dataspace_enabled=False,
+            dpp_enabled=False,
             settings_storage_dir=Path(tmp_dir),
         )
 
@@ -27,7 +28,7 @@ def test_public_settings_reflect_effective_dataspace_flag():
                 initial_public = client.get("/api/settings")
                 assert initial_public.status_code == 200
                 assert initial_public.json()["dataspace_enabled"] is False
-                assert "dpp_enabled" in initial_public.json()
+                assert initial_public.json()["dpp_enabled"] is False
 
                 update = client.put(
                     "/api/settings/features",
@@ -39,3 +40,27 @@ def test_public_settings_reflect_effective_dataspace_flag():
                 effective_public = client.get("/api/settings")
                 assert effective_public.status_code == 200
                 assert effective_public.json()["dataspace_enabled"] is True
+
+
+def test_public_settings_falls_back_to_env_flag_when_storage_lookup_fails():
+    settings = Settings(
+        dataspace_enabled=True,
+        dpp_enabled=True,
+    )
+
+    with (
+        patch("app.main.get_settings", return_value=settings),
+        patch("app.services.settings_service.get_settings", return_value=settings),
+        patch("app.routers.settings.get_settings", return_value=settings),
+        patch(
+            "app.services.settings_service._get_feature_flags_path",
+            side_effect=OSError("settings storage unavailable"),
+        ),
+    ):
+        app = create_application()
+        with TestClient(app) as client:
+            response = client.get("/api/settings")
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["dataspace_enabled"] is True
+            assert payload["dpp_enabled"] is True

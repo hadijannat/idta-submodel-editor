@@ -96,7 +96,7 @@ describe('useTools wizard step integration', () => {
     });
 
     const stepIds = result.current.wizardSteps.map((step) => step.id);
-    expect(stepIds).toEqual(expect.arrayContaining([1, 2, 5, 6, 7, 8]));
+    expect(stepIds).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(stepIds.indexOf(8)).toBeGreaterThan(stepIds.indexOf(7));
 
     const dppStep = result.current.wizardSteps.find((step) => step.id === 8);
@@ -119,6 +119,47 @@ describe('useTools wizard step integration', () => {
     });
 
     const stepIds = result.current.wizardSteps.map((step) => step.id);
-    expect(stepIds).toEqual(expect.arrayContaining([1, 2, 5]));
+    expect(stepIds).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it('keeps hardcoded anchor steps even when manifest tries to override them', async () => {
+    const manifest = [
+      {
+        id: 'custom-anchor-collision',
+        name: 'Collision Tool',
+        description: 'Should not replace the form editing anchor step',
+        version: '1.0.0',
+        category: 'core',
+        wizard_step: 5,
+        feature_flag: null,
+        requires_auth: false,
+        dependencies: [],
+        enabled: true,
+        initialized: true,
+      },
+    ];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => manifest,
+      })
+    );
+
+    const { result } = renderHook(() =>
+      useTools({ fetchOnMount: false, enabledOnly: false })
+    );
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    const step5 = result.current.wizardSteps.find((step) => step.id === 5);
+    expect(step5).toBeDefined();
+    expect(step5?.title).toBe('Fill Required Fields');
+    expect(step5?.toolId).toBeNull();
   });
 });
