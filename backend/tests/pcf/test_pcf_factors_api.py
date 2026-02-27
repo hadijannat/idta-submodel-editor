@@ -1,23 +1,18 @@
-"""
-Tests for PCF emission factors search API endpoint.
-"""
+"""Tests for PCF emission factors search API endpoint."""
 
 import pytest
-import pytest_asyncio
 from fastapi import FastAPI
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from httpx import ASGITransport, AsyncClient
+from fastapi.testclient import TestClient
 from app.errors import APIError, ErrorCode, ErrorResponse
 from app.middleware.correlation import get_correlation_id
 from app.routers.pcf import router
 
-pytestmark = pytest.mark.asyncio
 
-
-@pytest_asyncio.fixture
-async def client():
+@pytest.fixture(scope="module")
+def client():
     """Create test client with PCF router."""
     app = FastAPI()
     app.include_router(router)
@@ -73,20 +68,16 @@ async def client():
             headers={"X-Correlation-ID": correlation_id},
         )
 
-    transport = ASGITransport(app=app)
-    client = AsyncClient(transport=transport, base_url="http://testserver")
-    try:
-        yield client
-    finally:
-        await client.aclose()
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 class TestEmissionFactorsSearchEndpoint:
     """Tests for GET /api/pcf/factors/search endpoint."""
 
-    async def test_search_returns_matching_factors(self, client):
+    def test_search_returns_matching_factors(self, client):
         """Search should return factors matching the query."""
-        response = await client.get(
+        response = client.get(
             "/api/pcf/factors/search", params={"query": "electricity"}
         )
         assert response.status_code == 200
@@ -95,26 +86,35 @@ class TestEmissionFactorsSearchEndpoint:
         assert len(data) > 0
         assert all("electricity" in f["name"].lower() for f in data)
 
-    async def test_search_with_empty_query_returns_all(self, client):
+    def test_search_with_empty_query_returns_all(self, client):
         """Empty query should return all factors up to limit."""
-        response = await client.get("/api/pcf/factors/search", params={"query": ""})
+        response = client.get("/api/pcf/factors/search", params={"query": ""})
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
         assert len(data) > 0
 
-    async def test_search_respects_limit(self, client):
+    def test_search_respects_limit(self, client):
         """Search should respect the limit parameter."""
-        response = await client.get(
+        response = client.get(
             "/api/pcf/factors/search", params={"query": "", "limit": 3}
         )
         assert response.status_code == 200
         data = response.json()
         assert len(data) <= 3
 
-    async def test_search_returns_correct_structure(self, client):
+    def test_search_respects_limit_for_matching_query(self, client):
+        """Search with non-empty query should stop at limit."""
+        response = client.get(
+            "/api/pcf/factors/search", params={"query": "e", "limit": 1}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) <= 1
+
+    def test_search_returns_correct_structure(self, client):
         """Each factor should have the expected fields."""
-        response = await client.get(
+        response = client.get(
             "/api/pcf/factors/search", params={"query": "steel"}
         )
         assert response.status_code == 200
@@ -128,21 +128,21 @@ class TestEmissionFactorsSearchEndpoint:
         assert "factor_unit" in factor
         assert "source" in factor
 
-    async def test_search_no_match_returns_empty_list(self, client):
+    def test_search_no_match_returns_empty_list(self, client):
         """Search with no matches should return empty list."""
-        response = await client.get(
+        response = client.get(
             "/api/pcf/factors/search", params={"query": "xyznonexistent123"}
         )
         assert response.status_code == 200
         data = response.json()
         assert data == []
 
-    async def test_search_is_case_insensitive(self, client):
+    def test_search_is_case_insensitive(self, client):
         """Search should be case insensitive."""
-        response_lower = await client.get(
+        response_lower = client.get(
             "/api/pcf/factors/search", params={"query": "electricity"}
         )
-        response_upper = await client.get(
+        response_upper = client.get(
             "/api/pcf/factors/search", params={"query": "ELECTRICITY"}
         )
         assert response_lower.status_code == 200
@@ -153,21 +153,28 @@ class TestEmissionFactorsSearchEndpoint:
 class TestEmissionFactorByIdEndpoint:
     """Tests for GET /api/pcf/factors/{factor_id} endpoint."""
 
-    async def test_get_existing_factor(self, client):
+    def test_get_existing_factor(self, client):
         """Should return factor when ID exists."""
         # First search to get a valid ID
-        search_response = await client.get(
+        search_response = client.get(
             "/api/pcf/factors/search", params={"query": "", "limit": 1}
         )
+        assert search_response.status_code == 200
         factors = search_response.json()
-        if factors:
-            factor_id = factors[0]["id"]
-            response = await client.get(f"/api/pcf/factors/{factor_id}")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["id"] == factor_id
+        assert factors
+        factor_id = factors[0]["id"]
+        response = client.get(f"/api/pcf/factors/{factor_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == factor_id
 
-    async def test_get_nonexistent_factor_returns_404(self, client):
+    def test_get_nonexistent_factor_returns_404(self, client):
         """Should return 404 for non-existent ID."""
-        response = await client.get("/api/pcf/factors/nonexistent-id-12345")
+        response = client.get("/api/pcf/factors/nonexistent-id-12345")
         assert response.status_code == 404
+        data = response.json()
+        assert data["code"] == "RESOURCE_NOT_FOUND"
+        assert data["message"] == "Emission factor not found"
+        assert data["detail"]["factor_id"] == "nonexistent-id-12345"
+        assert "X-Correlation-ID" in response.headers
+        assert response.headers["X-Correlation-ID"]
