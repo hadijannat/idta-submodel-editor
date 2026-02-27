@@ -65,6 +65,60 @@ class DependsOnFailingTool(BaseTool):
     )
 
 
+class StepTenTool(BaseTool):
+    metadata = ToolMetadata(
+        id="step-10",
+        name="Step Ten",
+        description="Wizard step ten",
+        wizard_step=10,
+    )
+
+
+class StepThreeTool(BaseTool):
+    metadata = ToolMetadata(
+        id="step-3",
+        name="Step Three",
+        description="Wizard step three",
+        wizard_step=3,
+    )
+
+
+class StepThreeAlphaTool(BaseTool):
+    metadata = ToolMetadata(
+        id="step-3-alpha",
+        name="Step Three Alpha",
+        description="Wizard step three alpha",
+        wizard_step=3,
+    )
+
+
+class StepThreeBetaTool(BaseTool):
+    metadata = ToolMetadata(
+        id="step-3-beta",
+        name="Step Three Beta",
+        description="Wizard step three beta",
+        wizard_step=3,
+    )
+
+
+class UtilityZTool(BaseTool):
+    metadata = ToolMetadata(
+        id="utility-z",
+        name="Utility Z",
+        description="Utility tool",
+        wizard_step=None,
+    )
+
+
+class UtilityATool(BaseTool):
+    metadata = ToolMetadata(
+        id="utility-a",
+        name="Utility A",
+        description="Utility tool",
+        wizard_step=None,
+    )
+
+
 @pytest.mark.asyncio
 async def test_initialize_all_skips_missing_dependency():
     context = ToolContext(Settings())
@@ -101,3 +155,40 @@ async def test_initialize_all_skips_failed_dependency():
 
     assert results["failing-tool"] is False
     assert results["depends-on-failing"] is False
+
+
+def test_manifest_order_is_stable_and_sorted():
+    context = ToolContext(Settings())
+    registry = ToolRegistry(context=context)
+    # Register in unsorted order to verify explicit sort contract.
+    registry.register(UtilityZTool)
+    registry.register(StepTenTool)
+    registry.register(UtilityATool)
+    registry.register(StepThreeTool)
+
+    manifest = registry.get_tool_manifest()
+    ids = [entry["id"] for entry in manifest]
+
+    assert ids == ["step-3", "step-10", "utility-a", "utility-z"]
+
+
+def test_manifest_cache_invalidates_on_new_registration():
+    context = ToolContext(Settings())
+    registry = ToolRegistry(context=context)
+    registry.register(StepTenTool)
+    first_manifest = registry.get_tool_manifest()
+    assert [entry["id"] for entry in first_manifest] == ["step-10"]
+
+    registry.register(StepThreeTool)
+    second_manifest = registry.get_tool_manifest()
+    assert [entry["id"] for entry in second_manifest] == ["step-3", "step-10"]
+
+
+def test_manifest_order_tie_breaks_by_id_with_same_step():
+    context = ToolContext(Settings())
+    registry = ToolRegistry(context=context)
+    registry.register(StepThreeBetaTool)
+    registry.register(StepThreeAlphaTool)
+
+    manifest = registry.get_tool_manifest()
+    assert [entry["id"] for entry in manifest] == ["step-3-alpha", "step-3-beta"]

@@ -385,9 +385,16 @@ class ToolRegistry:
             List of tool manifest entries
         """
         if self._manifest_cache is None:
-            self._manifest_cache = [
-                tool.to_manifest_entry() for tool in self._tools.values()
-            ]
+            entries = [tool.to_manifest_entry() for tool in self._tools.values()]
+            # Keep manifest ordering stable for frontend and tests.
+            entries.sort(
+                key=lambda entry: (
+                    entry.get("wizard_step") is None,
+                    entry.get("wizard_step") if entry.get("wizard_step") is not None else 999,
+                    entry.get("id", ""),
+                )
+            )
+            self._manifest_cache = entries
         return self._manifest_cache
 
     async def health_check_all(self) -> dict[str, dict]:
