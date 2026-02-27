@@ -53,9 +53,10 @@ jobs:
 
           echo "should_run=${SHOULD_RUN}" >> "${GITHUB_OUTPUT}"
 
-      - name: Run Claude Code
+      - name: Run Claude Code (attempt 1)
         if: steps.trigger.outputs.should_run == 'true'
-        id: claude
+        id: claude-attempt-1
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -72,6 +73,26 @@ jobs:
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
 
+      - name: Run Claude Code (attempt 2)
+        if: steps.trigger.outputs.should_run == 'true' && steps.claude-attempt-1.outcome == 'failure'
+        id: claude-attempt-2
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # This is an optional setting that allows Claude to read CI results on PRs
+          additional_permissions: |
+            actions: read
+
       - name: No-op when Claude is not requested
         if: steps.trigger.outputs.should_run != 'true'
         run: echo "No @claude trigger found; marking workflow as successful no-op."
+
+      - name: Report Claude runtime instability
+        if: >
+          steps.trigger.outputs.should_run == 'true' &&
+          steps.claude-attempt-1.outcome == 'failure' &&
+          (steps.claude-attempt-2.outcome == 'failure' || steps.claude-attempt-2.outcome == '')
+        run: |
+          echo "::warning::Claude workflow failed after retries due external action/runtime instability. Marking as non-blocking."
