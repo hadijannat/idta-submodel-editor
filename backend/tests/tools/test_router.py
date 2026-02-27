@@ -175,6 +175,8 @@ class TestToolsManifestEndpoint:
         assert "category" in tool
         assert "enabled" in tool
         assert "initialized" in tool
+        assert "schema_version" in tool
+        assert "disabled_reason" in tool
 
     def test_manifest_is_sorted_stably(self, test_client):
         response = test_client.get("/api/tools/manifest")

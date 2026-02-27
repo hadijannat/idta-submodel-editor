@@ -13,6 +13,7 @@ describe('getPublicSettings', () => {
       mnestix_url: 'http://localhost:3001',
       basyx_registry_url: 'http://localhost:4002',
       dataspace_enabled: true,
+      magic_import_enabled: true,
       dpp_enabled: true,
     };
 

@@ -72,6 +72,11 @@ def _get_encryption_key() -> bytes:
     settings.settings_storage_dir.mkdir(parents=True, exist_ok=True)
 
     if key_file.exists():
+        logger.warning(
+            "SETTINGS_ENCRYPTION_KEY is not configured; using auto-generated key file at %s. "
+            "This is not HA-safe. Configure SETTINGS_ENCRYPTION_KEY for shared deployments.",
+            key_file,
+        )
         return key_file.read_bytes()
 
     # Generate new key
@@ -82,7 +87,11 @@ def _get_encryption_key() -> bytes:
         key_file.write_bytes(key)
         # Restrict permissions (owner only)
         os.chmod(key_file, 0o600)
-        logger.info("Generated new settings encryption key")
+        logger.warning(
+            "Generated local settings encryption key at %s because SETTINGS_ENCRYPTION_KEY is unset. "
+            "This is not HA-safe for multi-instance deployments.",
+            key_file,
+        )
         return key
     except ImportError:
         # If cryptography not installed, use a fallback (less secure)

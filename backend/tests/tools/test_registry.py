@@ -142,6 +142,9 @@ async def test_initialize_all_skips_disabled_dependency():
 
     assert results["disabled-dep"] is True  # disabled tools are skipped as OK
     assert results["depends-on-disabled"] is False
+    manifest = registry.get_tool_manifest()
+    disabled_dep = next(entry for entry in manifest if entry["id"] == "disabled-dep")
+    assert disabled_dep["disabled_reason"] is not None
 
 
 @pytest.mark.asyncio
@@ -170,6 +173,9 @@ def test_manifest_order_is_stable_and_sorted():
     ids = [entry["id"] for entry in manifest]
 
     assert ids == ["step-3", "step-10", "utility-a", "utility-z"]
+    for entry in manifest:
+        assert entry["schema_version"] == ToolRegistry.MANIFEST_SCHEMA_VERSION
+        assert entry["disabled_reason"] is None
 
 
 def test_manifest_cache_invalidates_on_new_registration():

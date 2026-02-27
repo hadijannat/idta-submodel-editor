@@ -41,6 +41,10 @@ export interface ToolMetadata {
   enabled: boolean;
   /** Whether the tool has been initialized */
   initialized: boolean;
+  /** Manifest schema version from backend */
+  schemaVersion?: string | null;
+  /** Why the tool is unavailable/disabled */
+  disabledReason?: string | null;
 }
 
 /**
@@ -135,6 +139,8 @@ export interface ToolManifestEntry {
   dependencies: string[];
   enabled: boolean;
   initialized: boolean;
+  schema_version?: string | null;
+  disabled_reason?: string | null;
 }
 
 /**
@@ -153,5 +159,7 @@ export function toToolMetadata(entry: ToolManifestEntry): ToolMetadata {
     dependencies: entry.dependencies,
     enabled: entry.enabled,
     initialized: entry.initialized,
+    schemaVersion: entry.schema_version ?? null,
+    disabledReason: entry.disabled_reason ?? null,
   };
 }

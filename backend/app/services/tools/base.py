@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 from fastapi import APIRouter
 
 if TYPE_CHECKING:
+    from app.services.tools.registry import ToolRegistry
     from app.services.tools.context import ToolContext
 
 
@@ -183,6 +184,35 @@ class BaseTool(ABC):
         if flag is None:
             return True
         return self._context.is_feature_enabled(flag)
+
+    def get_disabled_reason(self, registry: "ToolRegistry | None" = None) -> str | None:
+        """
+        Return a human-readable reason why this tool is disabled.
+
+        Args:
+            registry: Optional registry for dependency-aware diagnostics.
+
+        Returns:
+            A short disabled reason when unavailable, otherwise None.
+        """
+        if self.is_enabled():
+            # Enabled tools can still be unusable due to missing dependencies.
+            if registry is not None:
+                for dependency in self.metadata.dependencies:
+                    dependency_tool = registry.get(dependency)
+                    if dependency_tool is None:
+                        return f"Dependency '{dependency}' is not installed."
+                    if not dependency_tool.is_enabled():
+                        return f"Dependency '{dependency}' is disabled."
+                    if not dependency_tool.is_initialized:
+                        return f"Dependency '{dependency}' is not initialized."
+            return None
+
+        if self.metadata.feature_flag:
+            return (
+                f"Feature flag '{self.metadata.feature_flag}' is disabled."
+            )
+        return "Tool is disabled by configuration."
 
     def to_manifest_entry(self) -> dict:
         """

@@ -37,6 +37,8 @@ class ToolMetadataResponse(BaseModel):
     dependencies: list[str]
     enabled: bool
     initialized: bool
+    schema_version: str | None = None
+    disabled_reason: str | None = None
 
 
 class ToolHealthResponse(BaseModel):
@@ -125,11 +127,13 @@ async def list_tools(
                 dependencies=tool.metadata.dependencies,
                 enabled=tool.is_enabled(),
                 initialized=tool.is_initialized,
+                schema_version=registry.MANIFEST_SCHEMA_VERSION,
+                disabled_reason=tool.get_disabled_reason(registry),
             )
         )
 
-    # Sort by wizard_step (None values at end)
-    result.sort(key=lambda t: (t.wizard_step is None, t.wizard_step or 0))
+    # Sort by wizard_step (None values at end), then by id for deterministic ties
+    result.sort(key=lambda t: (t.wizard_step is None, t.wizard_step or 0, t.id))
 
     return result
 
@@ -164,10 +168,10 @@ async def check_tools_health(
     )
 
 
-@router.get("/manifest")
+@router.get("/manifest", response_model=list[ToolMetadataResponse])
 async def get_tool_manifest(
     registry: Annotated[ToolRegistry, Depends(get_registry)],
-) -> list[dict]:
+) -> list[ToolMetadataResponse]:
     """
     Get the full tool manifest for frontend consumption.
 
@@ -178,7 +182,10 @@ async def get_tool_manifest(
     Returns:
         List of tool manifest entries
     """
-    return registry.get_tool_manifest()
+    return [
+        ToolMetadataResponse.model_validate(entry)
+        for entry in registry.get_tool_manifest()
+    ]
 
 
 @router.get("/{tool_id}", response_model=CapabilityReportResponse)
