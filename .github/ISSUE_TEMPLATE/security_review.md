@@ -6,6 +6,9 @@ labels: [security]
 assignees: []
 ---
 
+> Public issue warning: do not include exploit steps, proof-of-concept payloads, secrets, tokens, credentials, or sensitive infrastructure details.
+> For sensitive vulnerabilities, use private reporting via the Security Policy link.
+
 ## Finding summary
 
 ## Severity
@@ -26,7 +29,7 @@ assignees: []
 
 ## Impact
 
-## Reproduction / proof
+## Public-safe observations (no exploit details)
 
 ## Proposed mitigation
 

@@ -23,15 +23,24 @@ No fix ships without a test.
 
 ## Baseline Verification
 
-Run before review coding begins:
+Run before review coding begins. Execute commands from repo root.
 
 ```bash
-docker-compose up
+# Integration/E2E context only
+docker-compose up -d
+# ...run integration/e2e checks...
+docker-compose down
+
+# Backend-only changes
 PYTHONPATH=backend pytest backend/tests
-cd frontend
-npm run lint
-npm run type-check
-npm run test:unit
+
+# Frontend changes
+npm --prefix frontend run lint
+npm --prefix frontend run type-check
+npm --prefix frontend run test:unit
+
+# Docs/process changes
+mkdocs build --strict
 ```
 
 ## Required Review Checks
@@ -65,15 +74,17 @@ npm run test:unit
 
 ## Test Matrix
 
-- Core:
-  - `PYTHONPATH=backend pytest backend/tests`
-  - `npm run lint`
-  - `npm run type-check`
-  - `npm run test:unit`
+- Scoped baseline:
+  - Backend changed: `PYTHONPATH=backend pytest backend/tests`
+  - Frontend changed: `npm --prefix frontend run lint`
+  - Frontend changed: `npm --prefix frontend run type-check`
+  - Frontend changed: `npm --prefix frontend run test:unit`
+  - Docs or `.github` process files changed: `mkdocs build --strict`
+  - Runtime integration or contracts changed: run docker compose + E2E smoke
 - Optional, only when affected:
-  - `E2E_PROFILE=magic-import npm run test:e2e`
-  - `E2E_PROFILE=dataspace npm run test:e2e`
-  - `E2E_PROFILE=plc npm run test:e2e`
+  - `E2E_PROFILE=magic-import npm --prefix frontend run test:e2e`
+  - `E2E_PROFILE=dataspace npm --prefix frontend run test:e2e`
+  - `E2E_PROFILE=plc npm --prefix frontend run test:e2e`
 
 ## Delivery Requirements
 
