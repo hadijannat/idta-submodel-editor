@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+PYDANTIC_PROTECTED_NAMESPACES = ("model_validate", "model_dump")
+
 
 class TemplateInfo(BaseModel):
     """Metadata for a single IDTA template."""
@@ -38,7 +40,7 @@ class TemplateInfo(BaseModel):
 class FieldInfo(BaseModel):
     """Comprehensive field metadata from a template."""
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
 
     template_idta: str = Field(description="Parent template IDTA number")
     path: str = Field(description="Full idShortPath to the field")

@@ -31,6 +31,7 @@ from app.services.parser import ParserService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/opcua", tags=["opcua"])
+PYDANTIC_PROTECTED_NAMESPACES = ("model_validate", "model_dump")
 
 
 # ============================================================================
@@ -180,7 +181,7 @@ async def import_nodeset_file(
 class NodeSetExportRequest(BaseModel):
     """Request to export AAS template as NodeSet."""
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
 
     template_name: str = Field(description="AAS template name")
     template_status: Literal["published", "deprecated"] = Field(default="published")
@@ -342,7 +343,7 @@ async def download_nodeset(
 class DirectExportRequest(BaseModel):
     """Request to export UI schema directly to NodeSet."""
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
 
     ui_schema: dict = Field(description="UI schema to export")
     namespace_uri: str | None = Field(default=None)

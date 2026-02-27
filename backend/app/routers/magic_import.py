@@ -30,6 +30,7 @@ from app.utils.upload_security import FileType, UploadValidator, read_upload_fil
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/magic-import", tags=["magic-import"])
+PYDANTIC_PROTECTED_NAMESPACES = ("model_validate", "model_dump")
 
 
 class RecordCorrectionRequest(BaseModel):
@@ -516,7 +517,7 @@ class ProviderInfoResponse(BaseModel):
 class ModelRecommendationResponse(BaseModel):
     """Model recommendation with system requirements."""
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
 
     model_id: str
     display_name: str
@@ -532,7 +533,7 @@ class ModelRecommendationResponse(BaseModel):
 class ProviderDetailResponse(BaseModel):
     """Extended provider details with recommendations."""
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=PYDANTIC_PROTECTED_NAMESPACES)
 
     providers: list[ProviderInfoResponse]
     active_provider: str | None
