@@ -10,7 +10,8 @@ from app.errors import APIError, ErrorCode, ErrorResponse
 from app.middleware.correlation import get_correlation_id
 from app.routers.pcf import router
 
-@pytest.fixture
+
+@pytest.fixture(scope="module")
 def client():
     """Create test client with PCF router."""
     app = FastAPI()
@@ -102,6 +103,15 @@ class TestEmissionFactorsSearchEndpoint:
         data = response.json()
         assert len(data) <= 3
 
+    def test_search_respects_limit_for_matching_query(self, client):
+        """Search with non-empty query should stop at limit."""
+        response = client.get(
+            "/api/pcf/factors/search", params={"query": "e", "limit": 1}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) <= 1
+
     def test_search_returns_correct_structure(self, client):
         """Each factor should have the expected fields."""
         response = client.get(
@@ -149,15 +159,22 @@ class TestEmissionFactorByIdEndpoint:
         search_response = client.get(
             "/api/pcf/factors/search", params={"query": "", "limit": 1}
         )
+        assert search_response.status_code == 200
         factors = search_response.json()
-        if factors:
-            factor_id = factors[0]["id"]
-            response = client.get(f"/api/pcf/factors/{factor_id}")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["id"] == factor_id
+        assert factors
+        factor_id = factors[0]["id"]
+        response = client.get(f"/api/pcf/factors/{factor_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == factor_id
 
     def test_get_nonexistent_factor_returns_404(self, client):
         """Should return 404 for non-existent ID."""
         response = client.get("/api/pcf/factors/nonexistent-id-12345")
         assert response.status_code == 404
+        data = response.json()
+        assert data["code"] == "RESOURCE_NOT_FOUND"
+        assert data["message"] == "Emission factor not found"
+        assert data["detail"]["factor_id"] == "nonexistent-id-12345"
+        assert "X-Correlation-ID" in response.headers
+        assert response.headers["X-Correlation-ID"]

@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def client():
     """Create test client with PCF router."""
     from fastapi import FastAPI
@@ -111,6 +111,12 @@ def test_calculate_endpoint_invalid_category(client):
     )
 
     assert response.status_code == 422  # Validation error
+    data = response.json()
+    assert "detail" in data
+    assert any(
+        error["loc"][-1] == "category" and error["type"] == "literal_error"
+        for error in data["detail"]
+    )
 
 
 def test_calculate_endpoint_missing_required_field(client):
@@ -130,6 +136,10 @@ def test_calculate_endpoint_missing_required_field(client):
     )
 
     assert response.status_code == 422
+    data = response.json()
+    assert "detail" in data
+    missing_fields = {error["loc"][-1] for error in data["detail"]}
+    assert {"quantity", "unit", "factor_value", "factor_unit"} <= missing_fields
 
 
 def test_validate_endpoint_structure(client):
