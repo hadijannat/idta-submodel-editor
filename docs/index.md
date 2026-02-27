@@ -35,6 +35,7 @@ For quick onboarding and local run commands, start with the repository README:
 - Swagger UI (`/api/docs`) is available when backend `ENV != production`.
 - Mnestix browser is exposed at `http://localhost:3001` when using the `dataspace` profile.
 - Running the `auth` compose profile adds Keycloak, but authentication is only enforced when OIDC is enabled in backend configuration.
+- Current compose wiring maps both frontend and Keycloak to host port `8080`; run auth stack as `docker-compose --profile auth up backend redis keycloak` and start frontend separately on a different port.
 
 ## CI and Automation
 

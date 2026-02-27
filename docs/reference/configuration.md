@@ -12,7 +12,7 @@ For quick local startup, use the [repository README](https://github.com/hadijann
 |---|---|---|
 | `ENV` | Runtime environment (`development`, `staging`, `production`) | `development` |
 | `DEBUG` | Enable debug behaviors | `false` |
-| `SECRET_KEY` | Signing/encryption secret (set securely in production) | `change-me-in-production-please-update` |
+| `SECRET_KEY` | Signing/encryption secret | **Required for all non-local environments (no safe default)** |
 | `HOST` | Bind address | `0.0.0.0` |
 | `PORT` | Backend port | `8000` |
 | `WORKERS` | Worker count for process managers | `4` |
@@ -47,6 +47,7 @@ For quick local startup, use the [repository README](https://github.com/hadijann
 Notes:
 - If `OIDC_ENABLED=false`, user checks resolve to anonymous and permission checks allow requests.
 - Running Keycloak via compose profile does not by itself enforce auth.
+- Current compose defaults create a host-port collision (`frontend:8080` and `keycloak:8080`) when both are started together.
 
 ### Semantic Lookup
 
@@ -94,6 +95,9 @@ Notes:
 | `MAGIC_IMPORT_VALIDATION_MODE` | Validation mode (`warn`, `strict`, `off`) | `warn` |
 | `CELERY_BROKER_URL` | Celery broker URL | `redis://localhost:6379/0` |
 | `CELERY_RESULT_BACKEND` | Celery result backend URL | `redis://localhost:6379/0` |
+
+Security/operations note:
+- For HA, multi-replica, or ephemeral-storage deployments, set a stable `SETTINGS_ENCRYPTION_KEY` explicitly to avoid losing access to previously encrypted provider credentials after restart/reschedule.
 
 ### Template Knowledge
 
@@ -153,3 +157,4 @@ Notes:
 - `--profile magic-import` adds a Celery worker.
 - `--profile dataspace` adds dataspace infrastructure and Mnestix (`localhost:3001`) and currently also PLC4X bridge.
 - `--profile auth` adds Keycloak, but auth is only enforced when OIDC backend settings are enabled.
+- To avoid host port collision on `8080`, run auth stack as `docker-compose --profile auth up backend redis keycloak` and run frontend separately on another port.

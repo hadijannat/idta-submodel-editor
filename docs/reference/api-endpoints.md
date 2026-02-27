@@ -2,6 +2,13 @@
 
 Swagger UI is available at `/api/docs` and ReDoc at `/api/redoc` when backend `ENV != production`.
 
+## Security Model
+
+- If `OIDC_ENABLED=false`, API routes are effectively unauthenticated by default.
+- If `OIDC_ENABLED=true`, bearer-token authentication is enforced on routes that depend on current-user validation.
+- `PUT /api/settings/features` requires admin privileges when `ENV != development`.
+- Expose `/health*` and `/metrics` only on private networks or behind gateway auth/allowlists.
+
 ## Health and Observability
 
 | Endpoint | Description |
@@ -11,6 +18,8 @@ Swagger UI is available at `/api/docs` and ReDoc at `/api/redoc` when backend `E
 | `GET /health/readiness` | Readiness probe |
 | `GET /health/startup` | Startup probe |
 | `GET /metrics` | Prometheus metrics |
+
+Security note: these endpoints should be treated as operational surfaces, not public internet endpoints.
 
 ## Public Settings
 
@@ -33,7 +42,7 @@ Swagger UI is available at `/api/docs` and ReDoc at `/api/redoc` when backend `E
 | Endpoint | Description |
 |---|---|
 | `GET /api/editor/templates/{template_name}/schema` | Get UI schema for template |
-| `GET /api/editor/templates/{template_name}/schema/{version}` | Get schema for explicit version |
+| `GET /api/editor/templates/{template_name}/schema?version={version}` | Get schema for explicit version (optional query parameter) |
 | `POST /api/editor/hydrate/{template_name}` | Hydrate to AASX |
 | `POST /api/editor/hydrate/{template_name}/json` | Hydrate to JSON |
 | `POST /api/editor/upload` | Upload and parse AASX |
@@ -65,26 +74,26 @@ Swagger UI is available at `/api/docs` and ReDoc at `/api/redoc` when backend `E
 
 ## Tools Registry
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/tools` | List tools with metadata |
-| `GET /api/tools/health` | Overall tool health |
-| `GET /api/tools/manifest` | Tool manifest used by frontend |
-| `GET /api/tools/{tool_id}` | Tool capability report |
-| `GET /api/tools/{tool_id}/health` | Tool-specific health |
-| `GET /api/tools/{tool_id}/capabilities` | Tool capabilities details |
+| Endpoint | Description | Auth |
+|---|---|---|
+| `GET /api/tools` | List tools with metadata | No per-route auth dependency; protect at gateway/network level |
+| `GET /api/tools/health` | Overall tool health | No per-route auth dependency; protect at gateway/network level |
+| `GET /api/tools/manifest` | Tool manifest used by frontend | No per-route auth dependency; protect at gateway/network level |
+| `GET /api/tools/{tool_id}` | Tool capability report | No per-route auth dependency; protect at gateway/network level |
+| `GET /api/tools/{tool_id}/health` | Tool-specific health | No per-route auth dependency; protect at gateway/network level |
+| `GET /api/tools/{tool_id}/capabilities` | Tool capabilities details | No per-route auth dependency; protect at gateway/network level |
 
 ## Settings Management
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/settings/llm` | Get active provider/model configuration (keys masked) |
-| `PUT /api/settings/llm` | Update provider/model/threshold/OCR settings |
-| `POST /api/settings/llm/validate` | Validate provider credentials without saving |
-| `GET /api/settings/llm/models/{provider}` | List provider models |
-| `DELETE /api/settings/llm/api-key/{provider}` | Remove stored API key |
-| `GET /api/settings/features` | Read runtime feature flags |
-| `PUT /api/settings/features` | Update runtime feature flags |
+| Endpoint | Description | Auth |
+|---|---|---|
+| `GET /api/settings/llm` | Get active provider/model configuration (keys masked) | Bearer token when OIDC is enabled |
+| `PUT /api/settings/llm` | Update provider/model/threshold/OCR settings | Bearer token when OIDC is enabled |
+| `POST /api/settings/llm/validate` | Validate provider credentials without saving | Bearer token when OIDC is enabled |
+| `GET /api/settings/llm/models/{provider}` | List provider models | Bearer token when OIDC is enabled |
+| `DELETE /api/settings/llm/api-key/{provider}` | Remove stored API key | Bearer token when OIDC is enabled |
+| `GET /api/settings/features` | Read runtime feature flags | Bearer token when OIDC is enabled |
+| `PUT /api/settings/features` | Update runtime feature flags | Admin required when `ENV != development` (and OIDC enabled) |
 
 ## Semantic Lookup
 
@@ -195,52 +204,52 @@ Swagger UI is available at `/api/docs` and ReDoc at `/api/redoc` when backend `E
 
 ### Connections
 
-| Endpoint | Description |
-|---|---|
-| `POST /api/dataspace/connections` | Create connection |
-| `GET /api/dataspace/connections` | List connections |
-| `GET /api/dataspace/connections/{connection_id}` | Connection details/status |
-| `GET /api/dataspace/connections/{connection_id}/self-description` | Connector self-description |
-| `DELETE /api/dataspace/connections/{connection_id}` | Disconnect |
-| `POST /api/dataspace/connections/{connection_id}/reconnect` | Reconnect |
+| Endpoint | Description | Auth |
+|---|---|---|
+| `POST /api/dataspace/connections` | Create connection | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/connections` | List connections | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/connections/{connection_id}` | Connection details/status | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/connections/{connection_id}/self-description` | Connector self-description | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `DELETE /api/dataspace/connections/{connection_id}` | Disconnect | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/connections/{connection_id}/reconnect` | Reconnect | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
 
 ### Publications
 
-| Endpoint | Description |
-|---|---|
-| `POST /api/dataspace/publications` | Publish submodel |
-| `GET /api/dataspace/publications` | List publications |
-| `GET /api/dataspace/publications/{publication_id}` | Publication details |
-| `PUT /api/dataspace/publications/{publication_id}` | Update publication |
-| `DELETE /api/dataspace/publications/{publication_id}` | Unpublish |
+| Endpoint | Description | Auth |
+|---|---|---|
+| `POST /api/dataspace/publications` | Publish submodel | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/publications` | List publications | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/publications/{publication_id}` | Publication details | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `PUT /api/dataspace/publications/{publication_id}` | Update publication | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `DELETE /api/dataspace/publications/{publication_id}` | Unpublish | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
 
 ### Policies
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/dataspace/policies/templates` | Policy templates |
-| `POST /api/dataspace/policies/preview` | Preview ODRL |
-| `POST /api/dataspace/policies` | Create policy |
-| `GET /api/dataspace/policies/{policy_id}` | Get policy |
-| `PUT /api/dataspace/policies/{policy_id}` | Update policy |
-| `DELETE /api/dataspace/policies/{policy_id}` | Delete policy |
+| Endpoint | Description | Auth |
+|---|---|---|
+| `GET /api/dataspace/policies/templates` | Policy templates | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/policies/preview` | Preview ODRL | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/policies` | Create policy | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/policies/{policy_id}` | Get policy | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `PUT /api/dataspace/policies/{policy_id}` | Update policy | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `DELETE /api/dataspace/policies/{policy_id}` | Delete policy | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
 
 ### Catalog, Negotiation, Transfers, Audit
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/dataspace/health` | Dataspace health summary |
-| `GET /api/dataspace/environments` | Available environments |
-| `GET /api/dataspace/edc-modes` | Available EDC modes |
-| `POST /api/dataspace/catalog/search` | Search catalog |
-| `GET /api/dataspace/catalog/{connection_id}/providers` | List known providers for a connection |
-| `POST /api/dataspace/catalog/{connection_id}/providers` | Add a known provider for a connection |
-| `POST /api/dataspace/catalog/negotiate` | Direct negotiation request |
-| `GET /api/dataspace/catalog/negotiations/{negotiation_id}` | Negotiation status |
-| `POST /api/dataspace/transfers` | Start transfer |
-| `GET /api/dataspace/transfers` | List transfers |
-| `GET /api/dataspace/transfers/{transfer_id}` | Transfer status |
-| `GET /api/dataspace/transfers/{transfer_id}/edr` | Transfer EDR details |
-| `POST /api/dataspace/transfers/{transfer_id}/terminate` | Terminate transfer |
-| `GET /api/dataspace/audit` | List audit entries |
-| `GET /api/dataspace/audit/{entry_id}` | Get audit entry |
+| Endpoint | Description | Auth |
+|---|---|---|
+| `GET /api/dataspace/health` | Dataspace health summary | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/environments` | Available environments | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/edc-modes` | Available EDC modes | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/catalog/search` | Search catalog | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/catalog/{connection_id}/providers` | List known providers for a connection | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/catalog/{connection_id}/providers` | Add a known provider for a connection | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/catalog/negotiate` | Direct negotiation request | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/catalog/negotiations/{negotiation_id}` | Negotiation status | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/transfers` | Start transfer | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/transfers` | List transfers | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/transfers/{transfer_id}` | Transfer status | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/transfers/{transfer_id}/edr` | Transfer EDR details | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `POST /api/dataspace/transfers/{transfer_id}/terminate` | Terminate transfer | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/audit` | List audit entries | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |
+| `GET /api/dataspace/audit/{entry_id}` | Get audit entry | Bearer token when OIDC is enabled; ownership checks apply to resource-scoped operations |

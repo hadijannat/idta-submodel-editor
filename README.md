@@ -22,7 +22,7 @@ Then open `http://localhost:8080`.
 | Frontend | http://localhost:8080 | Main UI |
 | Backend API | http://localhost:8000 | REST API |
 | Swagger UI | http://localhost:8000/api/docs | Available when `ENV != production` |
-| Health | http://localhost:8000/health | Basic readiness indicator |
+| Health | http://localhost:8000/health | Basic health/liveness indicator |
 | AAS Browser (Mnestix) | http://localhost:3001 | Available with `dataspace` profile |
 
 ## Choose Your Path
@@ -35,11 +35,11 @@ Then open `http://localhost:8080`.
 
 | Profile | Command | What It Adds | Important Notes |
 |---|---|---|---|
-| Core | `docker-compose up` | Backend, frontend, Redis | Core editing works without external API keys |
+| Core | `docker-compose up` | Backend, frontend, Redis | Core editing works without external API keys; lightest startup path |
 | Magic Import Worker | `docker-compose --profile magic-import up` | `celery-worker` for async/background jobs | Magic Import feature flag is already enabled in base backend config |
-| Dataspace | `docker-compose --profile dataspace up` | BaSyx, DTR, Vault, EDC, Postgres, Mnestix, PLC4X bridge | Mnestix is exposed at `http://localhost:3001` |
+| Dataspace | `docker-compose --profile dataspace up` | BaSyx, DTR, Vault, EDC, Postgres, Mnestix, PLC4X bridge | Mnestix is exposed at `http://localhost:3001`; heavy stack, slower first startup |
 | PLC (additional profile) | `docker-compose --profile dataspace --profile plc up` | No additional services beyond current dataspace stack | Kept for compatibility; see follow-up tracker |
-| Auth | `OIDC_ENABLED=true OIDC_ISSUER_URL=http://keycloak:8080/realms/idta OIDC_AUDIENCE=idta-editor docker-compose --profile auth up` | Keycloak container | Current compose file maps Keycloak to `8080`, which conflicts with frontend `8080` |
+| Auth | `OIDC_ENABLED=true OIDC_ISSUER_URL=http://keycloak:8080/realms/idta OIDC_AUDIENCE=idta-editor docker-compose --profile auth up backend redis keycloak` | Backend + Redis + Keycloak | Avoids frontend/keycloak port `8080` collision; run frontend separately on another port if needed |
 
 ## Feature Overview
 
@@ -87,7 +87,10 @@ npm run dev
 
 ```bash
 cd backend
+# Option A: full backend suite
 pytest tests
+
+# Option B: targeted suites during iteration
 pytest tests/dataspace tests/mapper tests/magic_import
 ```
 
@@ -101,17 +104,29 @@ npm run build
 npm run test:unit
 ```
 
+#### CI-parity coverage checks (optional)
+
+```bash
+# Backend (from repo root)
+PYTHONPATH=backend pytest backend/tests --cov=backend/app --cov-report=term-missing
+
+# Frontend (from frontend/)
+npm run test:unit -- --coverage
+```
+
 #### End-to-end tests (Playwright)
 
 ```bash
 cd frontend
 npx playwright install --with-deps
 
-# Core / default
-npm run test:e2e
-npm run test:e2e:smoke
+# Fast local smoke check (CI-like browser target)
+npm run test:e2e:smoke -- --project=chromium
 
-# Profile-specific suites
+# Full default matrix (slower; multiple browser/device projects)
+npm run test:e2e
+
+# Optional profile-specific suites
 npm run test:e2e:magic-import
 npm run test:e2e:dataspace
 npm run test:e2e:plc
@@ -119,6 +134,7 @@ npm run test:e2e:plc
 
 Notes:
 - Playwright config does not auto-start services; start backend/frontend first.
+- Choose one E2E path per run unless intentionally doing full coverage.
 - Useful overrides: `E2E_PROFILE`, `DEMO_BASE_URL`, `VITE_API_URL`, `PW_HEADLESS=false`.
 
 ## Operate (Operators)
@@ -129,6 +145,7 @@ Notes:
   - `GET /health/readiness`
   - `GET /health/startup`
 - Metrics endpoint: `GET /metrics`
+- Security note: expose `/health*` and `/metrics` only on private networks or behind gateway auth/allowlists.
 - Runtime feature flags API: `GET/PUT /api/settings/features`
   - Outside development mode, updating flags requires admin-authenticated context.
 - OIDC behavior:
