@@ -94,6 +94,20 @@ jobs:
           pip install -r backend/requirements.txt
           pip install pytest-cov
 
+      - name: Verify secure Pillow resolution
+        run: |
+          python - <<'PY'
+          import re
+          from PIL import __version__ as pillow_version
+
+          parts = tuple(int(token) for token in re.findall(r"\d+", pillow_version)[:3])
+          if parts < (12, 1, 1) or parts >= (13, 0, 0):
+              raise SystemExit(
+                  f"Pillow {pillow_version} is outside the supported secure range [12.1.1, 13.0.0)"
+              )
+          print(f"Using Pillow {pillow_version}")
+          PY
+
       - name: Run backend tests with coverage
         run: |
           PYTHONPATH=backend pytest backend/tests \
