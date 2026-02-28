@@ -8,19 +8,74 @@
  * - Apply to form
  */
 
-import { useCallback, useMemo, useRef, useId, useState, useEffect } from 'react';
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useId,
+  useState,
+  useEffect,
+} from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelFormData } from '../../types/aas-elements';
 import type { SubmodelUISchema } from '../../types/ui-schema';
-import { useMagicImport } from './useMagicImport';
-import PdfViewer from './PdfViewer';
-import ExtractionReviewTable from './ExtractionReviewTable';
-import ProvenancePanel from './ProvenancePanel';
-import ProviderQuickStatus from './ProviderQuickStatus';
-import ProviderSelector from './ProviderSelector';
+import { useMagicImport } from './useMagicImport.ts';
+import PdfViewer from './PdfViewer.tsx';
+import ExtractionReviewTable from './ExtractionReviewTable.tsx';
+import ProvenancePanel from './ProvenancePanel.tsx';
+import ProviderQuickStatus from './ProviderQuickStatus.tsx';
+import ProviderSelector from './ProviderSelector.tsx';
 import { LLMSettingsPanel } from '../LLMSettings';
-import { downloadAuditReport } from '../../services/magicImportApi';
+import {
+  downloadAuditReport,
+  type SnippetPreview,
+} from '../../services/magicImportApi';
 import './MagicImport.css';
+
+interface PreviewSnippetItemProps {
+  snippet: SnippetPreview;
+  onUpdateSnippet: (snippetId: string, text: string) => void;
+  onRemoveSnippet: (snippetId: string) => void;
+}
+
+const PreviewSnippetItem = memo(function PreviewSnippetItem({
+  snippet,
+  onUpdateSnippet,
+  onRemoveSnippet,
+}: PreviewSnippetItemProps) {
+  const handleRemove = useCallback(() => {
+    onRemoveSnippet(snippet.snippet_id);
+  }, [onRemoveSnippet, snippet.snippet_id]);
+
+  const handleChange = useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      onUpdateSnippet(snippet.snippet_id, event.target.value);
+    },
+    [onUpdateSnippet, snippet.snippet_id]
+  );
+
+  return (
+    <div className="magic-import-panel__preview-item">
+      <div className="magic-import-panel__preview-meta">
+        <span>Page {snippet.page + 1}</span>
+        <button
+          type="button"
+          className="magic-import-panel__preview-remove"
+          onClick={handleRemove}
+        >
+          Remove
+        </button>
+      </div>
+      <textarea
+        className="magic-import-panel__preview-text"
+        value={snippet.text}
+        onChange={handleChange}
+        rows={3}
+      />
+    </div>
+  );
+});
 
 interface MagicImportPanelProps {
   templateName: string;
@@ -46,10 +101,18 @@ export default function MagicImportPanel({
     unmappedFindings,
     selectedExtractionPath,
     isUploading,
+    isPreparingPreview,
     isProcessing,
     isReextracting,
     error,
-    uploadPdf,
+    previewSnippets,
+    previewTokenEstimate,
+    hasPreview,
+    preparePreview,
+    startImportFromPreview,
+    updatePreviewSnippet,
+    removePreviewSnippet,
+    clearPreview,
     cancelJob,
     selectExtraction,
     updateExtraction,
@@ -86,14 +149,14 @@ export default function MagicImportPanel({
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-        await uploadPdf(file);
+        await preparePreview(file);
       }
       // Reset input so same file can be selected again
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     },
-    [uploadPdf]
+    [preparePreview]
   );
 
   // Handle drag and drop
@@ -102,10 +165,10 @@ export default function MagicImportPanel({
       e.preventDefault();
       const file = e.dataTransfer.files[0];
       if (file && file.type === 'application/pdf') {
-        await uploadPdf(file);
+        await preparePreview(file);
       }
     },
-    [uploadPdf]
+    [preparePreview]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -224,31 +287,85 @@ export default function MagicImportPanel({
           onConfigureClick={() => setShowSettings(true)}
         />
 
-        <label
-          htmlFor={inputId}
-          className="magic-import-panel__dropzone"
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onKeyDown={handleDropzoneKeyDown}
-          tabIndex={0}
-          aria-label="Upload PDF"
-        >
-          <input
-            id={inputId}
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf"
-            onChange={handleFileSelect}
-            className="magic-import-panel__input"
-          />
-          <div className="magic-import-panel__dropzone-content">
-            <span className="magic-import-panel__icon">📄</span>
-            <p>Drop a PDF here or click to upload</p>
-            <p className="magic-import-panel__hint">
-              Supports datasheets, nameplates, and technical documents
-            </p>
+        {!hasPreview && (
+          <label
+            htmlFor={inputId}
+            className="magic-import-panel__dropzone"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onKeyDown={handleDropzoneKeyDown}
+            tabIndex={0}
+            aria-label="Upload PDF"
+          >
+            <input
+              id={inputId}
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              onChange={handleFileSelect}
+              className="magic-import-panel__input"
+            />
+            <div className="magic-import-panel__dropzone-content">
+              <span className="magic-import-panel__icon">📄</span>
+              <p>Drop a PDF here or click to upload</p>
+              <p className="magic-import-panel__hint">
+                Supports datasheets, nameplates, and technical documents
+              </p>
+            </div>
+          </label>
+        )}
+
+        {isPreparingPreview && (
+          <div className="magic-import-panel__processing-inline">
+            Preparing snippet preview...
           </div>
-        </label>
+        )}
+
+        {hasPreview && (
+          <div className="magic-import-panel__preview">
+            <div className="magic-import-panel__preview-header">
+              <h4>Review snippets before AI extraction</h4>
+              <p>
+                {previewSnippets.length} snippets selected | Estimated tokens:{' '}
+                {previewTokenEstimate}
+              </p>
+            </div>
+            <div className="magic-import-panel__preview-list">
+              {previewSnippets.length === 0 ? (
+                <p className="magic-import-panel__hint">
+                  No snippets matched this template. Upload another PDF or choose a
+                  different template.
+                </p>
+              ) : (
+                previewSnippets.map((snippet) => (
+                  <PreviewSnippetItem
+                    key={snippet.snippet_id}
+                    snippet={snippet}
+                    onUpdateSnippet={updatePreviewSnippet}
+                    onRemoveSnippet={removePreviewSnippet}
+                  />
+                ))
+              )}
+            </div>
+            <div className="magic-import-panel__preview-actions">
+              <button
+                type="button"
+                className="magic-import-panel__btn--secondary"
+                onClick={clearPreview}
+              >
+                Cancel Preview
+              </button>
+              <button
+                type="button"
+                className="magic-import-panel__btn--primary"
+                onClick={startImportFromPreview}
+                disabled={previewSnippets.length === 0 || isUploading}
+              >
+                Start Extraction
+              </button>
+            </div>
+          </div>
+        )}
 
         {error && <div className="magic-import-panel__error">{error}</div>}
 

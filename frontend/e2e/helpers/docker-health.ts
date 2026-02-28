@@ -9,6 +9,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+const VAULT_HOST_PORT = process.env.VAULT_HOST_PORT || '8200';
 
 // ============================================================================
 // Types
@@ -45,12 +46,14 @@ const CORE_SERVICES = {
   backend: {
     name: 'Backend API',
     url: 'http://localhost:8000/health',
-    container: 'idta-submodel-editor-backend',
+    container: 'backend',
   },
   frontend: {
     name: 'Frontend',
-    url: 'http://localhost:8080',
-    container: 'idta-submodel-editor-frontend',
+    // Use Vite client endpoint instead of root HTML so tests only start after
+    // the dev server is fully ready to serve transformed modules.
+    url: 'http://localhost:8080/@vite/client',
+    container: 'frontend',
   },
 };
 
@@ -62,12 +65,12 @@ const DATASPACE_SERVICES = {
   },
   basyx_registry: {
     name: 'BaSyx Registry',
-    url: 'http://localhost:4002/shells',
+    url: 'http://localhost:4002/api/v1/registry',
     container: 'basyx-registry',
   },
   dtr: {
     name: 'Digital Twin Registry',
-    url: 'http://localhost:4003/api/v3/shell-descriptors',
+    url: 'http://localhost:4003/actuator/health',
     container: 'dtr',
   },
   edc_control_plane: {
@@ -82,18 +85,18 @@ const DATASPACE_SERVICES = {
   },
   vault: {
     name: 'HashiCorp Vault',
-    url: 'http://localhost:8200/v1/sys/health',
+    url: `http://localhost:${VAULT_HOST_PORT}/v1/sys/health`,
     container: 'vault',
   },
   mnestix: {
     name: 'Mnestix AAS Browser',
-    url: 'http://localhost:3000',
+    url: 'http://localhost:3001',
     container: 'mnestix',
   },
   postgres: {
     name: 'PostgreSQL',
     url: '', // No HTTP endpoint, check container only
-    container: 'postgres',
+    container: 'postgres-dataspace',
   },
 };
 
@@ -113,7 +116,7 @@ const MAGIC_IMPORT_SERVICES = {
 const PLC_SERVICES = {
   plc4x_bridge: {
     name: 'PLC4X Bridge',
-    url: 'http://localhost:8090/api/plc/status',
+    url: 'http://localhost:8090/actuator/health',
     container: 'plc4x-bridge',
   },
 };
@@ -162,18 +165,51 @@ async function checkHttpHealth(
 async function checkContainerStatus(
   containerName: string
 ): Promise<{ running: boolean; status?: string; error?: string }> {
-  try {
+  const inspectStatus = async (
+    target: string
+  ): Promise<{ running: boolean; status?: string }> => {
     const { stdout } = await execAsync(
-      `docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`,
+      `docker inspect --format='{{.State.Status}}' ${target}`,
       { timeout: 5000 }
     );
-
     const status = stdout.trim();
     return {
       running: status === 'running',
       status,
     };
+  };
+
+  try {
+    return await inspectStatus(containerName);
   } catch (error: unknown) {
+    // Compose often prefixes container names with the project name.
+    // Resolve by compose service label first, then by a loose name match.
+    try {
+      const { stdout } = await execAsync(
+        `docker ps -aq --filter "label=com.docker.compose.service=${containerName}" | head -n 1`,
+        { timeout: 5000 }
+      );
+      const containerId = stdout.trim();
+      if (containerId) {
+        return await inspectStatus(containerId);
+      }
+    } catch {
+      // Ignore and continue to next fallback.
+    }
+
+    try {
+      const { stdout } = await execAsync(
+        `docker ps -aq --filter "name=${containerName}" | head -n 1`,
+        { timeout: 5000 }
+      );
+      const containerId = stdout.trim();
+      if (containerId) {
+        return await inspectStatus(containerId);
+      }
+    } catch {
+      // Ignore and fall through to not-found error.
+    }
+
     const err = error as { message?: string };
     return {
       running: false,

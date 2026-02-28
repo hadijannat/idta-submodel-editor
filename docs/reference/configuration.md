@@ -39,6 +39,7 @@ For quick local startup, use the [repository README](https://github.com/hadijann
 | Variable | Description | Default |
 |---|---|---|
 | `OIDC_ENABLED` | Enable token validation and auth enforcement | `false` |
+| `ALLOW_INSECURE_PROD_AUTH` | Allow startup without OIDC in production (escape hatch) | `false` |
 | `OIDC_ISSUER_URL` | OIDC issuer URL | unset |
 | `OIDC_AUDIENCE` | Expected audience | unset |
 | `OIDC_CLIENT_ID` | OIDC client ID | unset |
@@ -46,8 +47,9 @@ For quick local startup, use the [repository README](https://github.com/hadijann
 
 Notes:
 - If `OIDC_ENABLED=false`, user checks resolve to anonymous and permission checks allow requests.
+- In `ENV=production`, backend startup fails unless `OIDC_ENABLED=true` or `ALLOW_INSECURE_PROD_AUTH=true`.
 - Running Keycloak via compose profile does not by itself enforce auth.
-- Current compose defaults create a host-port collision (`frontend:8080` and `keycloak:8080`) when both are started together.
+- Keycloak host port defaults to `8081` (`KEYCLOAK_HOST_PORT`) to avoid frontend collisions on `8080`.
 
 ### Semantic Lookup
 
@@ -153,8 +155,16 @@ Security/operations note:
 
 ## Compose Profile Notes
 
-- `docker-compose up` starts backend, frontend, and Redis.
+- `docker compose up` starts backend, frontend, and Redis.
 - `--profile magic-import` adds a Celery worker.
-- `--profile dataspace` adds dataspace infrastructure and Mnestix (`localhost:3001`) and currently also PLC4X bridge.
+- `--profile dataspace` adds dataspace infrastructure and Mnestix (`localhost:3001`).
+- `--profile plc` adds PLC4X bridge plus required BaSyx services.
 - `--profile auth` adds Keycloak, but auth is only enforced when OIDC backend settings are enabled.
-- To avoid host port collision on `8080`, run auth stack as `docker-compose --profile auth up backend redis keycloak` and run frontend separately on another port.
+- Auth profile can run alongside frontend; Keycloak maps to host `8081` by default.
+
+### Compose Host-Port Overrides
+
+| Variable | Description | Default |
+|---|---|---|
+| `KEYCLOAK_HOST_PORT` | Host port mapped to Keycloak container `8080` | `8081` |
+| `VAULT_HOST_PORT` | Host port mapped to Vault container `8200` | `8200` |

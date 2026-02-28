@@ -9,6 +9,7 @@ basyx-python-sdk>=2.0.0,<3.0.0
 
 # HTTP client for GitHub API
 httpx>=0.26.0,<0.28.0
+aas-test-engines>=0.3.0,<1.0.0
 
 # Authentication
 PyJWT>=2.8.0,<3.0.0

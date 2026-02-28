@@ -53,6 +53,8 @@ class ToolRegistry:
         await registry.shutdown_all()
     """
 
+    MANIFEST_SCHEMA_VERSION = "1.1.0"
+
     def __init__(self, context: ToolContext | None = None):
         """
         Initialize the tool registry.
@@ -385,7 +387,12 @@ class ToolRegistry:
             List of tool manifest entries
         """
         if self._manifest_cache is None:
-            entries = [tool.to_manifest_entry() for tool in self._tools.values()]
+            entries = []
+            for tool in self._tools.values():
+                entry = tool.to_manifest_entry()
+                entry["schema_version"] = self.MANIFEST_SCHEMA_VERSION
+                entry["disabled_reason"] = tool.get_disabled_reason(self)
+                entries.append(entry)
             # Keep manifest ordering stable for frontend and tests.
             entries.sort(
                 key=lambda entry: (

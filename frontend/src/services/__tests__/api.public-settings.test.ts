@@ -13,6 +13,7 @@ describe('getPublicSettings', () => {
       mnestix_url: 'http://localhost:3001',
       basyx_registry_url: 'http://localhost:4002',
       dataspace_enabled: true,
+      magic_import_enabled: true,
       dpp_enabled: true,
     };
 
@@ -37,6 +38,28 @@ describe('getPublicSettings', () => {
       mnestix_url: 'http://localhost:3001',
       basyx_registry_url: 'http://localhost:4002',
       dataspace_enabled: true,
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => payload,
+      })
+    );
+
+    await expect(getPublicSettings()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('throws when magic_import_enabled is not a boolean', async () => {
+    const payload = {
+      mnestix_enabled: true,
+      mnestix_url: 'http://localhost:3001',
+      basyx_registry_url: 'http://localhost:4002',
+      dataspace_enabled: true,
+      magic_import_enabled: 'true',
+      dpp_enabled: true,
     };
 
     vi.stubGlobal(

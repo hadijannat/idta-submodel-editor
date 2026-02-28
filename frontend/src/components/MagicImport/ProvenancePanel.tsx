@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { FieldExtraction } from '../../services/magicImportApi';
-import EvidenceCarousel from './EvidenceCarousel';
+import EvidenceCarousel from './EvidenceCarousel.tsx';
 import './MagicImport.css';
 
 interface ProvenancePanelProps {

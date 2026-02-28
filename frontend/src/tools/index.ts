@@ -30,12 +30,12 @@ const TOOL_COMPONENTS: Record<string, LazyExoticComponent<ToolComponent>> = {
     }))
   ),
   'magic-import': lazy(() =>
-    import('../components/MagicImport').then((m) => ({
+    import('../components/MagicImport/index.tsx').then((m) => ({
       default: m.MagicImportPanel as ToolComponent,
     }))
   ),
   'dataspace-connector': lazy(() =>
-    import('../components/DataspaceConnector').then((m) => ({
+    import('../components/DataspaceConnector/index.tsx').then((m) => ({
       default: m.DataspaceConnectorPanel as ToolComponent,
     }))
   ),
@@ -45,7 +45,7 @@ const TOOL_COMPONENTS: Record<string, LazyExoticComponent<ToolComponent>> = {
     }))
   ),
   'template-ops': lazy(() =>
-    import('../components/TemplateOps').then((m) => ({
+    import('../components/TemplateOps/index.tsx').then((m) => ({
       default: m.TemplateOpsToolWrapper as ToolComponent,
     }))
   ),
@@ -89,6 +89,8 @@ function responseToMetadata(response: ToolMetadataResponse): ToolMetadata {
     dependencies: response.dependencies,
     enabled: response.enabled,
     initialized: response.initialized,
+    schemaVersion: response.schema_version ?? null,
+    disabledReason: response.disabled_reason ?? null,
   };
 }
 
@@ -265,6 +267,8 @@ class ToolRegistryImpl {
       dependencies: [],
       enabled: true,
       initialized: false,
+      schemaVersion: null,
+      disabledReason: null,
     };
 
     this.tools.set(id, {

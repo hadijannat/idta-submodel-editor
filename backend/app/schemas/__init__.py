@@ -13,6 +13,10 @@ from app.schemas.ui_schema import (
     TemplateInfo,
     TemplateVersionInfo,
 )
+from app.schemas.conformance import (
+    ConformanceIssue,
+    ConformanceCheckResponse,
+)
 
 __all__ = [
     "SubmodelUISchema",
@@ -22,4 +26,6 @@ __all__ = [
     "TemplateVersionInfo",
     "SubmodelFormData",
     "ElementFormData",
+    "ConformanceIssue",
+    "ConformanceCheckResponse",
 ]

@@ -13,6 +13,7 @@ import CollectionField from './CollectionField';
 import ListField from './ListField';
 import MultiLangField from './MultiLangField';
 import FileField from './FileField';
+import BlobField from './BlobField';
 import RangeField from './RangeField';
 import ReferenceField from './ReferenceField';
 
@@ -157,14 +158,15 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
 
       case 'Blob':
         return (
-          <div className="aas-element aas-blob" style={{ marginLeft: depth * 16 }}>
-            <label className="aas-label">{getLabel()}</label>
-            <span className="aas-unsupported">Blob editing not supported in UI</span>
-          </div>
+          <BlobField
+            path={path}
+            schema={schema}
+            label={getLabel()}
+            required={required}
+          />
         );
 
       case 'RelationshipElement':
-      case 'AnnotatedRelationshipElement':
         return (
           <div className="aas-element aas-relationship" style={{ marginLeft: depth * 16 }}>
             <label className="aas-label">{getLabel()}</label>
@@ -187,6 +189,42 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
           </div>
         );
 
+      case 'AnnotatedRelationshipElement':
+        return (
+          <div className="aas-element aas-relationship" style={{ marginLeft: depth * 16 }}>
+            <label className="aas-label">{getLabel()}</label>
+            <div className="aas-relationship-fields">
+              <ReferenceField
+                path={`${path}.first`}
+                schema={schema}
+                label="First"
+                required={required}
+                showSemantic={false}
+              />
+              <ReferenceField
+                path={`${path}.second`}
+                schema={schema}
+                label="Second"
+                required={required}
+                showSemantic={false}
+              />
+            </div>
+            {(schema.annotations?.length ?? 0) > 0 && (
+              <div className="aas-relationship-annotations">
+                <p className="aas-help-text">Annotations</p>
+                {schema.annotations?.map((annotationSchema, index) => (
+                  <AASRenderer
+                    key={`${annotationSchema.idShort}-${index}`}
+                    schema={annotationSchema}
+                    path={`${path}.annotations.${index}`}
+                    depth={depth + 1}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
       case 'Operation':
       case 'Capability':
       case 'BasicEventElement':
@@ -196,6 +234,12 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
             <span className="aas-unsupported">
               {schema.modelType} is read-only
             </span>
+            {schema.modelType === 'Operation' && (
+              <p className="aas-help-text">
+                Operation invocation is runtime-dependent. Configure invocation in
+                your target AAS server or execution environment.
+              </p>
+            )}
           </div>
         );
 

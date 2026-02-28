@@ -92,6 +92,33 @@ class AlphaWizardTool(BaseTool):
         return {"alpha": True}
 
 
+class DisabledIntegrationTool(BaseTool):
+    """Tool disabled by default feature flag for filter tests."""
+
+    metadata: ClassVar[ToolMetadata] = ToolMetadata(
+        id="disabled-integration",
+        name="Disabled Integration",
+        description="Integration tool behind dataspace flag",
+        category="integration",
+        feature_flag="dataspace_enabled",
+    )
+
+    async def initialize(self) -> None:
+        await super().initialize()
+
+    async def shutdown(self) -> None:
+        await super().shutdown()
+
+    async def health_check(self) -> tuple[bool, str | None]:
+        return True, None
+
+    def get_router(self):
+        return None
+
+    def get_capabilities(self) -> dict:
+        return {"integration": True}
+
+
 @pytest.fixture
 def context():
     """Create a test tool context."""
@@ -105,6 +132,7 @@ def mock_registry(context):
     registry.register(LateWizardTool)
     registry.register(MockTool)
     registry.register(AlphaWizardTool)
+    registry.register(DisabledIntegrationTool)
     return registry
 
 
@@ -148,6 +176,22 @@ class TestToolsListEndpoint:
         assert "category" in tool
         assert "enabled" in tool
 
+    def test_list_tools_enabled_only_filters_disabled_tools(self, test_client):
+        response = test_client.get("/api/tools?enabled_only=true")
+
+        assert response.status_code == 200
+        ids = [tool["id"] for tool in response.json()]
+        assert "disabled-integration" not in ids
+
+    def test_list_tools_filters_by_category(self, test_client):
+        response = test_client.get("/api/tools?category=integration")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == "disabled-integration"
+        assert data[0]["category"] == "integration"
+
 
 class TestToolsManifestEndpoint:
     """Tests for GET /api/tools/manifest endpoint."""
@@ -175,13 +219,15 @@ class TestToolsManifestEndpoint:
         assert "category" in tool
         assert "enabled" in tool
         assert "initialized" in tool
+        assert "schema_version" in tool
+        assert "disabled_reason" in tool
 
     def test_manifest_is_sorted_stably(self, test_client):
         response = test_client.get("/api/tools/manifest")
         assert response.status_code == 200
 
         ids = [item["id"] for item in response.json()]
-        assert ids == ["alpha-tool", "test-tool", "late-tool"]
+        assert ids == ["alpha-tool", "test-tool", "late-tool", "disabled-integration"]
 
 
 class TestToolDetailEndpoint:

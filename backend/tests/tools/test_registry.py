@@ -142,6 +142,9 @@ async def test_initialize_all_skips_disabled_dependency():
 
     assert results["disabled-dep"] is True  # disabled tools are skipped as OK
     assert results["depends-on-disabled"] is False
+    manifest = registry.get_tool_manifest()
+    disabled_dep = next(entry for entry in manifest if entry["id"] == "disabled-dep")
+    assert disabled_dep["disabled_reason"] is not None
 
 
 @pytest.mark.asyncio
@@ -170,6 +173,9 @@ def test_manifest_order_is_stable_and_sorted():
     ids = [entry["id"] for entry in manifest]
 
     assert ids == ["step-3", "step-10", "utility-a", "utility-z"]
+    for entry in manifest:
+        assert entry["schema_version"] == ToolRegistry.MANIFEST_SCHEMA_VERSION
+        assert entry["disabled_reason"] is None
 
 
 def test_manifest_cache_invalidates_on_new_registration():
@@ -192,3 +198,13 @@ def test_manifest_order_tie_breaks_by_id_with_same_step():
 
     manifest = registry.get_tool_manifest()
     assert [entry["id"] for entry in manifest] == ["step-3-alpha", "step-3-beta"]
+
+
+def test_manifest_reports_missing_dependency_reason():
+    context = ToolContext(Settings())
+    registry = ToolRegistry(context=context)
+    registry.register(MissingDepTool)
+
+    manifest = registry.get_tool_manifest()
+    missing_dep = next(entry for entry in manifest if entry["id"] == "missing-dep-tool")
+    assert missing_dep["disabled_reason"] == "Dependency 'does-not-exist' is not installed."

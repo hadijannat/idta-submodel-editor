@@ -31,3 +31,37 @@ def test_github_template_ref_rejects_unsafe_patterns(ref: str):
 def test_github_template_ref_accepts_safe_patterns(ref: str):
     settings = Settings(github_template_ref=ref)
     assert settings.github_template_ref == ref
+
+
+def test_github_template_ref_defaults_to_main_when_blank():
+    settings = Settings(github_template_ref="   ")
+    assert settings.github_template_ref == "main"
+
+
+def test_production_requires_oidc_or_explicit_insecure_override():
+    with pytest.raises(ValueError, match="OIDC_ENABLED"):
+        Settings(
+            env="production",
+            secret_key="secure-secret-key-with-at-least-32-characters",
+            oidc_enabled=False,
+            allow_insecure_prod_auth=False,
+        )
+
+
+def test_production_allows_explicit_insecure_override():
+    settings = Settings(
+        env="production",
+        secret_key="secure-secret-key-with-at-least-32-characters",
+        oidc_enabled=False,
+        allow_insecure_prod_auth=True,
+    )
+    assert settings.allow_insecure_prod_auth is True
+
+
+def test_production_allows_oidc_enabled():
+    settings = Settings(
+        env="production",
+        secret_key="secure-secret-key-with-at-least-32-characters",
+        oidc_enabled=True,
+    )
+    assert settings.oidc_enabled is True

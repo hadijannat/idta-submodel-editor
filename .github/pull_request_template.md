@@ -35,4 +35,5 @@
 
 - [ ] No fix without a test
 - [ ] Added/updated docs for behavior changes
-- [ ] Core docker-compose workflow remains intact (`docker-compose up`)
+- [ ] Core docker compose workflow remains intact (`docker compose up`)
+- [ ] Updated `REVIEW_REPORT.md` for P0/P1 or security/correctness findings

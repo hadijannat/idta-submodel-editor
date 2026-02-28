@@ -4,7 +4,7 @@ This playbook standardizes security/correctness reviews for the IDTA Submodel Ed
 
 ## Scope
 
-- Core stack is always required: backend API, frontend app, export flow, and core docker-compose startup.
+- Core stack is always required: backend API, frontend app, export flow, and core docker compose startup.
 - Optional modules are reviewed when touched or explicitly requested:
   - Magic Import profile
   - Dataspace profile
@@ -23,7 +23,7 @@ No fix ships without a test.
 
 ## Deployment Governance Prerequisite
 
-Repository admins must enforce branch protection/rulesets on `main` with required status checks and required pull requests. This playbook assumes those controls are active.
+Repository admins must enforce branch protection/rulesets on `main` (or an explicitly designated default branch) and any release branches, with required status checks and required pull requests. This playbook assumes those controls are active.
 
 ## Baseline Verification
 
@@ -31,9 +31,9 @@ Run before review coding begins. Execute commands from repo root.
 
 ```bash
 # Integration/E2E context only
-docker-compose up -d
+docker compose up -d
 # ...run integration/e2e checks...
-docker-compose down
+docker compose down
 
 # Backend-only changes
 PYTHONPATH=backend pytest backend/tests

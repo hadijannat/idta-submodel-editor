@@ -8,6 +8,10 @@
 
 A metamodel-driven application for editing IDTA submodel templates without code changes. It combines a FastAPI backend, a React + TypeScript frontend, and profile-based integrations for Magic Import, Dataspace publishing, and PLC connectivity.
 
+## North-Star Job
+
+Create compliant IDTA submodels quickly, starting from templates, spreadsheets, or PDFs, then export or publish to AAS/dataspace targets.
+
 ## What It Does
 
 The editor discovers IDTA templates, renders dynamic forms, validates data, and exports submodels as AASX/JSON/PDF. The core workflow runs locally without external API keys, while advanced capabilities (LLM-assisted extraction, dataspace publication, semantic web services, and PLC bridges) can be enabled incrementally.
@@ -16,7 +20,7 @@ The editor discovers IDTA templates, renders dynamic forms, validates data, and 
 
 ```bash
 # from repo root
-docker-compose up
+docker compose up
 ```
 
 Then open `http://localhost:8080`.
@@ -41,11 +45,11 @@ Then open `http://localhost:8080`.
 
 | Profile | Command | What It Adds | Important Notes |
 |---|---|---|---|
-| Core | `docker-compose up` | Backend, frontend, Redis | Core editing works without external API keys; lightest startup path |
-| Magic Import Worker | `docker-compose --profile magic-import up` | `celery-worker` for async/background jobs | Magic Import feature flag is already enabled in base backend config |
-| Dataspace | `docker-compose --profile dataspace up` | BaSyx, DTR, Vault, EDC, Postgres, Mnestix, PLC4X bridge | Mnestix is exposed at `http://localhost:3001`; heavy stack, slower first startup |
-| PLC (additional profile) | `docker-compose --profile dataspace --profile plc up` | No additional services beyond current dataspace stack | Kept for compatibility; see follow-up tracker |
-| Auth | `OIDC_ENABLED=true OIDC_ISSUER_URL=http://keycloak:8080/realms/idta OIDC_AUDIENCE=idta-editor docker-compose --profile auth up backend redis keycloak` | Backend + Redis + Keycloak | Avoids frontend/keycloak port `8080` collision; run frontend separately on another port if needed |
+| Core | `docker compose up` | Backend, frontend, Redis | Core editing works without external API keys; lightest startup path |
+| Magic Import Worker | `docker compose --profile magic-import up` | `celery-worker` for async/background jobs | Magic Import feature flag is already enabled in base backend config |
+| Dataspace | `docker compose --profile dataspace up` | BaSyx, DTR, Vault, EDC, Postgres, Mnestix | Mnestix is exposed at `http://localhost:3001`; heavy stack, slower first startup |
+| PLC Bridge | `docker compose --profile plc up` (or `--profile dataspace --profile plc`) | PLC4X bridge + required BaSyx services | Use standalone for local PLC-to-AAS loop, or combine with dataspace for full connector flow |
+| Auth | `OIDC_ENABLED=true OIDC_ISSUER_URL=http://keycloak:8080/realms/idta OIDC_AUDIENCE=idta-editor docker compose --profile auth up backend redis keycloak` | Backend + Redis + Keycloak | Keycloak is mapped to `http://localhost:8081` to avoid frontend port collisions |
 
 ## Feature Overview
 
@@ -60,10 +64,20 @@ Then open `http://localhost:8080`.
 
 ## Try It (New Users)
 
-1. Run `docker-compose up`.
+1. Run `docker compose up`.
 2. Open `http://localhost:8080`.
 3. Select a template (for example, Digital Nameplate).
 4. Fill required fields and export as AASX/JSON/PDF.
+
+## Default Path
+
+1. Start core stack with `docker compose up`.
+2. Complete template editing + export flow first.
+3. Add optional profiles only when needed:
+   - Magic Import worker: `--profile magic-import`
+   - Dataspace stack: `--profile dataspace`
+   - PLC bridge: `--profile plc` (optionally combine with dataspace)
+   - Auth stack: `--profile auth`
 
 ## Contribute (Developers)
 
@@ -188,13 +202,6 @@ Tooling model:
 - E2E workflow: [.github/workflows/e2e-tests.yml](.github/workflows/e2e-tests.yml)
 - Fixture refresh workflow: [.github/workflows/fixtures-refresh.yml](.github/workflows/fixtures-refresh.yml)
 - Docs workflow: [.github/workflows/docs.yml](.github/workflows/docs.yml)
-
-## Known Documentation/Behavior Gaps (Follow-ups)
-
-1. Parameterize backend compose `MAGIC_IMPORT_ENABLED` so shell overrides can disable it.
-2. Resolve auth profile port collision (`frontend:8080` vs `keycloak:8080`).
-3. Revisit PLC4X profile membership so `dataspace` does not implicitly start PLC bridge unless intended.
-4. Standardize on one compose command style (`docker compose` vs `docker-compose`) across docs.
 
 ## Contributing
 

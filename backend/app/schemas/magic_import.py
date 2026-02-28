@@ -421,6 +421,28 @@ class Snippet(BaseModel):
     context_after: str = ""
 
 
+class SnippetPreview(BaseModel):
+    """Snippet shown to users before LLM extraction."""
+
+    snippet_id: str = Field(description="Stable snippet identifier for preview edits")
+    text: str
+    page: int
+    start_word_idx: int
+    end_word_idx: int
+    score: float
+    context_before: str = ""
+    context_after: str = ""
+
+
+class MagicImportPreviewResponse(BaseModel):
+    """Preview of snippets that would be sent to the LLM."""
+
+    template_name: str
+    snippet_count: int
+    token_estimate: int
+    snippets: list[SnippetPreview]
+
+
 class LLMExtractionRequest(BaseModel):
     """Request for LLM extraction."""
 

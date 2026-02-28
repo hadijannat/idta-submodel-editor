@@ -4,6 +4,7 @@
 
 import React, { useState } from 'react';
 import { ApiError } from '../../services/api';
+import type { ConformanceCheckResult } from '../../services/api';
 
 interface ExportPanelProps {
   /** Template name */
@@ -16,6 +17,10 @@ interface ExportPanelProps {
   onExportPdf: (filename?: string) => Promise<void>;
   /** Verify export without downloading */
   onVerify: () => Promise<void>;
+  /** Whether conformance verification is running */
+  conformanceChecking?: boolean;
+  /** Last conformance result */
+  conformanceResult?: ConformanceCheckResult | null;
   /** Validate the form */
   onValidate: () => Promise<boolean>;
   /** Reset the form */
@@ -39,6 +44,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   onExportJson,
   onExportPdf,
   onVerify,
+  conformanceChecking = false,
+  conformanceResult = null,
   onValidate,
   onReset,
   validating = false,
@@ -217,9 +224,9 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
           type="button"
           className="btn btn-verify"
           onClick={handleVerify}
-          disabled={validating || verifying || !!exporting}
+          disabled={validating || verifying || !!exporting || conformanceChecking}
         >
-          {verifying ? 'Verifying...' : 'Verify'}
+          {verifying || conformanceChecking ? 'Verifying...' : 'Verify'}
         </button>
 
         <button
@@ -292,6 +299,46 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
               {serverWarnings.map((warn, idx) => (
                 <li key={idx} className="validation-warning">
                   ⚠ {warn}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {conformanceResult && (
+        <div
+          className={`validation-result ${
+            conformanceResult.passed ? 'valid' : 'invalid'
+          }`}
+        >
+          <p
+            className={
+              conformanceResult.passed ? 'validation-success' : 'validation-failure'
+            }
+          >
+            {conformanceResult.passed
+              ? '✓ AAS conformance check passed'
+              : '✗ AAS conformance check failed'}
+          </p>
+          <p className="validation-info">
+            Engine: {conformanceResult.engine_version || 'unknown'} | Duration:{' '}
+            {conformanceResult.duration_ms}ms
+          </p>
+          {conformanceResult.errors.length > 0 && (
+            <ul className="validation-errors">
+              {conformanceResult.errors.map((issue, idx) => (
+                <li key={`conformance-error-${idx}`} className="validation-error">
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {conformanceResult.warnings.length > 0 && (
+            <ul className="validation-warnings">
+              {conformanceResult.warnings.map((issue, idx) => (
+                <li key={`conformance-warning-${idx}`} className="validation-warning">
+                  ⚠ {issue.message}
                 </li>
               ))}
             </ul>

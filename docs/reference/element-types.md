@@ -12,8 +12,9 @@ The editor supports the following AAS SubmodelElement types:
 | Range | Full (min/max) |
 | ReferenceElement | Full |
 | Entity | Full |
-| Blob | Read-only |
-| RelationshipElement | Partial |
+| Blob | Partial (upload/download + content type + payload edit) |
+| RelationshipElement | Full (first/second reference editing) |
+| AnnotatedRelationshipElement | Partial (first/second + annotation value editing) |
 | Operation | Read-only |
 | Capability | Read-only |
 | BasicEventElement | Read-only |
@@ -43,3 +44,15 @@ Reference to external AAS elements with key chain editing.
 
 ### Entity
 Entity with global/self-managed asset ID and statements collection.
+
+### Blob
+Editable payload and content type. Supports upload/download and `base64:` payloads for binary data.
+
+### RelationshipElement
+Editable `first` and `second` references.
+
+### AnnotatedRelationshipElement
+Editable relationship references plus annotation value editing for available annotation elements.
+
+### Operation
+Rendered as read-only metadata because invocation is runtime-dependent and not part of template value hydration.

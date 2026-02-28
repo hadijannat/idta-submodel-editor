@@ -10,8 +10,8 @@ import type {
   UnmappedFinding,
   ExtractionStatus,
 } from '../../services/magicImportApi';
-import ConfidenceBadge from './ConfidenceBadge';
-import SemanticRecommendations from './SemanticRecommendations';
+import ConfidenceBadge from './ConfidenceBadge.tsx';
+import SemanticRecommendations from './SemanticRecommendations.tsx';
 import type { SemanticRecommendation } from '../../services/magicImportApi';
 import './MagicImport.css';
 

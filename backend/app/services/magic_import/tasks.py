@@ -39,6 +39,7 @@ from app.schemas.magic_import import (
     EvidenceRef,
     UnmappedFinding,
     ValidationResult,
+    Snippet,
 )
 
 logger = logging.getLogger(__name__)
@@ -258,42 +259,51 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             progress_message="Finding relevant document sections...",
         )
 
-        retriever = SnippetRetriever()
-        # Dynamic budget: scale based on template complexity
-        # At least 1 snippet per field, max 200 to avoid overwhelming LLM context
-        max_total_snippets = min(200, max(50, len(hints)))
-        snippets = retriever.retrieve_snippets(
-            index,
-            hints,
-            max_total_snippets=max_total_snippets,
-            max_snippets_per_field=3,
-        )
-
-        retrieval_diagnostics = retriever.collect_retrieval_diagnostics(index, hints)
-        if retrieval_diagnostics:
-            job_manager.save_artifact(
+        retrieval_diagnostics = []
+        snippets_override_data = job_manager.load_artifact(job_id, "snippet_overrides")
+        if snippets_override_data is not None:
+            snippets = [Snippet.model_validate(item) for item in snippets_override_data]
+            logger.info(
+                "Using %d user-reviewed snippet overrides for job %s",
+                len(snippets),
                 job_id,
-                "retrieval_diagnostics",
-                retrieval_diagnostics,
+            )
+        else:
+            retriever = SnippetRetriever()
+            # Dynamic budget: scale based on template complexity
+            # At least 1 snippet per field, max 200 to avoid overwhelming LLM context
+            max_total_snippets = min(200, max(50, len(hints)))
+            snippets = retriever.retrieve_snippets(
+                index,
+                hints,
+                max_total_snippets=max_total_snippets,
+                max_snippets_per_field=3,
             )
 
-        # Add table-derived snippets for better coverage
-        table_extractor = TableExtractor()
-        for table in table_result.tables:
-            table_snippets = table_extractor.table_to_snippets(table, max_rows=15)
-            for snippet_text in table_snippets:
-                from app.schemas.magic_import import Snippet
-                snippets.append(
-                    Snippet(
-                        text=snippet_text,
-                        page=table.page,
-                        start_word_idx=0,
-                        end_word_idx=0,
-                        score=0.8,  # High score for table data
-                        context_before="[TABLE]",
-                        context_after="",
-                    )
+            retrieval_diagnostics = retriever.collect_retrieval_diagnostics(index, hints)
+            if retrieval_diagnostics:
+                job_manager.save_artifact(
+                    job_id,
+                    "retrieval_diagnostics",
+                    retrieval_diagnostics,
                 )
+
+            # Add table-derived snippets for better coverage
+            table_extractor = TableExtractor()
+            for table in table_result.tables:
+                table_snippets = table_extractor.table_to_snippets(table, max_rows=15)
+                for snippet_text in table_snippets:
+                    snippets.append(
+                        Snippet(
+                            text=snippet_text,
+                            page=table.page,
+                            start_word_idx=0,
+                            end_word_idx=0,
+                            score=0.8,  # High score for table data
+                            context_before="[TABLE]",
+                            context_after="",
+                        )
+                    )
 
         job_manager.save_artifact(job_id, "snippets", snippets)
         logger.info("Retrieved %d snippets for extraction (including tables)", len(snippets))

@@ -337,7 +337,7 @@ export async function verifyExport(
   format: 'aasx' | 'json' | 'pdf' = 'aasx',
   status?: 'published' | 'deprecated',
   version?: string | null
-): Promise<void> {
+): Promise<Blob> {
   const params = new URLSearchParams({ format });
   if (status) params.set('status', status);
   if (version) params.set('version', version);
@@ -367,12 +367,86 @@ export async function verifyExport(
     );
   }
 
-  // Drain response without triggering download.
-  try {
-    await response.arrayBuffer();
-  } catch {
-    // Ignore body consumption errors; verification already succeeded.
+  return response.blob();
+}
+
+// ============================================================================
+// Conformance API
+// ============================================================================
+
+export interface ConformanceIssue {
+  level: string;
+  message: string;
+}
+
+export interface ConformanceCheckResult {
+  passed: boolean;
+  errors: ConformanceIssue[];
+  warnings: ConformanceIssue[];
+  engine_version: string | null;
+  duration_ms: number;
+  format: 'aasx' | 'json';
+}
+
+export async function checkConformance(
+  artifact: Blob,
+  format: 'aasx' | 'json',
+  filename = `artifact.${format}`
+): Promise<ConformanceCheckResult> {
+  const formData = new FormData();
+  formData.append('file', artifact, filename);
+  formData.append('format_name', format);
+
+  const response = await fetch(`${API_BASE_URL}/api/conformance/check`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let details;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError('Conformance check failed', response.status, details);
   }
+
+  return response.json();
+}
+
+export async function checkConformanceForTemplate(
+  templateName: string,
+  formData: SubmodelFormData,
+  format: 'aasx' | 'json' = 'aasx',
+  status: 'published' | 'deprecated' = 'published',
+  version?: string | null
+): Promise<ConformanceCheckResult> {
+  const response = await fetch(`${API_BASE_URL}/api/conformance/check/form`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      template_name: templateName,
+      form_data: formData,
+      format_name: format,
+      template_status: status,
+      template_version: version ?? null,
+    }),
+  });
+
+  if (!response.ok) {
+    let details;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError('Conformance check failed', response.status, details);
+  }
+
+  return response.json();
 }
 
 /**
@@ -420,6 +494,7 @@ export interface PublicSettings {
   mnestix_url: string | null;
   basyx_registry_url: string | null;
   dataspace_enabled: boolean;
+  magic_import_enabled: boolean;
   dpp_enabled: boolean;
 }
 
@@ -438,6 +513,7 @@ function parsePublicSettings(payload: unknown): PublicSettings {
     !isNullableString(candidate.mnestix_url) ||
     !isNullableString(candidate.basyx_registry_url) ||
     typeof candidate.dataspace_enabled !== 'boolean' ||
+    typeof candidate.magic_import_enabled !== 'boolean' ||
     typeof candidate.dpp_enabled !== 'boolean'
   ) {
     throw new ApiError('Invalid /api/settings response contract', 502, payload);
@@ -448,6 +524,7 @@ function parsePublicSettings(payload: unknown): PublicSettings {
     mnestix_url: candidate.mnestix_url,
     basyx_registry_url: candidate.basyx_registry_url,
     dataspace_enabled: candidate.dataspace_enabled,
+    magic_import_enabled: candidate.magic_import_enabled,
     dpp_enabled: candidate.dpp_enabled,
   };
 }
@@ -479,6 +556,8 @@ export interface ToolMetadataResponse {
   dependencies: string[];
   enabled: boolean;
   initialized: boolean;
+  schema_version?: string | null;
+  disabled_reason?: string | null;
 }
 
 /**

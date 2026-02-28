@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { EvidenceRef } from '../../services/magicImportApi';
-import EvidenceBox from './EvidenceBox';
+import EvidenceBox from './EvidenceBox.tsx';
 import './MagicImport.css';
 
 // PDF.js types

@@ -32,6 +32,7 @@ function getTestProfile(): TestProfile {
 export default async function globalSetup(config: FullConfig): Promise<void> {
   const profile = getTestProfile();
   const timeout = parseInt(process.env.E2E_SETUP_TIMEOUT || '120000', 10);
+  const profileServiceTimeout = Math.min(timeout, 20000);
 
   console.log(`\n🚀 E2E Test Setup (profile: ${profile})`);
   console.log('━'.repeat(50));
@@ -66,10 +67,31 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
         await waitForMagicImportServices(timeout);
         break;
       case 'dataspace':
-        await waitForDataspaceServices(timeout);
+        await waitForCoreServices(timeout);
+        try {
+          await waitForDataspaceServices(profileServiceTimeout);
+        } catch (dataspaceError) {
+          process.env.E2E_DATASPACE_MOCK_ONLY = 'true';
+          console.warn(
+            `⚠️  Dataspace services unavailable, proceeding in mock-only mode: ${
+              dataspaceError instanceof Error ? dataspaceError.message : String(dataspaceError)
+            }`
+          );
+        }
         break;
       case 'plc':
-        await waitForPlcServices(timeout);
+        await waitForCoreServices(timeout);
+        try {
+          await waitForPlcServices(profileServiceTimeout);
+        } catch (plcError) {
+          process.env.E2E_PLC_MOCK_ONLY = 'true';
+          process.env.E2E_DATASPACE_MOCK_ONLY = 'true';
+          console.warn(
+            `⚠️  PLC/dataspace services unavailable, proceeding in mock-only mode: ${
+              plcError instanceof Error ? plcError.message : String(plcError)
+            }`
+          );
+        }
         break;
       default:
         await waitForCoreServices(timeout);

@@ -54,8 +54,11 @@ Plus 20+ additional protocols. See [PLC4X documentation](https://plc4x.apache.or
 ### Docker Compose
 
 ```bash
-# Start with dataspace + PLC bridge
-docker-compose --profile dataspace --profile plc up
+# Start PLC bridge with required BaSyx services
+docker compose --profile plc up
+
+# Or run with full dataspace stack
+docker compose --profile dataspace --profile plc up
 ```
 
 ### Manual Setup

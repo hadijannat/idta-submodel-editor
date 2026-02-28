@@ -70,7 +70,7 @@ Magic Import uses Celery + Redis for scalable job processing:
 
 ```bash
 # Start with Magic Import profile
-docker-compose --profile magic-import up
+docker compose --profile magic-import up
 ```
 
 Jobs progress through states: `UPLOADED` → `INDEXING` → `OCR` → `EXTRACTING` → `LOCALIZING` → `SCORING` → `DONE`

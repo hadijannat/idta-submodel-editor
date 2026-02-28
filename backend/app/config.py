@@ -76,6 +76,7 @@ class Settings(BaseSettings):
 
     # OAuth2/OIDC
     oidc_enabled: bool = False
+    allow_insecure_prod_auth: bool = False
     oidc_issuer_url: str = ""
     oidc_audience: str = ""
     oidc_client_id: str = ""
@@ -277,6 +278,15 @@ class Settings(BaseSettings):
         if self.env == "production" and normalized_secret in self._KNOWN_INSECURE_SECRET_KEYS:
             raise ValueError(
                 "SECRET_KEY must be overridden in production environments."
+            )
+        if (
+            self.env == "production"
+            and not self.oidc_enabled
+            and not self.allow_insecure_prod_auth
+        ):
+            raise ValueError(
+                "OIDC_ENABLED must be true in production unless "
+                "ALLOW_INSECURE_PROD_AUTH=true is explicitly set."
             )
         return self
 

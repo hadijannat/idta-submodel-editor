@@ -14,7 +14,8 @@ import {
   exportAsAasx,
   exportAsJson,
   exportAsPdf,
-  verifyExport,
+  checkConformanceForTemplate,
+  type ConformanceCheckResult,
 } from '../services/api';
 import { getMaxItems, getMinItems, isRequired } from '../types/aas-elements';
 import { useDraftAutoSave } from './useDraftAutoSave';
@@ -72,6 +73,10 @@ interface UseSubmodelFormReturn {
   exportPdf: (filename?: string) => Promise<void>;
   /** Verify export without downloading */
   verifyExport: () => Promise<void>;
+  /** Whether conformance verification is running */
+  conformanceChecking: boolean;
+  /** Last conformance check result */
+  conformanceResult: ConformanceCheckResult | null;
   /** Reset form to default values */
   resetForm: () => void;
   /** Recover draft data */
@@ -184,6 +189,16 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
       );
     }
 
+    case 'Blob': {
+      return withSemanticFields(
+        z.object({
+          value: required ? z.string().min(1) : z.string().optional().nullable(),
+          contentType: z.string().optional(),
+          valueEncoding: z.string().optional(),
+        })
+      );
+    }
+
     case 'Range': {
       const valueType = element.valueType || 'xs:double';
       const numSchema = valueType.includes('int')
@@ -215,6 +230,25 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
         z.object({
           globalAssetId: z.string().optional(),
           statements: z.object(statementsSchema),
+        })
+      );
+    }
+
+    case 'RelationshipElement': {
+      return withSemanticFields(
+        z.object({
+          first: required ? z.string().min(1) : z.string().optional().nullable(),
+          second: required ? z.string().min(1) : z.string().optional().nullable(),
+        })
+      );
+    }
+
+    case 'AnnotatedRelationshipElement': {
+      return withSemanticFields(
+        z.object({
+          first: required ? z.string().min(1) : z.string().optional().nullable(),
+          second: required ? z.string().min(1) : z.string().optional().nullable(),
+          annotations: z.array(z.any()).optional(),
         })
       );
     }
@@ -293,6 +327,13 @@ function generateElementDefaults(element: UIElementSchema): ElementFormData {
         contentType: element.contentType ?? '',
       });
 
+    case 'Blob':
+      return withSemanticDefaults({
+        value: element.value ?? '',
+        contentType: element.contentType ?? 'application/octet-stream',
+        valueEncoding: 'utf-8',
+      });
+
     case 'Range':
       return withSemanticDefaults({
         min: element.min ?? '',
@@ -312,6 +353,21 @@ function generateElementDefaults(element: UIElementSchema): ElementFormData {
         statements,
       });
     }
+
+    case 'RelationshipElement':
+      return withSemanticDefaults({
+        first: element.first ?? '',
+        second: element.second ?? '',
+      });
+
+    case 'AnnotatedRelationshipElement':
+      return withSemanticDefaults({
+        first: element.first ?? '',
+        second: element.second ?? '',
+        annotations: (element.annotations || []).map((annotation) =>
+          generateElementDefaults(annotation)
+        ),
+      });
 
     default:
       return withSemanticDefaults({ value: element.value ?? '' });
@@ -333,6 +389,9 @@ export function useSubmodelForm(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
+  const [conformanceChecking, setConformanceChecking] = useState(false);
+  const [conformanceResult, setConformanceResult] =
+    useState<ConformanceCheckResult | null>(null);
   const [validationResult, setValidationResult] = useState<{
     valid: boolean;
     errors: string[];
@@ -541,13 +600,23 @@ export function useSubmodelForm(
   const handleVerifyExport = useCallback(async () => {
     if (!templateName) throw new Error('No template loaded');
     const formData = form.getValues();
-    await verifyExport(
-      templateName,
-      formData,
-      'aasx',
-      templateStatus,
-      templateVersion
-    );
+    setConformanceChecking(true);
+    setConformanceResult(null);
+    try {
+      const result = await checkConformanceForTemplate(
+        templateName,
+        formData,
+        'aasx',
+        templateStatus,
+        templateVersion
+      );
+      setConformanceResult(result);
+    } catch (err) {
+      setConformanceResult(null);
+      throw err;
+    } finally {
+      setConformanceChecking(false);
+    }
   }, [templateName, form, templateStatus, templateVersion]);
 
   // Reset form
@@ -573,6 +642,8 @@ export function useSubmodelForm(
     exportJson: handleExportJson,
     exportPdf: handleExportPdf,
     verifyExport: handleVerifyExport,
+    conformanceChecking,
+    conformanceResult,
     resetForm,
     recoverDraft,
     dismissDraft,

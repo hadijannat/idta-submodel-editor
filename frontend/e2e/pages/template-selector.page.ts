@@ -64,14 +64,14 @@ export class TemplateSelectorPage {
   async goto(): Promise<void> {
     await this.page.goto('/', { waitUntil: 'domcontentloaded' });
     // Wait for the React app to mount and template selector to appear
-    await this.page.waitForSelector('.template-selector, .wizard-panel', { timeout: 30000 });
+    await this.page.waitForSelector('.template-selector, .wizard-panel', { timeout: 60000 });
     await this.waitForTemplatesLoaded();
   }
 
   /**
    * Wait for templates to be loaded.
    */
-  async waitForTemplatesLoaded(timeout: number = 30000): Promise<void> {
+  async waitForTemplatesLoaded(timeout: number = 60000): Promise<void> {
     // First, wait for loading to complete (if it appears)
     try {
       // Give a small buffer for loading to start

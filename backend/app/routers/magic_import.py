@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import tempfile
+import uuid
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -17,10 +21,13 @@ from app.schemas.magic_import import (
     ExtractionOutcome,
     FieldTypeCategory,
     JobStatus,
+    MagicImportPreviewResponse,
     MagicImportJob,
     MagicImportResult,
     QualityMetrics,
     ReExtractRequest,
+    Snippet,
+    SnippetPreview,
 )
 from app.services.magic_import.audit_report import AuditReport, AuditReportGenerator
 from app.services.magic_import.job_manager import JobManager
@@ -31,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/magic-import", tags=["magic-import"])
 PYDANTIC_PROTECTED_NAMESPACES = ("model_validate", "model_dump")
+MAX_SNIPPET_OVERRIDE_COUNT = 200
+MAX_SNIPPET_OVERRIDE_TEXT_CHARS = 2000
+MAX_SNIPPET_OVERRIDE_TOKEN_ESTIMATE = 12000
 
 
 class RecordCorrectionRequest(BaseModel):
@@ -68,12 +78,184 @@ def get_job_manager() -> JobManager:
     return JobManager()
 
 
+def _estimate_snippet_tokens(snippets: list[Snippet]) -> int:
+    """Estimate token usage for snippet payloads."""
+    total_words = sum(len(snippet.text.split()) for snippet in snippets)
+    # Conservative approximation for mixed technical docs.
+    return max(1, int(total_words * 1.3))
+
+
+def _parse_snippet_overrides(raw: str | None) -> list[Snippet] | None:
+    """Parse and validate user-edited snippet overrides from form input."""
+    if raw is None:
+        return None
+    if not raw.strip():
+        return []
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Invalid snippet override payload",
+            detail={"error": str(exc)},
+        ) from exc
+
+    if not isinstance(payload, list):
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Snippet overrides must be a JSON list",
+        )
+    if len(payload) > MAX_SNIPPET_OVERRIDE_COUNT:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Too many snippet overrides",
+            detail={"max_snippets": MAX_SNIPPET_OVERRIDE_COUNT},
+        )
+
+    parsed: list[Snippet] = []
+    for idx, item in enumerate(payload, start=1):
+        try:
+            snippet = Snippet.model_validate(item)
+        except Exception as exc:
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="Snippet override entry is invalid",
+                detail={"index": idx},
+            ) from exc
+
+        if (
+            snippet.page < 0
+            or snippet.start_word_idx < 0
+            or snippet.end_word_idx < snippet.start_word_idx
+        ):
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="Snippet override entry contains invalid position metadata",
+                detail={"index": idx},
+            )
+        if len(snippet.text) > MAX_SNIPPET_OVERRIDE_TEXT_CHARS:
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="Snippet override text is too long",
+                detail={
+                    "index": idx,
+                    "max_text_chars": MAX_SNIPPET_OVERRIDE_TEXT_CHARS,
+                },
+            )
+
+        parsed.append(snippet)
+
+    if _estimate_snippet_tokens(parsed) > MAX_SNIPPET_OVERRIDE_TOKEN_ESTIMATE:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Snippet overrides exceed the maximum token budget",
+            detail={"max_token_estimate": MAX_SNIPPET_OVERRIDE_TOKEN_ESTIMATE},
+        )
+
+    return parsed
+
+
+@router.post("/jobs/preview", response_model=MagicImportPreviewResponse)
+async def preview_job(
+    file: Annotated[UploadFile, File(...)],
+    template_name: Annotated[str, Form()],
+    template_status: Annotated[str, Form()] = "published",
+    template_version: Annotated[str | None, Form()] = None,
+    user: Annotated[dict | None, Depends(get_current_user)] = None,
+) -> MagicImportPreviewResponse:
+    """
+    Preview the exact snippets that would be sent to the LLM.
+
+    Enables user review/redaction before creating an extraction job.
+    """
+    settings = get_settings()
+
+    if not settings.magic_import_enabled:
+        raise APIError(
+            code=ErrorCode.FEATURE_DISABLED,
+            message="Magic Import is disabled",
+        )
+
+    content = await read_upload_file(
+        file,
+        max_size_bytes=settings.magic_import_max_pdf_size_mb * 1024 * 1024,
+    )
+    validator = UploadValidator(
+        allowed_types=[FileType.PDF],
+        max_size_bytes=settings.magic_import_max_pdf_size_mb * 1024 * 1024,
+    )
+    validator.validate_and_raise(content, file.filename)
+
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_file:
+            temp_file.write(content)
+            temp_path = Path(temp_file.name)
+
+        from app.services.magic_import.pdf_indexer import PDFIndexer
+        from app.services.magic_import.retriever import SnippetRetriever
+        from app.services.magic_import.schema_resolver import SchemaResolver
+
+        indexer = PDFIndexer()
+        index = indexer.index_pdf(temp_path, f"preview-{uuid.uuid4().hex}")
+
+        resolver = SchemaResolver()
+        hints = resolver.resolve_hints(
+            template_name,
+            template_status,
+            template_version,
+        )
+
+        retriever = SnippetRetriever()
+        max_total_snippets = min(200, max(50, len(hints)))
+        snippets = retriever.retrieve_snippets(
+            index=index,
+            hints=hints,
+            max_total_snippets=max_total_snippets,
+            max_snippets_per_field=3,
+        )
+
+        preview_items = [
+            SnippetPreview(
+                snippet_id=f"snippet-{idx + 1}",
+                text=snippet.text,
+                page=snippet.page,
+                start_word_idx=snippet.start_word_idx,
+                end_word_idx=snippet.end_word_idx,
+                score=snippet.score,
+                context_before=snippet.context_before,
+                context_after=snippet.context_after,
+            )
+            for idx, snippet in enumerate(snippets)
+        ]
+
+        return MagicImportPreviewResponse(
+            template_name=template_name,
+            snippet_count=len(preview_items),
+            token_estimate=_estimate_snippet_tokens(snippets),
+            snippets=preview_items,
+        )
+    except APIError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to build Magic Import preview")
+        raise APIError(
+            code=ErrorCode.INTERNAL_ERROR,
+            message="Failed to generate preview snippets",
+        ) from e
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
 @router.post("/jobs", response_model=MagicImportJob)
 async def create_job(
     file: Annotated[UploadFile, File(...)],
     template_name: Annotated[str, Form()],
     template_status: Annotated[str, Form()] = "published",
     template_version: Annotated[str | None, Form()] = None,
+    snippet_overrides: Annotated[str | None, Form()] = None,
     job_manager: Annotated[JobManager, Depends(get_job_manager)] = None,
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> MagicImportJob:
@@ -104,11 +286,17 @@ async def create_job(
     )
     validator.validate_and_raise(content, file.filename)
 
+    parsed_snippet_overrides = _parse_snippet_overrides(snippet_overrides)
+
     try:
         idempotency_key = job_manager.compute_idempotency_key(
             content, template_name, template_status, template_version
         )
-        existing = job_manager.find_by_idempotency_key(idempotency_key)
+        existing = (
+            None
+            if parsed_snippet_overrides is not None
+            else job_manager.find_by_idempotency_key(idempotency_key)
+        )
         if existing is not None and existing.status != JobStatus.FAILED:
             logger.info(
                 "Reusing Magic Import job %s for idempotency key %s",
@@ -140,6 +328,13 @@ async def create_job(
             template_version=template_version,
         )
 
+        if parsed_snippet_overrides is not None:
+            job_manager.save_artifact(
+                job.job_id,
+                "snippet_overrides",
+                parsed_snippet_overrides,
+            )
+
         # Queue background processing
         try:
             from app.services.magic_import.tasks import process_magic_import_job
@@ -162,7 +357,6 @@ async def create_job(
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
             message="Failed to create Magic Import job",
-            detail={"error": str(e)},
         )
 
 
@@ -639,7 +833,7 @@ async def select_provider(
     valid_providers = ["openai", "anthropic", "openrouter", "local"]
     if provider not in valid_providers:
         raise APIError(
-            code=ErrorCode.INVALID_ARGUMENT,
+            code=ErrorCode.BAD_REQUEST,
             message=f"Invalid provider: {provider}. Must be one of: {valid_providers}",
         )
 
