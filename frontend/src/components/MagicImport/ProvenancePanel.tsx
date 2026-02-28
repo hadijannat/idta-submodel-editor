@@ -5,7 +5,7 @@
  * For extractions with multi-box evidence, includes an EvidenceCarousel for navigation.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { FieldExtraction } from '../../services/magicImportApi';
 import EvidenceCarousel from './EvidenceCarousel.tsx';
 import './MagicImport.css';
@@ -59,53 +59,74 @@ export default function ProvenancePanel({
   onToggleViewAll,
 }: ProvenancePanelProps) {
   const [expanded, setExpanded] = useState(true);
-  const [currentBoxIndex, setCurrentBoxIndex] = useState(0);
-  const [viewAllActive, setViewAllActive] = useState(false);
+  const extractionPath = extraction?.path ?? '';
+  const [carouselState, setCarouselState] = useState({
+    path: '',
+    currentBoxIndex: 0,
+    viewAllActive: false,
+  });
+  const isCurrentExtraction = carouselState.path === extractionPath;
+  const currentBoxIndex = isCurrentExtraction ? carouselState.currentBoxIndex : 0;
+  const viewAllActive = isCurrentExtraction ? carouselState.viewAllActive : false;
 
   // Handle carousel navigation
   const handleCarouselNavigate = useCallback(
     (boxIndex: number) => {
-      setCurrentBoxIndex(boxIndex);
+      setCarouselState({
+        path: extractionPath,
+        currentBoxIndex: boxIndex,
+        viewAllActive: false,
+      });
       if (viewAllActive) {
-        setViewAllActive(false);
         onToggleViewAll?.(false);
       }
       onFocusBox?.(boxIndex);
     },
-    [onFocusBox, onToggleViewAll, viewAllActive]
+    [extractionPath, onFocusBox, onToggleViewAll, viewAllActive]
   );
 
   // Toggle "View All" mode
   const handleToggleViewAll = useCallback(() => {
-    setViewAllActive((prev) => {
-      const next = !prev;
+    setCarouselState((prev) => {
+      const baseState =
+        prev.path === extractionPath
+          ? prev
+          : {
+              path: extractionPath,
+              currentBoxIndex: 0,
+              viewAllActive: false,
+            };
+      const next = !baseState.viewAllActive;
       onToggleViewAll?.(next);
       if (!next) {
-        onFocusBox?.(currentBoxIndex);
+        onFocusBox?.(baseState.currentBoxIndex);
       }
-      return next;
+      return {
+        ...baseState,
+        viewAllActive: next,
+      };
     });
-  }, [currentBoxIndex, onFocusBox, onToggleViewAll]);
+  }, [extractionPath, onFocusBox, onToggleViewAll]);
 
-  // Reset carousel state when extraction changes
+  // Ensure parent "view all" state is reset when extraction changes
   useEffect(() => {
-    setCurrentBoxIndex(0);
-    setViewAllActive(false);
     onToggleViewAll?.(false);
-  }, [extraction?.path, onToggleViewAll]);
+  }, [extractionPath, onToggleViewAll]);
+
+  // Sort reasons by severity
+  const sortedReasons = useMemo(() => {
+    return [...(extraction?.confidence_reasons || [])].sort((a, b) => {
+      const severityOrder = { error: 0, warning: 1, info: 2 };
+      return severityOrder[a.severity] - severityOrder[b.severity];
+    });
+  }, [extraction?.confidence_reasons]);
 
   if (!extraction) {
     return null;
   }
 
-  const { confidence_breakdown, confidence_reasons, evidence } = extraction;
+  const { confidence_breakdown, evidence } = extraction;
   const hasMultipleBoxes = evidence && evidence.boxes.length > 1;
-
-  // Sort reasons by severity
-  const sortedReasons = [...(confidence_reasons || [])].sort((a, b) => {
-    const severityOrder = { error: 0, warning: 1, info: 2 };
-    return severityOrder[a.severity] - severityOrder[b.severity];
-  });
 
   return (
     <div className={`provenance-panel ${expanded ? 'provenance-panel--expanded' : ''}`}>

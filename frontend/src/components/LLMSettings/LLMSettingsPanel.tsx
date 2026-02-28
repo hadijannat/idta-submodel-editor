@@ -8,7 +8,7 @@
  * - Advanced settings (confidence threshold, OCR)
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useLLMSettings, type ValidationStatus } from '../../hooks/useLLMSettings';
 // Using ValidationStatus type for local state
 import { PROVIDERS, type ProviderType } from '../../services/settingsApi';
@@ -35,7 +35,9 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
     loadModels,
   } = useLLMSettings();
 
-  const [selectedProvider, setSelectedProvider] = useState<ProviderType | null>(null);
+  const [selectedProviderOverride, setSelectedProviderOverride] = useState<ProviderType | null>(
+    null
+  );
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [models, setModels] = useState<string[]>([]);
@@ -45,23 +47,34 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
     message: string | null;
   }>({ status: 'idle', message: null });
 
-  // Initialize selected provider from settings
-  useEffect(() => {
-    if (settings && !selectedProvider) {
-      setSelectedProvider(settings.provider);
-    }
-  }, [settings, selectedProvider]);
+  const selectedProvider = selectedProviderOverride ?? settings?.provider ?? null;
+  const selectedProviderConfig = useMemo(
+    () =>
+      selectedProvider
+        ? PROVIDERS.find((provider) => provider.id === selectedProvider)
+        : undefined,
+    [selectedProvider]
+  );
 
   // Load models when provider changes
   useEffect(() => {
-    if (selectedProvider) {
-      loadModels(selectedProvider).then(setModels);
-    }
+    if (!selectedProvider) return;
+
+    let active = true;
+    loadModels(selectedProvider).then((providerModels) => {
+      if (active) {
+        setModels(providerModels);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
   }, [selectedProvider, loadModels]);
 
   const handleProviderSelect = useCallback(
     async (provider: ProviderType) => {
-      setSelectedProvider(provider);
+      setSelectedProviderOverride(provider);
       setApiKeyInput('');
       setLocalValidation({ status: 'idle', message: null });
 
@@ -208,7 +221,7 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
       </div>
 
       {/* API Key Input */}
-      {selectedProvider && PROVIDERS.find((p) => p.id === selectedProvider)?.requiresApiKey && (
+      {selectedProvider && selectedProviderConfig?.requiresApiKey && (
         <div className="llm-settings-panel__section">
           <h4>API Key</h4>
           <div className="llm-api-key-input">
@@ -268,11 +281,11 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
             <p className="llm-api-key-input__help">
               Get your API key from{' '}
               <a
-                href={PROVIDERS.find((p) => p.id === selectedProvider)?.docsUrl}
+                href={selectedProviderConfig?.docsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {PROVIDERS.find((p) => p.id === selectedProvider)?.name}
+                {selectedProviderConfig?.name}
               </a>
             </p>
           </div>

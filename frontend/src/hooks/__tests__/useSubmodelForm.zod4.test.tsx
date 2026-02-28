@@ -65,6 +65,31 @@ describe('useSubmodelForm zod v4 compatibility', () => {
     );
   });
 
+  it('rejects whitespace-only required multi-language values', async () => {
+    const nameValueField = 'elements.Name.value' as const;
+    const schema = makeSchema([
+      baseElement({
+        idShort: 'Name',
+        cardinality: '[1]',
+      }),
+    ]);
+    const { result } = renderHook(() => useSubmodelForm({ initialSchema: schema }));
+
+    await act(async () => {
+      result.current.form.setValue(nameValueField, { en: '   ' });
+    });
+
+    let isValid = false;
+    await act(async () => {
+      isValid = await result.current.form.trigger();
+    });
+
+    expect(isValid).toBe(false);
+    expect(result.current.form.getFieldState(nameValueField).error?.message).toBe(
+      'At least one translation is required'
+    );
+  });
+
   it('accepts required multi-language values when one translation is non-empty', async () => {
     const nameValueField = 'elements.Name.value' as const;
     const schema = makeSchema([
