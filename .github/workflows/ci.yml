@@ -407,10 +407,12 @@ jobs:
           }
           trap cleanup EXIT
           for i in {1..24}; do
-            if curl -fsS http://localhost:18090/actuator/health > /dev/null; then
+            if curl -fsS http://localhost:18090/actuator/health > /dev/null && \
+               (curl -fsS http://localhost:18090/v3/api-docs > /dev/null || \
+                curl -fsS http://localhost:18090/api-docs > /dev/null); then
               exit 0
             fi
             sleep 5
           done
-          echo "plc4x image health endpoint did not become ready in time"
+          echo "plc4x image health/docs endpoints did not become ready in time"
           exit 1
