@@ -79,7 +79,7 @@ jobs:
             --cov-report=term-missing
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: coverage.xml
@@ -109,7 +109,7 @@ jobs:
 
       - name: Upload mypy report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-mypy-report
           path: backend-mypy-report.txt
@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload ruff report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-ruff-report
           path: backend-ruff-report.txt
@@ -205,7 +205,7 @@ jobs:
         working-directory: frontend
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: frontend/coverage/
@@ -254,7 +254,7 @@ jobs:
         working-directory: frontend
 
       - name: Upload built frontend
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist

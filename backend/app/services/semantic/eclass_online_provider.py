@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import ssl
 from pathlib import Path
 
 import httpx
@@ -150,15 +151,22 @@ class EclassOnlineProvider:
             return url
         return f"{self._base_url}/{url}"
 
-    async def _request_json(self, url: str, params: dict | None = None):
-        cert = None
-        if self._cert_path:
-            if self._key_path:
-                cert = (str(self._cert_path), str(self._key_path))
-            else:
-                cert = str(self._cert_path)
+    def _build_ssl_context(self) -> ssl.SSLContext:
+        # httpx deprecated the "cert=" argument in 0.28; use an SSL context.
+        context = ssl.create_default_context()
+        context.load_cert_chain(
+            certfile=str(self._cert_path),
+            keyfile=str(self._key_path) if self._key_path else None,
+            password=self._cert_password,
+        )
+        return context
 
-        async with httpx.AsyncClient(timeout=self._timeout, cert=cert) as client:
+    async def _request_json(self, url: str, params: dict | None = None):
+        verify: bool | ssl.SSLContext = True
+        if self._cert_path:
+            verify = self._build_ssl_context()
+
+        async with httpx.AsyncClient(timeout=self._timeout, verify=verify) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             return response.json()
