@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable
 
 from app.services.dataspace.providers.provider_base import PolicyError
@@ -193,9 +192,9 @@ class PolicyEngine:
 
         # Atomic constraint must have leftOperand, operator, rightOperand
         required = ("leftOperand", "operator", "rightOperand")
-        for field in required:
-            if field not in constraint:
-                errors.append(f"Constraint missing required '{field}' field")
+        for required_field in required:
+            if required_field not in constraint:
+                errors.append(f"Constraint missing required '{required_field}' field")
 
         # Validate operator
         if "operator" in constraint:

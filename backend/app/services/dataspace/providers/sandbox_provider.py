@@ -20,7 +20,6 @@ from app.services.dataspace.models import (
 )
 from app.services.dataspace.providers.provider_base import (
     DataspaceProvider,
-    DataspaceConnectionError,
 )
 
 if TYPE_CHECKING:
@@ -78,7 +77,7 @@ class SandboxProvider(DataspaceProvider):
         if not connection.edc_url:
             connection.edc_url = "http://localhost:19193/management"
         if not connection.bpn:
-            connection.bpn = f"BPNL00000000SANDBOX"
+            connection.bpn = "BPNL00000000SANDBOX"
 
         logger.info("Sandbox: Connection %s established", connection.connection_id)
         return connection

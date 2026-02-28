@@ -3,11 +3,10 @@ Tests for the BaseTool interface and ToolMetadata.
 """
 
 import pytest
-from dataclasses import asdict
 from typing import ClassVar
 
 from app.services.tools.base import BaseTool, ToolMetadata
-from app.services.tools.context import ToolContext, initialize_tool_context
+from app.services.tools.context import initialize_tool_context
 
 
 class TestToolMetadata:

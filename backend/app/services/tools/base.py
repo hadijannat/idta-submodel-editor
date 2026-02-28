@@ -7,7 +7,7 @@ Defines the abstract base class that all tools must implement, along with
 the metadata structure for tool registration and discovery.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, Literal
 

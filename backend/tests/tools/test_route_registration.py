@@ -65,7 +65,7 @@ def test_route_count_stable_across_startup_and_openapi():
 
 def test_tool_registry_bootstrapped_before_lifespan_startup():
     """Global tool registry should be available before lifespan startup runs."""
-    app = create_application()
+    create_application()
 
     registry = get_registry()
     payload = registry.get_tool_manifest()

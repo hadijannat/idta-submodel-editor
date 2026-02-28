@@ -6,10 +6,8 @@ Tests state persistence, connection lifecycle, and registration management.
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from app.services.dataspace.models import (
     AssetRegistration,
@@ -487,7 +485,7 @@ class TestConnectionManagerConnections:
         manager = mock_connection_manager
 
         conn1 = manager.create_connection(dataspace_type=DataspaceType.SANDBOX)
-        conn2 = manager.create_connection(dataspace_type=DataspaceType.SANDBOX)
+        manager.create_connection(dataspace_type=DataspaceType.SANDBOX)
 
         # Update status
         manager.update_connection(conn1.connection_id, status=ConnectionStatus.CONNECTED)
@@ -627,7 +625,7 @@ class TestConnectionManagerRegistrations:
         manager = mock_connection_manager
 
         reg1 = manager.create_registration("conn-1", "aas-1", "sm-1")
-        reg2 = manager.create_registration("conn-1", "aas-2", "sm-2")
+        manager.create_registration("conn-1", "aas-2", "sm-2")
 
         manager.update_registration(reg1.registration_id, status=RegistrationStatus.REGISTERED)
 

@@ -21,7 +21,6 @@ from __future__ import annotations
 import logging
 import re
 import time
-from pathlib import Path
 
 from celery import shared_task
 
@@ -35,7 +34,6 @@ from app.schemas.magic_import import (
     JobStatus,
     MagicImportResult,
     FieldExtraction,
-    ConfidenceBreakdown,
     EvidenceRef,
     UnmappedFinding,
     ValidationResult,

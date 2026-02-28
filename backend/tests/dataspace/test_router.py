@@ -5,7 +5,7 @@ Tests all REST API endpoints using FastAPI TestClient with dependency overrides.
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI

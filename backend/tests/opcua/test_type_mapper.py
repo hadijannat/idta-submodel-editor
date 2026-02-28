@@ -4,7 +4,6 @@ Tests for OPC UA Type Mapper.
 Tests type conversion between OPC UA and AAS type systems.
 """
 
-import pytest
 
 from app.services.opcua.type_mapper import (
     OPCUATypeMapper,

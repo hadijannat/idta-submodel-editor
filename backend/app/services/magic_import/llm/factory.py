@@ -158,8 +158,6 @@ def get_provider_info() -> list[ProviderInfo]:
         List of ProviderInfo with availability and privacy details
     """
     info_list = []
-    settings = get_settings()
-
     # Cloud providers with API keys
     cloud_providers = [
         ("openai", "OpenAI", "Data sent to OpenAI servers"),

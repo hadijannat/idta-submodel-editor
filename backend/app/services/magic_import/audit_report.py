@@ -14,7 +14,6 @@ Generates auditable reports showing AI extraction provenance:
 
 from __future__ import annotations
 
-import json
 import logging
 from collections import Counter
 from datetime import datetime, timezone
@@ -27,9 +26,7 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.schemas.magic_import import (
-    BBox,
     ConfidenceBreakdown,
-    EvidenceRef,
     ExtractionStatus,
     FieldExtraction,
     MagicImportJob,
@@ -37,7 +34,7 @@ from app.schemas.magic_import import (
 )
 
 if TYPE_CHECKING:
-    import fitz
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -966,7 +963,6 @@ class AuditReportGenerator:
 
         for field in report.fields:
             # Field header
-            status_color = self._get_status_color(field.extraction_status)
             review_badge = self._get_review_badge(field.review_status)
 
             field_header = f"<b>{field.path}</b> [{field.extraction_status.value}] {review_badge}"
