@@ -14,8 +14,7 @@ import {
   exportAsAasx,
   exportAsJson,
   exportAsPdf,
-  verifyExport,
-  checkConformance,
+  checkConformanceForTemplate,
   type ConformanceCheckResult,
 } from '../services/api';
 import { getMaxItems, getMinItems, isRequired } from '../types/aas-elements';
@@ -604,17 +603,12 @@ export function useSubmodelForm(
     setConformanceChecking(true);
     setConformanceResult(null);
     try {
-      const artifact = await verifyExport(
+      const result = await checkConformanceForTemplate(
         templateName,
         formData,
         'aasx',
         templateStatus,
         templateVersion
-      );
-      const result = await checkConformance(
-        artifact,
-        'aasx',
-        `${templateName}.aasx`
       );
       setConformanceResult(result);
     } catch (err) {

@@ -1,6 +1,7 @@
 """Tests for conformance service subprocess integration."""
 
 from pathlib import Path
+import subprocess
 from subprocess import CompletedProcess
 from unittest.mock import patch
 
@@ -60,3 +61,35 @@ def test_run_conformance_check_missing_cli(tmp_path: Path):
             run_conformance_check(artifact, "aasx")
 
     assert exc_info.value.code.value == "UPSTREAM_UNAVAILABLE"
+
+
+def test_run_conformance_check_timeout(tmp_path: Path):
+    artifact = tmp_path / "artifact.aasx"
+    artifact.write_bytes(b"PK\x03\x04dummy")
+
+    with patch(
+        "app.services.conformance.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="aas_test_engines", timeout=90),
+    ):
+        with pytest.raises(APIError) as exc_info:
+            run_conformance_check(artifact, "aasx")
+
+    assert exc_info.value.code.value == "UPSTREAM_UNAVAILABLE"
+    assert exc_info.value.message == "Conformance check timed out"
+
+
+def test_run_conformance_check_marks_error_output_as_failure(tmp_path: Path):
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text("{}")
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        if cmd[:2] == ["aas_test_engines", "--version"]:
+            return CompletedProcess(cmd, 0, stdout="v", stderr="")
+        return CompletedProcess(cmd, 0, stdout="ERROR: missing semanticId", stderr="")
+
+    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+        result = run_conformance_check(artifact, "json")
+
+    assert result.passed is False
+    assert len(result.errors) == 1

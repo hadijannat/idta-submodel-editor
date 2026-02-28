@@ -37,6 +37,25 @@ describe('ExportPanel', () => {
     expect(screen.getByText(/Engine: 0.3.1/)).toBeInTheDocument();
   });
 
+  it('renders passing conformance summary with unknown engine fallback', () => {
+    render(
+      <ExportPanel
+        {...baseProps}
+        conformanceResult={{
+          passed: true,
+          errors: [],
+          warnings: [],
+          engine_version: null,
+          duration_ms: 9,
+          format: 'json',
+        }}
+      />
+    );
+
+    expect(screen.getByText('✓ AAS conformance check passed')).toBeInTheDocument();
+    expect(screen.getByText(/Engine: unknown \| Duration: 9ms/)).toBeInTheDocument();
+  });
+
   it('disables verify while conformance check is running', () => {
     render(<ExportPanel {...baseProps} conformanceChecking />);
     const verifyButton = screen.getByRole('button', { name: /Verifying\.\.\./i });

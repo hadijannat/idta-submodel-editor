@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/magic-import", tags=["magic-import"])
 PYDANTIC_PROTECTED_NAMESPACES = ("model_validate", "model_dump")
+MAX_SNIPPET_OVERRIDE_COUNT = 200
+MAX_SNIPPET_OVERRIDE_TEXT_CHARS = 2000
+MAX_SNIPPET_OVERRIDE_TOKEN_ESTIMATE = 12000
 
 
 class RecordCorrectionRequest(BaseModel):
@@ -93,27 +96,63 @@ def _parse_snippet_overrides(raw: str | None) -> list[Snippet] | None:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise APIError(
-            code=ErrorCode.INVALID_ARGUMENT,
+            code=ErrorCode.BAD_REQUEST,
             message="Invalid snippet override payload",
             detail={"error": str(exc)},
         ) from exc
 
     if not isinstance(payload, list):
         raise APIError(
-            code=ErrorCode.INVALID_ARGUMENT,
+            code=ErrorCode.BAD_REQUEST,
             message="Snippet overrides must be a JSON list",
+        )
+    if len(payload) > MAX_SNIPPET_OVERRIDE_COUNT:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Too many snippet overrides",
+            detail={"max_snippets": MAX_SNIPPET_OVERRIDE_COUNT},
         )
 
     parsed: list[Snippet] = []
-    for item in payload:
+    for idx, item in enumerate(payload, start=1):
         try:
-            parsed.append(Snippet.model_validate(item))
+            snippet = Snippet.model_validate(item)
         except Exception as exc:
             raise APIError(
-                code=ErrorCode.INVALID_ARGUMENT,
+                code=ErrorCode.BAD_REQUEST,
                 message="Snippet override entry is invalid",
-                detail={"error": str(exc)},
+                detail={"index": idx},
             ) from exc
+
+        if (
+            snippet.page < 0
+            or snippet.start_word_idx < 0
+            or snippet.end_word_idx < snippet.start_word_idx
+        ):
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="Snippet override entry contains invalid position metadata",
+                detail={"index": idx},
+            )
+        if len(snippet.text) > MAX_SNIPPET_OVERRIDE_TEXT_CHARS:
+            raise APIError(
+                code=ErrorCode.BAD_REQUEST,
+                message="Snippet override text is too long",
+                detail={
+                    "index": idx,
+                    "max_text_chars": MAX_SNIPPET_OVERRIDE_TEXT_CHARS,
+                },
+            )
+
+        parsed.append(snippet)
+
+    if _estimate_snippet_tokens(parsed) > MAX_SNIPPET_OVERRIDE_TOKEN_ESTIMATE:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message="Snippet overrides exceed the maximum token budget",
+            detail={"max_token_estimate": MAX_SNIPPET_OVERRIDE_TOKEN_ESTIMATE},
+        )
+
     return parsed
 
 
@@ -204,7 +243,6 @@ async def preview_job(
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
             message="Failed to generate preview snippets",
-            detail={"error": str(e)},
         ) from e
     finally:
         if temp_path and temp_path.exists():
@@ -319,7 +357,6 @@ async def create_job(
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
             message="Failed to create Magic Import job",
-            detail={"error": str(e)},
         )
 
 
@@ -796,7 +833,7 @@ async def select_provider(
     valid_providers = ["openai", "anthropic", "openrouter", "local"]
     if provider not in valid_providers:
         raise APIError(
-            code=ErrorCode.INVALID_ARGUMENT,
+            code=ErrorCode.BAD_REQUEST,
             message=f"Invalid provider: {provider}. Must be one of: {valid_providers}",
         )
 

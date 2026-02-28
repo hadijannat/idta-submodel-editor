@@ -62,9 +62,9 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 
 ## Conformance
 
-| Endpoint | Description |
-|---|---|
-| `POST /api/conformance/check` | Run AAS conformance check on uploaded AASX/JSON artifacts |
+| Endpoint | Description | Auth |
+|---|---|---|
+| `POST /api/conformance/check` | Run AAS conformance check on uploaded AASX/JSON artifacts | Bearer token when OIDC is enabled |
 
 ## Template Operations
 

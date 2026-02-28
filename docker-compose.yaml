@@ -187,6 +187,7 @@ services:
       - idta-network
     profiles:
       - dataspace
+      - plc
 
   # BaSyx AAS Registry - Service discovery for AAS instances
   basyx-registry:
@@ -207,6 +208,7 @@ services:
       - idta-network
     profiles:
       - dataspace
+      - plc
 
   # Digital Twin Registry (DTR) - Catena-X compliant twin registry
   dtr:

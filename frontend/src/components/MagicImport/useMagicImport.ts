@@ -206,17 +206,36 @@ export function useMagicImport({
   }, [pendingFile, previewSnippets, uploadPdf]);
 
   const updatePreviewSnippet = useCallback((snippetId: string, text: string) => {
-    setPreviewSnippets((prev) =>
-      prev.map((snippet) =>
-        snippet.snippet_id === snippetId ? { ...snippet, text } : snippet
-      )
-    );
+    setPreviewSnippets((prev) => {
+      const targetIndex = prev.findIndex(
+        (snippet) => snippet.snippet_id === snippetId
+      );
+      if (targetIndex === -1) {
+        return prev;
+      }
+
+      const target = prev[targetIndex];
+      if (target.text === text) {
+        return prev;
+      }
+
+      const next = [...prev];
+      next[targetIndex] = { ...target, text };
+      return next;
+    });
   }, []);
 
   const removePreviewSnippet = useCallback((snippetId: string) => {
-    setPreviewSnippets((prev) =>
-      prev.filter((snippet) => snippet.snippet_id !== snippetId)
-    );
+    setPreviewSnippets((prev) => {
+      const targetIndex = prev.findIndex(
+        (snippet) => snippet.snippet_id === snippetId
+      );
+      if (targetIndex === -1) {
+        return prev;
+      }
+
+      return [...prev.slice(0, targetIndex), ...prev.slice(targetIndex + 1)];
+    });
   }, []);
 
   const clearPreview = useCallback(() => {

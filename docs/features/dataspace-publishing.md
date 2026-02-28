@@ -32,10 +32,9 @@ docker compose --profile dataspace up -d vault
 
 ## Full Dataspace Stack (EDC + DTR + BaSyx)
 
-The full dataspace profile pulls EDC images from GHCR. You must authenticate first:
+The full dataspace profile uses public images (Tractus-X, BaSyx, Vault, Postgres). Start directly:
 
 ```bash
-docker login ghcr.io
 docker compose --profile dataspace up -d
 ```
 

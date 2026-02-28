@@ -9,9 +9,15 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
 from app.config import Settings
-from app.routers.magic_import import router as magic_import_router
+from app.errors import APIError, ErrorCode
+from app.routers.magic_import import (
+    MAX_SNIPPET_OVERRIDE_COUNT,
+    _parse_snippet_overrides,
+    router as magic_import_router,
+)
 from app.schemas.magic_import import ExtractionHint, Snippet
 from app.services.magic_import.job_manager import JobManager
 
@@ -131,3 +137,103 @@ def test_create_job_persists_snippet_overrides(monkeypatch):
             assert artifact is not None
             parsed = [Snippet.model_validate(item) for item in artifact]
             assert parsed[0].text == "[REDACTED]"
+
+
+def test_create_job_rejects_excessive_snippet_overrides():
+    snippets = [
+        {
+            "text": "value",
+            "page": 0,
+            "start_word_idx": 0,
+            "end_word_idx": 1,
+            "score": 1.0,
+            "context_before": "",
+            "context_after": "",
+        }
+        for _ in range(MAX_SNIPPET_OVERRIDE_COUNT + 1)
+    ]
+
+    with pytest.raises(APIError) as exc_info:
+        _parse_snippet_overrides(json.dumps(snippets))
+
+    assert exc_info.value.code == ErrorCode.BAD_REQUEST
+    assert exc_info.value.message == "Too many snippet overrides"
+
+
+def test_parse_snippet_overrides_rejects_invalid_json_payload():
+    with pytest.raises(APIError) as exc_info:
+        _parse_snippet_overrides("{invalid-json")
+
+    assert exc_info.value.code == ErrorCode.BAD_REQUEST
+    assert exc_info.value.message == "Invalid snippet override payload"
+
+
+def test_parse_snippet_overrides_rejects_non_list_payload():
+    with pytest.raises(APIError) as exc_info:
+        _parse_snippet_overrides(json.dumps({"text": "not-a-list"}))
+
+    assert exc_info.value.code == ErrorCode.BAD_REQUEST
+    assert exc_info.value.message == "Snippet overrides must be a JSON list"
+
+
+def test_parse_snippet_overrides_rejects_invalid_position_metadata():
+    snippets = [
+        {
+            "text": "value",
+            "page": 0,
+            "start_word_idx": 5,
+            "end_word_idx": 1,
+            "score": 1.0,
+            "context_before": "",
+            "context_after": "",
+        }
+    ]
+
+    with pytest.raises(APIError) as exc_info:
+        _parse_snippet_overrides(json.dumps(snippets))
+
+    assert exc_info.value.code == ErrorCode.BAD_REQUEST
+    assert exc_info.value.message == "Snippet override entry contains invalid position metadata"
+
+
+def test_preview_endpoint_rejects_when_magic_import_disabled():
+    settings = Settings(
+        magic_import_enabled=False,
+        magic_import_max_pdf_size_mb=5,
+    )
+
+    with patch("app.routers.magic_import.get_settings", return_value=settings):
+        with TestClient(_build_app()) as client:
+            with pytest.raises(APIError) as exc_info:
+                client.post(
+                    "/api/magic-import/jobs/preview",
+                    files={"file": ("datasheet.pdf", _pdf_payload(), "application/pdf")},
+                    data={"template_name": "Digital Nameplate", "template_status": "published"},
+                )
+
+    assert exc_info.value.code == ErrorCode.FEATURE_DISABLED
+
+
+def test_preview_endpoint_hides_internal_errors(monkeypatch):
+    settings = Settings(
+        magic_import_enabled=True,
+        magic_import_max_pdf_size_mb=5,
+    )
+
+    with patch("app.routers.magic_import.get_settings", return_value=settings):
+        from app.services.magic_import import pdf_indexer
+
+        def _raise_index_error(self, pdf_path, job_id):
+            raise RuntimeError("secret trace")
+
+        monkeypatch.setattr(pdf_indexer.PDFIndexer, "index_pdf", _raise_index_error)
+
+        with TestClient(_build_app(), raise_server_exceptions=False) as client:
+            response = client.post(
+                "/api/magic-import/jobs/preview",
+                files={"file": ("datasheet.pdf", _pdf_payload(), "application/pdf")},
+                data={"template_name": "Digital Nameplate", "template_status": "published"},
+            )
+
+    assert response.status_code == 500
+    assert "secret trace" not in response.text

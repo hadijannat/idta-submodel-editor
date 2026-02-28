@@ -48,7 +48,7 @@ Then open `http://localhost:8080`.
 | Core | `docker compose up` | Backend, frontend, Redis | Core editing works without external API keys; lightest startup path |
 | Magic Import Worker | `docker compose --profile magic-import up` | `celery-worker` for async/background jobs | Magic Import feature flag is already enabled in base backend config |
 | Dataspace | `docker compose --profile dataspace up` | BaSyx, DTR, Vault, EDC, Postgres, Mnestix | Mnestix is exposed at `http://localhost:3001`; heavy stack, slower first startup |
-| PLC (additional profile) | `docker compose --profile dataspace --profile plc up` | PLC4X bridge on top of dataspace stack | Use when you need shopfloor ingestion into BaSyx |
+| PLC Bridge | `docker compose --profile plc up` (or `--profile dataspace --profile plc`) | PLC4X bridge + required BaSyx services | Use standalone for local PLC-to-AAS loop, or combine with dataspace for full connector flow |
 | Auth | `OIDC_ENABLED=true OIDC_ISSUER_URL=http://keycloak:8080/realms/idta OIDC_AUDIENCE=idta-editor docker compose --profile auth up backend redis keycloak` | Backend + Redis + Keycloak | Keycloak is mapped to `http://localhost:8081` to avoid frontend port collisions |
 
 ## Feature Overview
@@ -76,7 +76,7 @@ Then open `http://localhost:8080`.
 3. Add optional profiles only when needed:
    - Magic Import worker: `--profile magic-import`
    - Dataspace stack: `--profile dataspace`
-   - PLC bridge: `--profile plc` (with dataspace)
+   - PLC bridge: `--profile plc` (optionally combine with dataspace)
    - Auth stack: `--profile auth`
 
 ## Contribute (Developers)

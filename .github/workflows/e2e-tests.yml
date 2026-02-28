@@ -135,10 +135,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start services with magic-import profile
-        run: docker compose --profile magic-import up -d
-
-      - name: Wait for services
-        run: sleep 30
+        run: docker compose --profile magic-import up -d --wait --wait-timeout 180
 
       - name: Run Magic Import E2E tests
         run: npm run test:e2e:magic-import -- --project=chromium
@@ -157,7 +154,7 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker compose --profile magic-import down
+        run: docker compose --profile magic-import down --remove-orphans
 
   # Weekly: Dataspace tests
   e2e-dataspace:
@@ -186,12 +183,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start services with dataspace profile
-        run: docker compose --profile dataspace up -d
-
-      - name: Wait for services
-        run: |
-          echo "Waiting for dataspace services to start..."
-          sleep 120  # Dataspace services take longer to initialize
+        run: docker compose --profile dataspace up -d --wait --wait-timeout 300
 
       - name: Run Dataspace E2E tests
         run: npm run test:e2e:dataspace -- --project=chromium
@@ -210,7 +202,7 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker compose --profile dataspace down
+        run: docker compose --profile dataspace down --remove-orphans
 
   # Weekly: PLC tests
   e2e-plc:
@@ -239,10 +231,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start services with dataspace and PLC profiles
-        run: docker compose --profile dataspace --profile plc up -d
-
-      - name: Wait for services
-        run: sleep 120
+        run: docker compose --profile dataspace --profile plc up -d --wait --wait-timeout 300
 
       - name: Run PLC E2E tests
         run: npm run test:e2e:plc -- --project=chromium
@@ -261,7 +250,7 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker compose --profile dataspace --profile plc down
+        run: docker compose --profile dataspace --profile plc down --remove-orphans
 
   # Cross-browser testing (weekly - Sunday only)
   e2e-cross-browser:

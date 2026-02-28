@@ -141,4 +141,25 @@ describe('MnestixBrowser', () => {
     expect(link.target).toBe('_blank');
     expect(link.rel).toContain('noopener');
   });
+
+  it('should not append aasRegistry query param when registry URL is unavailable', async () => {
+    vi.mocked(api.getPublicSettings).mockResolvedValue({
+      mnestix_enabled: true,
+      mnestix_url: 'http://mnestix:3000',
+      basyx_registry_url: null,
+      dataspace_enabled: false,
+      magic_import_enabled: false,
+      dpp_enabled: false,
+    });
+
+    render(<MnestixBrowser />);
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Mnestix AAS Browser')).toBeInTheDocument();
+    });
+
+    const iframe = screen.getByTitle('Mnestix AAS Browser') as HTMLIFrameElement;
+    expect(iframe.src).toContain('http://mnestix:3000');
+    expect(iframe.src).not.toContain('aasRegistry=');
+  });
 });

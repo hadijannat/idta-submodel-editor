@@ -415,6 +415,40 @@ export async function checkConformance(
   return response.json();
 }
 
+export async function checkConformanceForTemplate(
+  templateName: string,
+  formData: SubmodelFormData,
+  format: 'aasx' | 'json' = 'aasx',
+  status: 'published' | 'deprecated' = 'published',
+  version?: string | null
+): Promise<ConformanceCheckResult> {
+  const response = await fetch(`${API_BASE_URL}/api/conformance/check/form`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      template_name: templateName,
+      form_data: formData,
+      format_name: format,
+      template_status: status,
+      template_version: version ?? null,
+    }),
+  });
+
+  if (!response.ok) {
+    let details;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+    throw new ApiError('Conformance check failed', response.status, details);
+  }
+
+  return response.json();
+}
+
 /**
  * Get template preview without form data.
  */

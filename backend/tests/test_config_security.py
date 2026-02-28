@@ -33,6 +33,11 @@ def test_github_template_ref_accepts_safe_patterns(ref: str):
     assert settings.github_template_ref == ref
 
 
+def test_github_template_ref_defaults_to_main_when_blank():
+    settings = Settings(github_template_ref="   ")
+    assert settings.github_template_ref == "main"
+
+
 def test_production_requires_oidc_or_explicit_insecure_override():
     with pytest.raises(ValueError, match="OIDC_ENABLED"):
         Settings(

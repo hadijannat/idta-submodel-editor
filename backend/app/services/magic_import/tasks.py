@@ -259,6 +259,7 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
             progress_message="Finding relevant document sections...",
         )
 
+        retrieval_diagnostics = []
         snippets_override_data = job_manager.load_artifact(job_id, "snippet_overrides")
         if snippets_override_data is not None:
             snippets = [Snippet.model_validate(item) for item in snippets_override_data]

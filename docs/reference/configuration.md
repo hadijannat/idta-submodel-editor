@@ -158,6 +158,13 @@ Security/operations note:
 - `docker compose up` starts backend, frontend, and Redis.
 - `--profile magic-import` adds a Celery worker.
 - `--profile dataspace` adds dataspace infrastructure and Mnestix (`localhost:3001`).
-- `--profile plc` adds PLC4X bridge (typically combined with `--profile dataspace`).
+- `--profile plc` adds PLC4X bridge plus required BaSyx services.
 - `--profile auth` adds Keycloak, but auth is only enforced when OIDC backend settings are enabled.
 - Auth profile can run alongside frontend; Keycloak maps to host `8081` by default.
+
+### Compose Host-Port Overrides
+
+| Variable | Description | Default |
+|---|---|---|
+| `KEYCLOAK_HOST_PORT` | Host port mapped to Keycloak container `8080` | `8081` |
+| `VAULT_HOST_PORT` | Host port mapped to Vault container `8200` | `8200` |

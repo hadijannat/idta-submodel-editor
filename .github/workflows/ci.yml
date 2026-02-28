@@ -141,16 +141,23 @@ jobs:
           pip install aas-test-engines
 
       - name: Run AAS conformance checks
+        env:
+          CONFORMANCE_REQUIRED_BRANCHES: ${{ vars.CONFORMANCE_REQUIRED_BRANCHES }}
         run: |
           set -e
           has_files=false
+          target_branch="${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-}}"
+          default_branch="${{ github.event.repository.default_branch }}"
+          required_branches_csv="${CONFORMANCE_REQUIRED_BRANCHES:-$default_branch}"
           protected_target=false
-          if [ "${GITHUB_REF_NAME:-}" = "main" ]; then
-            protected_target=true
-          fi
-          if [ "${GITHUB_BASE_REF:-}" = "main" ]; then
-            protected_target=true
-          fi
+          for branch in $(echo "$required_branches_csv" | tr ',' ' '); do
+            branch="$(echo "$branch" | xargs)"
+            [ -n "$branch" ] || continue
+            if [ "$target_branch" = "$branch" ]; then
+              protected_target=true
+              break
+            fi
+          done
           if [ -d backend/tests/fixtures/aasx ]; then
             for file in backend/tests/fixtures/aasx/*.aasx; do
               [ -e "$file" ] || continue
@@ -167,10 +174,10 @@ jobs:
           fi
           if [ "$has_files" = false ]; then
             if [ "$protected_target" = true ]; then
-              echo "Conformance fixtures are required on protected branches (main)."
+              echo "Conformance fixtures are required for protected-target branches: $required_branches_csv."
               exit 1
             fi
-            echo "No fixture files found; skipping conformance checks on non-protected branch."
+            echo "No fixture files found; skipping conformance checks (branch '$target_branch' not in '$required_branches_csv')."
           fi
 
   # E2E Smoke Tests - Run on every PR

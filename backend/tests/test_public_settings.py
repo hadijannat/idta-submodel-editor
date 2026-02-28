@@ -90,3 +90,25 @@ def test_feature_flag_update_requires_admin_auth_outside_development():
                     json={"dataspace_enabled": True},
                 )
                 assert response.status_code == 401
+
+
+def test_public_settings_reflects_magic_import_env_flag():
+    settings = Settings(
+        magic_import_enabled=False,
+        dataspace_enabled=False,
+        dpp_enabled=True,
+    )
+
+    with (
+        patch("app.main.get_settings", return_value=settings),
+        patch("app.services.settings_service.get_settings", return_value=settings),
+        patch("app.routers.settings.get_settings", return_value=settings),
+    ):
+        app = create_application()
+        with TestClient(app) as client:
+            response = client.get("/api/settings")
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["magic_import_enabled"] is False
+            assert payload["dataspace_enabled"] is False
+            assert payload["dpp_enabled"] is True

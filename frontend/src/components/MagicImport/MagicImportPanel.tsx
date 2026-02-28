@@ -8,7 +8,15 @@
  * - Apply to form
  */
 
-import { useCallback, useMemo, useRef, useId, useState, useEffect } from 'react';
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useId,
+  useState,
+  useEffect,
+} from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { SubmodelFormData } from '../../types/aas-elements';
 import type { SubmodelUISchema } from '../../types/ui-schema';
@@ -19,8 +27,55 @@ import ProvenancePanel from './ProvenancePanel.tsx';
 import ProviderQuickStatus from './ProviderQuickStatus.tsx';
 import ProviderSelector from './ProviderSelector.tsx';
 import { LLMSettingsPanel } from '../LLMSettings';
-import { downloadAuditReport } from '../../services/magicImportApi';
+import {
+  downloadAuditReport,
+  type SnippetPreview,
+} from '../../services/magicImportApi';
 import './MagicImport.css';
+
+interface PreviewSnippetItemProps {
+  snippet: SnippetPreview;
+  onUpdateSnippet: (snippetId: string, text: string) => void;
+  onRemoveSnippet: (snippetId: string) => void;
+}
+
+const PreviewSnippetItem = memo(function PreviewSnippetItem({
+  snippet,
+  onUpdateSnippet,
+  onRemoveSnippet,
+}: PreviewSnippetItemProps) {
+  const handleRemove = useCallback(() => {
+    onRemoveSnippet(snippet.snippet_id);
+  }, [onRemoveSnippet, snippet.snippet_id]);
+
+  const handleChange = useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      onUpdateSnippet(snippet.snippet_id, event.target.value);
+    },
+    [onUpdateSnippet, snippet.snippet_id]
+  );
+
+  return (
+    <div className="magic-import-panel__preview-item">
+      <div className="magic-import-panel__preview-meta">
+        <span>Page {snippet.page + 1}</span>
+        <button
+          type="button"
+          className="magic-import-panel__preview-remove"
+          onClick={handleRemove}
+        >
+          Remove
+        </button>
+      </div>
+      <textarea
+        className="magic-import-panel__preview-text"
+        value={snippet.text}
+        onChange={handleChange}
+        rows={3}
+      />
+    </div>
+  );
+});
 
 interface MagicImportPanelProps {
   templateName: string;
@@ -283,26 +338,12 @@ export default function MagicImportPanel({
                 </p>
               ) : (
                 previewSnippets.map((snippet) => (
-                  <div key={snippet.snippet_id} className="magic-import-panel__preview-item">
-                    <div className="magic-import-panel__preview-meta">
-                      <span>Page {snippet.page + 1}</span>
-                      <button
-                        type="button"
-                        className="magic-import-panel__preview-remove"
-                        onClick={() => removePreviewSnippet(snippet.snippet_id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <textarea
-                      className="magic-import-panel__preview-text"
-                      value={snippet.text}
-                      onChange={(event) =>
-                        updatePreviewSnippet(snippet.snippet_id, event.target.value)
-                      }
-                      rows={3}
-                    />
-                  </div>
+                  <PreviewSnippetItem
+                    key={snippet.snippet_id}
+                    snippet={snippet}
+                    onUpdateSnippet={updatePreviewSnippet}
+                    onRemoveSnippet={removePreviewSnippet}
+                  />
                 ))
               )}
             </div>

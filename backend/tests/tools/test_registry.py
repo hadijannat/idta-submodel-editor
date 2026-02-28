@@ -198,3 +198,13 @@ def test_manifest_order_tie_breaks_by_id_with_same_step():
 
     manifest = registry.get_tool_manifest()
     assert [entry["id"] for entry in manifest] == ["step-3-alpha", "step-3-beta"]
+
+
+def test_manifest_reports_missing_dependency_reason():
+    context = ToolContext(Settings())
+    registry = ToolRegistry(context=context)
+    registry.register(MissingDepTool)
+
+    manifest = registry.get_tool_manifest()
+    missing_dep = next(entry for entry in manifest if entry["id"] == "missing-dep-tool")
+    assert missing_dep["disabled_reason"] == "Dependency 'does-not-exist' is not installed."
