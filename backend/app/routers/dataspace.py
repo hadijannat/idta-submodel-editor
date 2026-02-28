@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
@@ -44,9 +44,6 @@ from app.schemas.dataspace import (
     SubmodelPublication,
     UnpublishRequest,
     UnpublishResponse,
-    UpdatePolicyRequest,
-    UpdatePolicyResponse,
-    # Health types
     HealthCheckResponse,
     HealthCheckResult,
     # Catalog types
@@ -219,13 +216,7 @@ def _map_dataspace_type(env: str) -> DataspaceType:
 
 def _connection_to_response(conn) -> DataspaceConnection:
     """Convert internal connection state to API response model."""
-    from app.services import settings_service
-
     settings = get_settings()
-    dataspace_enabled = settings_service.get_effective_feature_flag(
-        "dataspace_enabled",
-        settings=settings,
-    )
     return DataspaceConnection(
         connection_id=conn.connection_id,
         status=_map_internal_status(conn.status),
@@ -268,18 +259,6 @@ async def create_connection(
     """
     _check_dataspace_enabled()
     settings = get_settings()
-    from app.services import settings_service
-
-    dataspace_enabled = settings_service.get_effective_feature_flag(
-        "dataspace_enabled",
-        settings=settings,
-    )
-    from app.services import settings_service
-
-    dataspace_enabled = settings_service.get_effective_feature_flag(
-        "dataspace_enabled",
-        settings=settings,
-    )
 
     try:
         if request.environment != "sandbox":
@@ -368,7 +347,7 @@ async def create_connection(
 
     except APIError:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to create dataspace connection")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
@@ -396,7 +375,7 @@ async def list_connections(
             connections=[_connection_to_response(c) for c in connections],
             total=len(connections),
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to list connections")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
@@ -873,7 +852,7 @@ async def list_publications(
             total=len(publications),
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to list publications")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
@@ -1191,7 +1170,7 @@ async def preview_policy(
             "validation_errors": errors if not is_valid else [],
         }
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to preview policy")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
@@ -1249,7 +1228,7 @@ async def create_policy(
 
     except APIError:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to create policy")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
@@ -2081,7 +2060,7 @@ async def list_transfers(
 
     except APIError:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to list transfers")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
@@ -2348,7 +2327,7 @@ async def list_audit_logs(
 
     except APIError:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to list audit logs")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,

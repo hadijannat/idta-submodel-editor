@@ -24,7 +24,6 @@ from app.services.dataspace.edc import (
     AASExtensionError,
     AASShellNotFoundError,
     AASSubmodelNotFoundError,
-    EDC_CONTEXT,
 )
 
 
@@ -820,11 +819,6 @@ class TestAASExtensionClientContractGeneration:
             "shellId": "urn:example:shell:1",
             "edcAssetId": "aas-shell-abc",
             "contractDefinitionId": "contract-shell",
-        }
-        submodel_result = {
-            "submodelId": "test",
-            "edcAssetId": "aas-submodel-xyz",
-            "contractDefinitionId": "contract-submodel",
         }
 
         mock_response = MagicMock()

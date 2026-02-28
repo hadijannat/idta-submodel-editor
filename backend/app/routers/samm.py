@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -21,7 +21,6 @@ from app.services.fetcher import TemplateFetcherService
 from app.services.parser import ParserService
 from app.services.samm.converter import SAMMConverter
 from app.services.samm.models import ConversionResult
-from app.utils.upload_security import FileType, UploadValidator, read_upload_file
 
 logger = logging.getLogger(__name__)
 

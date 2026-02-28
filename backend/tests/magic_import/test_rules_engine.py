@@ -10,7 +10,6 @@ import pytest
 from app.schemas.magic_import import (
     BBox,
     ConfidenceBreakdown,
-    ConfidenceReason,
     ConfidenceReasonCode,
     EvidenceRef,
     ExtractionHint,

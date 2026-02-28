@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import logging
 import re
-from functools import lru_cache
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.schemas.magic_import import ExtractionHint

@@ -7,7 +7,6 @@ Produces ConfidenceBreakdown and sets needs_review based on threshold.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from app.schemas.magic_import import (
     ConfidenceBreakdown,

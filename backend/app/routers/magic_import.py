@@ -352,7 +352,7 @@ async def create_job(
 
     except APIError:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to create Magic Import job")
         raise APIError(
             code=ErrorCode.INTERNAL_ERROR,
@@ -648,8 +648,6 @@ async def get_provider_status(
     """
     from app.services import settings_service
     from app.services.magic_import.llm.factory import get_available_providers
-
-    settings = get_settings()
 
     # Check if any provider is configured
     available = get_available_providers()

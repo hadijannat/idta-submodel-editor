@@ -225,6 +225,7 @@ services:
       - SPRING_JPA_HIBERNATE_DDL_AUTO=update
       - REGISTRY_IDTYPE_URL=false
       - REGISTRY_ALLOW_ALL_TENANTS=true
+      - REGISTRY_IDM_OWNINGTENANTID=${DTR_OWNING_TENANT_ID:-BPNL000000000001}
     depends_on:
       postgres-dataspace:
         condition: service_healthy
@@ -311,6 +312,7 @@ services:
       - WEB_HTTP_CONTROL_PATH=/control
       # DSP Protocol
       - EDC_DSP_CALLBACK_ADDRESS=http://edc-control-plane:19193/protocol
+      - EDC_IAM_STS_OAUTH_TOKEN_URL=${EDC_IAM_STS_OAUTH_TOKEN_URL:-http://edc-control-plane:19193/protocol/token}
       # Data plane
       - EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_URL=http://edc-data-plane:19291/api/dataplane/control
       - EDC_DATAPLANE_SELECTOR_DEFAULTPLANE_SOURCETYPES=HttpData
@@ -358,6 +360,7 @@ services:
       - WEB_HTTP_CONTROL_PATH=/control
       # Control plane
       - EDC_CONTROLPLANE_VALIDATION_ENDPOINT=http://edc-control-plane:19195/control/token
+      - EDC_IAM_STS_OAUTH_TOKEN_URL=${EDC_IAM_STS_OAUTH_TOKEN_URL:-http://edc-control-plane:19193/protocol/token}
       # Vault
       - EDC_VAULT_HASHICORP_URL=http://vault:8200
       - EDC_VAULT_HASHICORP_TOKEN=dev-root-token

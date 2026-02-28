@@ -14,14 +14,12 @@ from __future__ import annotations
 
 import base64
 import logging
-import uuid
 from typing import Any
 
 import httpx
 
 from app.services.dataspace.edc.tractus_x_client import (
     EDCClientError,
-    EDCAssetNotFoundError,
     EDCAssetConflictError,
     EDCAuthenticationError,
     EDCConnectionError,

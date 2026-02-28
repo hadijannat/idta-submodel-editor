@@ -4,9 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
-from app.schemas.magic_import import BBox, PDFIndex, PDFIndexInfo, PDFPageInfo, PDFWord
+from app.schemas.magic_import import BBox, PDFIndex, PDFIndexInfo, PDFWord
 
 
 class TestPDFIndexer:

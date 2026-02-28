@@ -8,7 +8,7 @@ Tests bidirectional SAMM ↔ AAS conversion including:
 """
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.services.samm.converter import SAMMConverter
 from app.services.samm.generator import SAMMGenerator

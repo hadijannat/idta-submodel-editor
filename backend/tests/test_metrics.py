@@ -4,17 +4,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from app.metrics import (
-    app_info,
-    magic_import_jobs_total,
     magic_import_job_duration_seconds,
-    dataspace_publications_total,
-    dataspace_publication_duration_seconds,
-    template_fetch_total,
-    template_fetch_duration_seconds,
-    semantic_lookup_total,
-    semantic_lookup_duration_seconds,
-    validation_total,
-    export_total,
     set_app_info,
     track_duration,
     timed,

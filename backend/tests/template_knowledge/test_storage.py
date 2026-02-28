@@ -1,7 +1,6 @@
 """Tests for Template Knowledge System storage layer."""
 
 import pytest
-from datetime import datetime
 from pathlib import Path
 import tempfile
 
