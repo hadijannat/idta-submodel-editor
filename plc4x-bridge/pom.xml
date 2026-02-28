@@ -15,14 +15,14 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.0</version>
+        <version>4.0.3</version>
         <relativePath/>
     </parent>
 
     <properties>
         <java.version>17</java.version>
         <plc4x.version>0.13.1</plc4x.version>
-        <springdoc.version>2.3.0</springdoc.version>
+        <springdoc.version>3.0.2</springdoc.version>
     </properties>
 
     <dependencies>
