@@ -408,7 +408,8 @@ jobs:
           trap cleanup EXIT
           for i in {1..24}; do
             if curl -fsS http://localhost:18090/actuator/health > /dev/null && \
-               curl -fsS http://localhost:18090/v3/api-docs > /dev/null; then
+               (curl -fsS http://localhost:18090/v3/api-docs > /dev/null || \
+                curl -fsS http://localhost:18090/api-docs > /dev/null); then
               exit 0
             fi
             sleep 5
