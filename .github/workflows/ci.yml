@@ -19,6 +19,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      frontend_lockfile: ${{ steps.filter.outputs.frontend_lockfile }}
       plc4x: ${{ steps.filter.outputs.plc4x }}
       docker: ${{ steps.filter.outputs.docker }}
       workflows: ${{ steps.filter.outputs.workflows }}
@@ -37,6 +38,8 @@ jobs:
               - 'backend/**'
             frontend:
               - 'frontend/**'
+            frontend_lockfile:
+              - 'frontend/package-lock.json'
             plc4x:
               - 'plc4x-bridge/**'
             docker:
@@ -206,6 +209,28 @@ jobs:
         with:
           name: frontend-coverage
           path: frontend/coverage/
+
+  frontend-lockfile-audit:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend_lockfile == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run high-severity audit gate
+        run: npm audit --audit-level=high
+        working-directory: frontend
 
   frontend-build:
     runs-on: ubuntu-latest
