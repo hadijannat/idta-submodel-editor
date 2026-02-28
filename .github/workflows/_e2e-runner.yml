@@ -1,0 +1,181 @@
+name: E2E Runner
+
+on:
+  workflow_call:
+    inputs:
+      test_command:
+        description: "Command to execute from frontend/"
+        required: true
+        type: string
+      artifact_name:
+        description: "Name for uploaded Playwright report artifact"
+        required: true
+        type: string
+      use_compose:
+        description: "Whether to start services via docker compose"
+        required: false
+        default: false
+        type: boolean
+      compose_profiles:
+        description: "Space or comma separated compose profiles"
+        required: false
+        default: ""
+        type: string
+      compose_wait_timeout:
+        description: "Compose wait timeout in seconds"
+        required: false
+        default: 300
+        type: number
+      playwright_install_args:
+        description: "Arguments passed to playwright install"
+        required: false
+        default: "--with-deps chromium"
+        type: string
+      frontend_dist_artifact:
+        description: "Artifact name containing frontend dist; if set, skip frontend build"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      DEMO_BASE_URL: http://localhost:8080
+      VITE_API_URL: http://localhost:8000
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install aas-test-engines
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers
+        run: npx playwright install ${{ inputs.playwright_install_args }}
+        working-directory: frontend
+
+      - name: Download built frontend
+        if: ${{ !inputs.use_compose && inputs.frontend_dist_artifact != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.frontend_dist_artifact }}
+          path: frontend/dist
+
+      - name: Verify dist layout
+        if: ${{ !inputs.use_compose && inputs.frontend_dist_artifact != '' }}
+        run: |
+          if [ ! -f "frontend/dist/index.html" ] && [ -f "frontend/dist/dist/index.html" ]; then
+            shopt -s dotglob
+            mv frontend/dist/dist/* frontend/dist/
+            rmdir frontend/dist/dist
+          fi
+          test -f "frontend/dist/index.html"
+
+      - name: Build frontend
+        if: ${{ !inputs.use_compose && inputs.frontend_dist_artifact == '' }}
+        run: npm run build
+        working-directory: frontend
+
+      - name: Start backend server
+        if: ${{ !inputs.use_compose }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd backend
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          for i in {1..30}; do
+            curl -s http://localhost:8000/health && break
+            echo "Waiting for backend... ($i/30)"
+            sleep 2
+          done
+
+      - name: Serve frontend
+        if: ${{ !inputs.use_compose }}
+        run: |
+          cd frontend
+          npx serve -s dist -l 8080 &
+          for i in {1..15}; do
+            curl -s http://localhost:8080 && break
+            echo "Waiting for frontend... ($i/15)"
+            sleep 2
+          done
+
+      - name: Start services with compose profiles
+        if: ${{ inputs.use_compose }}
+        run: |
+          profiles="${{ inputs.compose_profiles }}"
+          profiles="${profiles//,/ }"
+          read -r -a profile_list <<< "$profiles"
+          profile_args=()
+          for profile in "${profile_list[@]}"; do
+            [ -n "$profile" ] || continue
+            profile_args+=(--profile "$profile")
+          done
+          docker compose "${profile_args[@]}" up -d --wait --wait-timeout ${{ inputs.compose_wait_timeout }}
+
+      - name: Warm up template cache
+        continue-on-error: true
+        run: |
+          curl -s "http://localhost:8000/api/editor/templates/Digital%20Nameplate/schema" > /dev/null || true
+          sleep 2
+
+      - name: Run E2E tests
+        env:
+          CI: true
+        run: ${{ inputs.test_command }}
+        working-directory: frontend
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+
+      - name: Stop compose services
+        if: ${{ always() && inputs.use_compose }}
+        run: |
+          profiles="${{ inputs.compose_profiles }}"
+          profiles="${profiles//,/ }"
+          read -r -a profile_list <<< "$profiles"
+          profile_args=()
+          for profile in "${profile_list[@]}"; do
+            [ -n "$profile" ] || continue
+            profile_args+=(--profile "$profile")
+          done
+          docker compose "${profile_args[@]}" down --remove-orphans
