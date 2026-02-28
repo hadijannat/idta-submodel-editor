@@ -7,6 +7,47 @@ import { PassportView } from '../index';
 
 const STORAGE_KEY = 'passport-mode-preference';
 
+const createStorageMock = (): Storage => {
+  const store = new Map<string, string>();
+
+  return {
+    getItem: (key: string) => store.get(String(key)) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(String(key), String(value));
+    },
+    removeItem: (key: string) => {
+      store.delete(String(key));
+    },
+    clear: () => {
+      store.clear();
+    },
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+};
+
+const getTestLocalStorage = (): Storage => {
+  const localStorageCandidate = window.localStorage as Partial<Storage> | undefined;
+  if (
+    localStorageCandidate &&
+    typeof localStorageCandidate.getItem === 'function' &&
+    typeof localStorageCandidate.setItem === 'function' &&
+    typeof localStorageCandidate.clear === 'function'
+  ) {
+    return window.localStorage;
+  }
+
+  const storageMock = createStorageMock();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: storageMock,
+    writable: true,
+  });
+  return storageMock;
+};
+
 const baseElement = (overrides: Partial<UIElementSchema>): UIElementSchema => ({
   idShort: 'Element',
   modelType: 'Property',
@@ -43,10 +84,7 @@ describe('PassportView integration', () => {
   });
 
   beforeEach(() => {
-    // Node 25 + jsdom can expose a non-standard localStorage shim in CI.
-    if (typeof window !== 'undefined' && typeof window.localStorage?.clear === 'function') {
-      window.localStorage.clear();
-    }
+    getTestLocalStorage().clear();
   });
 
   it('toggles views and reflects live updates', async () => {
@@ -89,7 +127,8 @@ describe('PassportView integration', () => {
   });
 
   it('restores initial mode from jsdom localStorage', () => {
-    window.localStorage.setItem(STORAGE_KEY, 'passport');
+    const storage = getTestLocalStorage();
+    storage.setItem(STORAGE_KEY, 'passport');
     const schema = makeSchema([baseElement({ idShort: 'SerialNumber', modelType: 'Property' })]);
 
     render(
@@ -105,6 +144,7 @@ describe('PassportView integration', () => {
 
   it('persists mode changes to jsdom localStorage', async () => {
     const user = userEvent.setup();
+    const storage = getTestLocalStorage();
     const schema = makeSchema([baseElement({ idShort: 'SerialNumber', modelType: 'Property' })]);
 
     render(
@@ -114,17 +154,17 @@ describe('PassportView integration', () => {
     );
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('editor');
+      expect(storage.getItem(STORAGE_KEY)).toBe('editor');
     });
 
     await user.click(screen.getByRole('button', { name: /passport view/i }));
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('passport');
+      expect(storage.getItem(STORAGE_KEY)).toBe('passport');
     });
 
     await user.click(screen.getByRole('button', { name: /editor/i }));
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('editor');
+      expect(storage.getItem(STORAGE_KEY)).toBe('editor');
     });
   });
 });
