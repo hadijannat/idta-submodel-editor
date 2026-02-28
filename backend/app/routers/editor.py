@@ -329,7 +329,7 @@ async def upload_aasx(
             error=str(e),
             filename=file.filename,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to parse uploaded AASX")
         return UploadResponse(
             success=False,
@@ -465,7 +465,7 @@ async def upload_local_template(
             success=False,
             error=str(e),
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to upload local template")
         return LocalTemplateUploadResponse(
             success=False,

@@ -6,9 +6,7 @@ Tests audit log creation, retrieval, filtering, and persistence.
 
 import json
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-import pytest
 
 from app.services.dataspace.audit_service import AuditService
 from app.services.dataspace.models import AuditEventType, AuditLogEntry

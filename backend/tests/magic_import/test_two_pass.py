@@ -5,13 +5,11 @@ Tests candidate generation, verification, and the complete two-pass flow.
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 from app.schemas.magic_import import (
     BBox,
     CandidateSet,
-    ConfidenceBreakdown,
-    EvidenceRef,
     ExtractionCandidate,
     ExtractionHint,
     ExtractionStatus,

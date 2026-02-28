@@ -243,10 +243,9 @@ class TestSemanticIdPreservation:
 
         semantic_ids = _extract_semantic_ids_from_schema(schema)
 
-        # Should have at least some semantic IDs
-        non_null_ids = [sid for sid in semantic_ids.values() if sid is not None]
-        # Some templates may not have semantic IDs - that's okay
-        # The test just verifies extraction works
+        assert isinstance(semantic_ids, dict)
+        # Some templates may not have semantic IDs - that's okay.
+        # This test verifies extraction completes without data loss.
 
 
 class TestRoundTripPreservation:

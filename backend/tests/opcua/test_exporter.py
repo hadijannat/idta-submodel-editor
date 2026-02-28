@@ -4,9 +4,8 @@ Tests for OPC UA NodeSet Exporter.
 Tests converting AAS structures to NodeSet2.xml format.
 """
 
-import pytest
 
-from app.services.opcua.exporter import NodeSetExporter, ExportResult
+from app.services.opcua.exporter import NodeSetExporter
 
 
 # Sample AAS template for testing

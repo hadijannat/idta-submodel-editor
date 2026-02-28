@@ -247,7 +247,7 @@ def publish_submodel(
         Result summary dictionary
     """
     from app.services.dataspace.connection_manager import ConnectionManager
-    from app.services.dataspace.models import ConnectionStatus, RegistrationStatus
+    from app.services.dataspace.models import ConnectionStatus
     from app.services.fetcher import TemplateFetcherService
     from app.services.hydrator import HydratorService
 
@@ -763,7 +763,6 @@ def negotiate_contract_task(self, negotiation_id: str) -> dict:
         Result summary dictionary
     """
     from app.services.dataspace.connection_manager import ConnectionManager
-    from app.services.dataspace.models import ContractState
 
     manager = ConnectionManager()
     start_time = time.time()
@@ -933,9 +932,6 @@ def sync_registrations_task(connection_id: str) -> dict:
             "message": "No registrations to sync",
         }
 
-    # Get provider for checking DTR state
-    provider = get_provider_for_connection(connection)
-
     synced_count = 0
     errors = []
 
@@ -989,7 +985,7 @@ def disconnect_dataspace_task(connection_id: str) -> dict:
 
     try:
         provider = get_provider_for_connection(connection)
-        updated_connection = run_async(provider.disconnect(connection))
+        run_async(provider.disconnect(connection))
 
         manager.update_connection(
             connection_id,

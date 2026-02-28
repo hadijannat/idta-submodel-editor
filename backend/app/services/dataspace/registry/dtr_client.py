@@ -596,7 +596,6 @@ class DTRClient:
         Returns:
             List of matching Submodel Descriptors
         """
-        encoded_id = self.encode_id(shell_id)
         logger.debug("Looking up submodels by semantic ID %s", semantic_id)
 
         # Get all submodels and filter by semantic ID

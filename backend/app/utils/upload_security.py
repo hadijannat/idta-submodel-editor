@@ -10,7 +10,7 @@ Provides secure file upload validation that checks:
 import secrets
 from dataclasses import dataclass
 from enum import Enum
-from typing import BinaryIO, Protocol
+from typing import Protocol
 
 from app.errors import APIError, ErrorCode
 

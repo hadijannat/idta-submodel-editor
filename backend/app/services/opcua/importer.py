@@ -374,7 +374,6 @@ class NodeSetImporter:
 
         # Handle various value types
         for child in value_elem:
-            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             if child.text:
                 return child.text.strip()
 

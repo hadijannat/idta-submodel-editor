@@ -5,7 +5,7 @@ Tests transfer initiation, listing, retrieval, EDR access, and termination.
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI, HTTPException, Request, status
@@ -49,7 +49,6 @@ def create_test_app(mock_manager=None, mock_checker=None, mock_settings=None):
         mock_settings.dataspace_default_environment = "sandbox"
         mock_settings.dataspace_default_edc_mode = "tractus-x"
 
-    original_get_settings = dataspace_module.get_settings
     dataspace_module.get_settings = lambda: mock_settings
 
     app = FastAPI()

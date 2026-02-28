@@ -2,11 +2,8 @@
 
 import os
 import time
-from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
 from app.services.fetcher import TemplateFetcherService

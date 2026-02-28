@@ -530,7 +530,7 @@ class TestHealthCheckTask:
 
             from app.services.dataspace.tasks import health_check_task
 
-            result = health_check_task(None)
+            health_check_task(None)
 
             mock_check_all.assert_called_once()
 

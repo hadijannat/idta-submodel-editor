@@ -16,7 +16,6 @@ from app.services.dataspace.catalog_service import (
     ProviderInfo,
 )
 from app.services.dataspace.models import (
-    ConnectionState,
     ConnectionStatus,
     ContractNegotiation,
     ContractState,

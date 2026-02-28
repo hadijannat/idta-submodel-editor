@@ -7,11 +7,8 @@ to Catena-X SAMM (Semantic Aspect Meta Model) format.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any
 
 from app.services.samm.models import (
     AAS_TO_SAMM_TYPE_MAP,
@@ -189,7 +186,6 @@ class SAMMGenerator:
 
         elif element_type == "SubmodelElementList":
             # Create collection characteristic
-            item_type = element.get("typeValueListElement", "Property")
             char_urn = f"{base_urn}{name}Characteristic"
 
             characteristics.append(

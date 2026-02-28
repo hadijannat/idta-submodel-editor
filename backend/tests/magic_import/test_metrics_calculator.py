@@ -7,7 +7,6 @@ auto-apply eligibility, and weighted confidence.
 """
 
 import pytest
-from datetime import datetime, timezone
 
 from app.schemas.magic_import import (
     AutoApplyThresholds,

@@ -10,9 +10,12 @@ Provides custom metrics for:
 import time
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, Generator
+from typing import TYPE_CHECKING, Any, Callable, Generator
 
 from prometheus_client import Counter, Histogram, Info
+
+if TYPE_CHECKING:
+    from app.schemas.magic_import import QualityMetrics
 
 # Application info
 app_info = Info("idta_submodel_editor", "IDTA Submodel Editor application info")
@@ -211,7 +214,6 @@ def record_quality_metrics(
         template_name: Name of the template being processed
         quality_metrics: QualityMetrics object from MetricsCalculator
     """
-    from app.schemas.magic_import import QualityMetrics as QualityMetricsSchema
 
     # Record quality scores as histogram observations
     magic_import_quality_score.labels(

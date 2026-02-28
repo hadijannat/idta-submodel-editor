@@ -3,13 +3,11 @@
 import uuid
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.errors import APIError, ErrorCode, ErrorResponse, ERROR_CODE_STATUS
 from app.main import app
 from app.middleware.correlation import (
-    CorrelationIdMiddleware,
     get_correlation_id,
     generate_correlation_id,
     correlation_id_ctx,

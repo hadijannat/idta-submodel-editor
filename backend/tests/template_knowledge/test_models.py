@@ -1,6 +1,5 @@
 """Tests for Template Knowledge System data models."""
 
-import pytest
 from datetime import datetime
 
 from app.services.template_knowledge.models import (
