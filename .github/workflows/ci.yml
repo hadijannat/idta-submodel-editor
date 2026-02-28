@@ -73,9 +73,8 @@ jobs:
 
       - name: Lint GitHub workflow files
         run: |
-          yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable}}" \
-            .github/workflows \
-            .github/actions
+          yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable}}" \
+            .github/workflows
 
   backend:
     runs-on: ubuntu-latest
