@@ -1,9 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { SubmodelUISchema, UIElementSchema } from '../../../types/ui-schema';
 import type { SubmodelFormData } from '../../../types/aas-elements';
 import { PassportView } from '../index';
+
+const STORAGE_KEY = 'passport-mode-preference';
 
 const baseElement = (overrides: Partial<UIElementSchema>): UIElementSchema => ({
   idShort: 'Element',
@@ -36,6 +38,10 @@ const makeFormData = (value: string): SubmodelFormData => ({
 });
 
 describe('PassportView integration', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     // Node 25 + jsdom can expose a non-standard localStorage shim in CI.
     if (typeof window !== 'undefined' && typeof window.localStorage?.clear === 'function') {
@@ -80,5 +86,45 @@ describe('PassportView integration', () => {
     await waitFor(() => {
       expect(screen.getByText('456')).toBeInTheDocument();
     }, { timeout: 500 });
+  });
+
+  it('restores initial mode from jsdom localStorage', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'passport');
+    const schema = makeSchema([baseElement({ idShort: 'SerialNumber', modelType: 'Property' })]);
+
+    render(
+      <PassportView schema={schema} formData={makeFormData('123')}>
+        <div data-testid="editor">Editor content</div>
+      </PassportView>
+    );
+
+    expect(screen.getByRole('button', { name: /passport view/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('123')).toBeInTheDocument();
+    expect(screen.getByTestId('editor')).not.toBeVisible();
+  });
+
+  it('persists mode changes to jsdom localStorage', async () => {
+    const user = userEvent.setup();
+    const schema = makeSchema([baseElement({ idShort: 'SerialNumber', modelType: 'Property' })]);
+
+    render(
+      <PassportView schema={schema} formData={makeFormData('123')}>
+        <div data-testid="editor">Editor content</div>
+      </PassportView>
+    );
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('editor');
+    });
+
+    await user.click(screen.getByRole('button', { name: /passport view/i }));
+    await waitFor(() => {
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('passport');
+    });
+
+    await user.click(screen.getByRole('button', { name: /editor/i }));
+    await waitFor(() => {
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe('editor');
+    });
   });
 });
