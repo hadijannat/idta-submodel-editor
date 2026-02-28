@@ -83,6 +83,8 @@ Then open `http://localhost:8080`.
 
 ### Local Development
 
+Prerequisite: Node.js `>=20.19.0` for frontend tooling (CI currently runs on Node `25`).
+
 #### Backend
 
 ```bash
