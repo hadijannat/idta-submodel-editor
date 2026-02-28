@@ -8,7 +8,15 @@ from unittest.mock import patch
 import pytest
 
 from app.errors import APIError
-from app.services.conformance import run_conformance_check
+from app.services.conformance import get_engine_version, run_conformance_check
+
+
+@pytest.fixture(autouse=True)
+def clear_engine_version_cache():
+    """Avoid cross-test pollution from the cached CLI version lookup."""
+    get_engine_version.cache_clear()
+    yield
+    get_engine_version.cache_clear()
 
 
 def test_run_conformance_check_success(tmp_path: Path):
@@ -93,3 +101,42 @@ def test_run_conformance_check_marks_error_output_as_failure(tmp_path: Path):
 
     assert result.passed is False
     assert len(result.errors) == 1
+
+
+def test_get_engine_version_uses_stderr_when_stdout_empty():
+    cmd = ["aas_test_engines", "--version"]
+    with patch(
+        "app.services.conformance.subprocess.run",
+        return_value=CompletedProcess(
+            cmd,
+            0,
+            stdout="",
+            stderr="aas-test-engines 1.0.3",
+        ),
+    ):
+        version = get_engine_version()
+
+    assert version == "aas-test-engines 1.0.3"
+
+
+def test_run_conformance_check_parses_stderr_issues(tmp_path: Path):
+    artifact = tmp_path / "artifact.aasx"
+    artifact.write_bytes(b"PK\x03\x04dummy")
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        if cmd[:2] == ["aas_test_engines", "--version"]:
+            return CompletedProcess(cmd, 0, stdout="aas-test-engines 1.0.3", stderr="")
+        return CompletedProcess(
+            cmd,
+            1,
+            stdout="",
+            stderr="FAILED check AAS shell\nWARNING minor field issue",
+        )
+
+    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+        result = run_conformance_check(artifact, "aasx")
+
+    assert result.passed is False
+    assert len(result.errors) == 1
+    assert len(result.warnings) == 1
