@@ -23,7 +23,7 @@ No fix ships without a test.
 
 ## Deployment Governance Prerequisite
 
-Repository admins must enforce branch protection/rulesets on the default branch (typically `main`) and any release branches, with required status checks and required pull requests. This playbook assumes those controls are active.
+Repository admins must enforce branch protection/rulesets on `main` (or an explicitly designated default branch) and any release branches, with required status checks and required pull requests. This playbook assumes those controls are active.
 
 ## Baseline Verification
 
