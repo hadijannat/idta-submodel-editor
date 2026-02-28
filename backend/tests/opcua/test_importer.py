@@ -4,9 +4,8 @@ Tests for OPC UA NodeSet Importer.
 Tests parsing NodeSet2.xml files and converting to AAS structure.
 """
 
-import pytest
 
-from app.services.opcua.importer import NodeSetImporter, OPCUANode, ImportResult
+from app.services.opcua.importer import NodeSetImporter
 
 
 # Sample NodeSet2.xml content for testing

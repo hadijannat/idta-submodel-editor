@@ -5,8 +5,7 @@ Tests the parser AAS metadata extraction, conformance summary generation,
 and PDF template rendering with AAS/conformance data.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from app.services.parser import ParserService
 from app.services.pdf_conformance import (

@@ -2,7 +2,6 @@
 Tests for emission factors search functionality.
 """
 
-import pytest
 from app.services.pcf.emission_factors import (
     search_emission_factors,
     get_emission_factor_by_id,

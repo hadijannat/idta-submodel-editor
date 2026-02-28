@@ -5,7 +5,6 @@ Integrates with GitHub API to discover and cache IDTA templates
 from the admin-shell-io/submodel-templates repository.
 """
 
-import base64
 import hashlib
 import json
 import logging

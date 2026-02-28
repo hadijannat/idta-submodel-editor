@@ -5,13 +5,12 @@ Tests the orchestration of hydration and publication to BaSyx and DTR.
 """
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.services.dataspace.publisher import (
     AASPublisher,
-    AASPublisherError,
     PublicationResult,
 )
 from app.services.dataspace.registry.basyx_client import (

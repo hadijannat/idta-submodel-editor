@@ -3,7 +3,7 @@ Tests for the Parser service.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from io import BytesIO
 
 from basyx.aas import model

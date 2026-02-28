@@ -27,11 +27,8 @@ from app.schemas.magic_import import (
     PDFIndexInfo,
 )
 from app.services.magic_import.audit_report import (
-    AuditFieldEntry,
     AuditReport,
     AuditReportGenerator,
-    AuditReportMetadata,
-    AuditReportSummary,
     ReviewStatus,
 )
 

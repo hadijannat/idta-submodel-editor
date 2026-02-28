@@ -14,8 +14,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from basyx.aas import model
-from basyx.aas.adapter import aasx as aasx_adapter
 from fastapi import UploadFile
 
 from app.config import get_settings

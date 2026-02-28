@@ -39,6 +39,39 @@ async function waitForMagicImportCompletion(
 }
 
 test.describe('Magic Import PDF Upload', () => {
+  test.afterEach(async ({ page }, testInfo) => {
+    if (testInfo.status === testInfo.expectedStatus) return;
+
+    const activeStepText = (
+      await page
+        .locator('.wizard-stepper button.wizard-step.active .wizard-step-title')
+        .first()
+        .textContent()
+        .catch(() => null)
+    )?.trim();
+
+    const wizardPanelHtml = await page
+      .locator('.wizard-panel')
+      .first()
+      .innerHTML()
+      .catch(() => null);
+
+    await testInfo.attach('debug-url.txt', {
+      body: Buffer.from(page.url()),
+      contentType: 'text/plain',
+    });
+
+    await testInfo.attach('debug-active-step.txt', {
+      body: Buffer.from(activeStepText || 'unknown'),
+      contentType: 'text/plain',
+    });
+
+    await testInfo.attach('debug-wizard-panel.html', {
+      body: Buffer.from(wizardPanelHtml || '<wizard-panel-unavailable/>'),
+      contentType: 'text/html',
+    });
+  });
+
   test.describe('UI Flow', () => {
     test('Magic Import step is available', async ({ page }) => {
       const templateSelector = new TemplateSelectorPage(page);
@@ -61,10 +94,7 @@ test.describe('Magic Import PDF Upload', () => {
       await formEditor.waitForFormReady();
 
       await formEditor.goToStep('magic-import');
-
-      // Wait for lazy-loaded panel to mount
-      const magicImportPanel = page.locator('.magic-import-panel');
-      await expect(magicImportPanel).toBeVisible({ timeout: 30000 });
+      await formEditor.waitForMagicImportPanel();
     });
 
     test('file upload input is available', async ({ page }) => {
@@ -75,6 +105,7 @@ test.describe('Magic Import PDF Upload', () => {
       await templateSelector.searchAndSelectTemplate(TEST_TEMPLATE);
       await formEditor.waitForFormReady();
       await formEditor.goToStep('magic-import');
+      await formEditor.waitForMagicImportPanel();
 
       // Input is intentionally transparent; assert it is present and the dropzone is visible.
       const dropzone = page.locator('.magic-import-panel__dropzone');

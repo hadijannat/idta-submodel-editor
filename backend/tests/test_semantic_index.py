@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Tests for SemanticIndex performance optimization."""
 
-import pytest
 from basyx.aas import model
 
 from app.utils.semantic_index import SemanticIndex

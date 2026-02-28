@@ -5,6 +5,14 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   refresh-fixtures:
     runs-on: ubuntu-latest
@@ -15,6 +23,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
 
       - name: Install backend dependencies
         run: |
@@ -45,7 +55,7 @@ jobs:
 
       - name: Create PR
         if: steps.git-check.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c
         with:
           commit-message: "chore: refresh AAS fixtures"
           title: "chore: refresh AAS fixtures"

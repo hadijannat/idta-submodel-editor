@@ -20,7 +20,6 @@ from typing import Callable, Literal
 from pydantic import BaseModel, Field
 
 from app.schemas.magic_import import (
-    BBox,
     ConfidenceReason,
     ConfidenceReasonCode,
     EvidenceRef,

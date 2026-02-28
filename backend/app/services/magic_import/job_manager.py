@@ -21,9 +21,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
-# Version for idempotency key computation - increment when extraction logic changes
-EXTRACTOR_VERSION = "1.0.0"
-
 from app.config import get_settings
 from app.schemas.magic_import import (
     DocumentClassification,
@@ -32,8 +29,10 @@ from app.schemas.magic_import import (
     MagicImportResult,
     PDFIndex,
     PDFIndexInfo,
-    FieldExtraction,
 )
+
+# Version for idempotency key computation - increment when extraction logic changes
+EXTRACTOR_VERSION = "1.0.0"
 
 logger = logging.getLogger(__name__)
 

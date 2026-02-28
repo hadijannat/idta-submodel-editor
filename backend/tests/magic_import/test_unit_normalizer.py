@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.magic_import.unit_normalizer import NormalizedValue, UnitNormalizer
+from app.services.magic_import.unit_normalizer import UnitNormalizer
 
 
 @pytest.fixture

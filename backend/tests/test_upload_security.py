@@ -6,7 +6,6 @@ from app.errors import APIError, ErrorCode
 from app.utils.upload_security import (
     FileType,
     UploadValidator,
-    ValidationResult,
     check_magic_bytes,
     read_upload_file,
     generate_secure_filename,

@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -160,7 +160,6 @@ class TestSettingsService:
         from app.services.settings_service import (
             load_llm_settings,
             save_llm_settings,
-            LLMSettings,
         )
 
         # Load empty settings (creates default)
@@ -210,7 +209,6 @@ class TestSettingsService:
 
         from app.services.settings_service import (
             update_provider_config,
-            get_provider_config,
             get_decrypted_api_key,
         )
 

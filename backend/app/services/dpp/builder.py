@@ -13,7 +13,6 @@ import re
 import uuid
 from datetime import datetime, timezone
 from io import BytesIO
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.config import get_settings
@@ -312,7 +311,7 @@ class DPPBuilder:
 
             return result
 
-        except Exception as e:
+        except Exception:
             package.status = DPPPackageStatus.INVALID
             package.updated_at = datetime.now(timezone.utc)
             self._save_package(package)
