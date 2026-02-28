@@ -139,6 +139,42 @@ def test_create_job_persists_snippet_overrides(monkeypatch):
             assert parsed[0].text == "[REDACTED]"
 
 
+def test_create_job_falls_back_to_sync_when_delay_raises():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        settings = Settings(
+            magic_import_enabled=True,
+            magic_import_max_pdf_size_mb=5,
+            magic_import_cache_dir=Path(tmp_dir),
+        )
+        calls: list[str] = []
+
+        class _FakeTask:
+            def delay(self, *_args, **_kwargs):
+                raise RuntimeError("broker unavailable")
+
+            def __call__(self, *_args, **_kwargs):
+                calls.append("sync")
+                return None
+
+        with (
+            patch("app.routers.magic_import.get_settings", return_value=settings),
+            patch("app.services.magic_import.job_manager.get_settings", return_value=settings),
+            patch("app.services.magic_import.tasks.process_magic_import_job", _FakeTask()),
+        ):
+            with TestClient(_build_app()) as client:
+                response = client.post(
+                    "/api/magic-import/jobs",
+                    files={"file": ("datasheet.pdf", _pdf_payload(), "application/pdf")},
+                    data={
+                        "template_name": "Digital Nameplate",
+                        "template_status": "published",
+                    },
+                )
+
+        assert response.status_code == 200
+        assert calls == ["sync"]
+
+
 def test_create_job_rejects_excessive_snippet_overrides():
     snippets = [
         {
