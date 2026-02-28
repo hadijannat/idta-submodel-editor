@@ -37,7 +37,10 @@ const makeFormData = (value: string): SubmodelFormData => ({
 
 describe('PassportView integration', () => {
   beforeEach(() => {
-    localStorage.clear();
+    // Node 25 + jsdom can expose a non-standard localStorage shim in CI.
+    if (typeof window !== 'undefined' && typeof window.localStorage?.clear === 'function') {
+      window.localStorage.clear();
+    }
   });
 
   it('toggles views and reflects live updates', async () => {

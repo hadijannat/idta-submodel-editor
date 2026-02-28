@@ -1,12 +1,12 @@
 # Multi-stage build for IDTA Submodel Editor Frontend
 
 # Stage 1: Development
-FROM node:20-alpine as development
+FROM node:25-alpine AS development
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 
@@ -16,7 +16,7 @@ CMD ["npm", "run", "dev", "--", "--host"]
 
 
 # Stage 2: Build
-FROM node:20-alpine as build
+FROM node:25-alpine AS build
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ RUN npm run build
 
 
 # Stage 3: Production (nginx)
-FROM nginx:alpine as production
+FROM nginx:alpine AS production
 
 # Copy custom nginx config
 COPY --from=build /app/dist /usr/share/nginx/html
