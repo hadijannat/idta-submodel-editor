@@ -113,3 +113,46 @@ async def test_request_json_uses_ssl_context_with_cert_only(tmp_path: Path):
     mock_client.get.assert_awaited_once_with(
         "https://example.com/resolve", params={"id": "123"}
     )
+
+
+@pytest.mark.asyncio
+async def test_request_json_uses_default_tls_verification_without_client_cert():
+    provider = EclassOnlineProvider(
+        base_url="https://example.com",
+        search_url="/search",
+        resolve_url="/resolve",
+        cert_path=None,
+        key_path=None,
+        cert_password=None,
+        enabled=True,
+        cache_ttl_seconds=60,
+        cache_max_entries=10,
+        search_rate_limit=100,
+        resolve_rate_limit=100,
+        timeout_seconds=5.0,
+    )
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {"ok": True}
+
+    with patch(
+        "app.services.semantic.eclass_online_provider.ssl.create_default_context"
+    ) as mock_create_context:
+        with patch(
+            "app.services.semantic.eclass_online_provider.httpx.AsyncClient"
+        ) as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get.return_value = mock_response
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            payload = await provider._request_json(
+                "https://example.com/search", params={"q": "no-cert"}
+            )
+
+    assert payload == {"ok": True}
+    mock_create_context.assert_not_called()
+    mock_client_class.assert_called_once_with(timeout=5.0, verify=True)
+    mock_client.get.assert_awaited_once_with(
+        "https://example.com/search", params={"q": "no-cert"}
+    )
