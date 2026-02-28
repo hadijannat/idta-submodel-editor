@@ -1,10 +1,9 @@
 name: E2E Tests
 
 on:
-  # Nightly runs at 2 AM UTC
   schedule:
-    - cron: '0 2 * * *'
-  # Manual trigger with profile selection
+    - cron: '0 2 * * 1-6'
+    - cron: '0 2 * * 0'
   workflow_dispatch:
     inputs:
       profile:
@@ -22,306 +21,67 @@ on:
         required: false
         type: string
 
-env:
-  DEMO_BASE_URL: http://localhost:8080
-  VITE_API_URL: http://localhost:8000
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.schedule || github.event.inputs.profile || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # Nightly: Core functionality tests
   e2e-core:
-    runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'default')
-    steps:
-      - uses: actions/checkout@v4
+    uses: ./.github/workflows/_e2e-runner.yml
+    secrets: inherit
+    with:
+      test_command: npm run test:e2e -- --project=chromium
+      artifact_name: e2e-core-report
+      playwright_install_args: --with-deps chromium
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: 'backend/requirements.txt'
-
-      - name: Install backend dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
-          pip install aas-test-engines
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-        working-directory: frontend
-
-      - name: Start backend
-        run: |
-          cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          # Wait for backend to be healthy
-          for i in {1..30}; do
-            curl -s http://localhost:8000/health && break
-            echo "Waiting for backend... ($i/30)"
-            sleep 2
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and serve frontend
-        run: |
-          cd frontend && npm run build
-          npx serve -s dist -l 8080 &
-          # Wait for frontend to be ready
-          for i in {1..15}; do
-            curl -s http://localhost:8080 && break
-            echo "Waiting for frontend... ($i/15)"
-            sleep 2
-          done
-
-      - name: Warm up template cache
-        run: |
-          # Fetch Digital Nameplate schema to prime cache
-          curl -s "http://localhost:8000/api/editor/templates/Digital%20Nameplate/schema" > /dev/null || true
-          sleep 2
-        continue-on-error: true
-
-      - name: Run core E2E tests
-        run: npm run test:e2e -- --project=chromium
-        working-directory: frontend
-        env:
-          E2E_PROFILE: default
-          CI: true
-
-      - name: Upload test report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-core-report
-          path: |
-            frontend/playwright-report/
-            frontend/test-results/
-
-  # Weekly: Magic Import tests (requires LLM)
   e2e-magic-import:
-    runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'magic-import'
-    steps:
-      - uses: actions/checkout@v4
+    uses: ./.github/workflows/_e2e-runner.yml
+    secrets: inherit
+    with:
+      test_command: npm run test:e2e:magic-import -- --project=chromium
+      artifact_name: e2e-magic-import-report
+      use_compose: true
+      compose_profiles: magic-import
+      compose_wait_timeout: 180
+      playwright_install_args: --with-deps chromium
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -r backend/requirements.txt
-          pip install aas-test-engines
-          cd frontend && npm ci
-          npx playwright install --with-deps chromium
-
-      - name: Start services with magic-import profile
-        run: docker compose --profile magic-import up -d --wait --wait-timeout 180
-
-      - name: Run Magic Import E2E tests
-        run: npm run test:e2e:magic-import -- --project=chromium
-        working-directory: frontend
-        env:
-          CI: true
-
-      - name: Upload test report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-magic-import-report
-          path: |
-            frontend/playwright-report/
-            frontend/test-results/
-
-      - name: Stop services
-        if: always()
-        run: docker compose --profile magic-import down --remove-orphans
-
-  # Weekly: Dataspace tests
   e2e-dataspace:
-    runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'dataspace'
-    steps:
-      - uses: actions/checkout@v4
+    uses: ./.github/workflows/_e2e-runner.yml
+    secrets: inherit
+    with:
+      test_command: npm run test:e2e:dataspace -- --project=chromium
+      artifact_name: e2e-dataspace-report
+      use_compose: true
+      compose_profiles: dataspace
+      compose_wait_timeout: 300
+      playwright_install_args: --with-deps chromium
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -r backend/requirements.txt
-          pip install aas-test-engines
-          cd frontend && npm ci
-          npx playwright install --with-deps chromium
-
-      - name: Start services with dataspace profile
-        run: docker compose --profile dataspace up -d --wait --wait-timeout 300
-
-      - name: Run Dataspace E2E tests
-        run: npm run test:e2e:dataspace -- --project=chromium
-        working-directory: frontend
-        env:
-          CI: true
-
-      - name: Upload test report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-dataspace-report
-          path: |
-            frontend/playwright-report/
-            frontend/test-results/
-
-      - name: Stop services
-        if: always()
-        run: docker compose --profile dataspace down --remove-orphans
-
-  # Weekly: PLC tests
   e2e-plc:
-    runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'plc'
-    steps:
-      - uses: actions/checkout@v4
+    uses: ./.github/workflows/_e2e-runner.yml
+    secrets: inherit
+    with:
+      test_command: npm run test:e2e:plc -- --project=chromium
+      artifact_name: e2e-plc-report
+      use_compose: true
+      compose_profiles: dataspace plc
+      compose_wait_timeout: 300
+      playwright_install_args: --with-deps chromium
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -r backend/requirements.txt
-          pip install aas-test-engines
-          cd frontend && npm ci
-          npx playwright install --with-deps chromium
-
-      - name: Start services with dataspace and PLC profiles
-        run: docker compose --profile dataspace --profile plc up -d --wait --wait-timeout 300
-
-      - name: Run PLC E2E tests
-        run: npm run test:e2e:plc -- --project=chromium
-        working-directory: frontend
-        env:
-          CI: true
-
-      - name: Upload test report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-plc-report
-          path: |
-            frontend/playwright-report/
-            frontend/test-results/
-
-      - name: Stop services
-        if: always()
-        run: docker compose --profile dataspace --profile plc down --remove-orphans
-
-  # Cross-browser testing (weekly - Sunday only)
   e2e-cross-browser:
-    runs-on: ubuntu-latest
     if: github.event.schedule == '0 2 * * 0'
     strategy:
       matrix:
         browser: [chromium, firefox, webkit]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install -r backend/requirements.txt
-          pip install aas-test-engines
-          cd frontend && npm ci
-          npx playwright install --with-deps
-
-      - name: Start backend
-        run: |
-          cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          # Wait for backend to be healthy
-          for i in {1..30}; do
-            curl -s http://localhost:8000/health && break
-            echo "Waiting for backend... ($i/30)"
-            sleep 2
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and serve frontend
-        run: |
-          cd frontend && npm run build
-          npx serve -s dist -l 8080 &
-          # Wait for frontend to be ready
-          for i in {1..15}; do
-            curl -s http://localhost:8080 && break
-            echo "Waiting for frontend... ($i/15)"
-            sleep 2
-          done
-
-      - name: Warm up template cache
-        run: |
-          # Fetch Digital Nameplate schema to prime cache
-          curl -s "http://localhost:8000/api/editor/templates/Digital%20Nameplate/schema" > /dev/null || true
-          sleep 2
-        continue-on-error: true
-
-      - name: Run E2E smoke tests
-        run: npm run test:e2e:smoke -- --project=${{ matrix.browser }}
-        working-directory: frontend
-        env:
-          CI: true
-
-      - name: Upload test report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-report-${{ matrix.browser }}
-          path: |
-            frontend/playwright-report/
-            frontend/test-results/
+    uses: ./.github/workflows/_e2e-runner.yml
+    secrets: inherit
+    with:
+      test_command: npm run test:e2e:smoke -- --project=${{ matrix.browser }}
+      artifact_name: e2e-report-${{ matrix.browser }}
+      playwright_install_args: --with-deps

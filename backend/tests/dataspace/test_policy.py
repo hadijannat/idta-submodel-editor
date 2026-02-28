@@ -6,7 +6,6 @@ Tests ODRL builder, policy engine, and templates.
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 from app.schemas.dataspace import (
     AccessType,

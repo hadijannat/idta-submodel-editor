@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 
 from app.dependencies import OIDCValidator

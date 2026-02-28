@@ -5,10 +5,10 @@ Provides import, diff, migrate, and validate operations for templates.
 """
 
 import logging
-from io import BytesIO
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from pydantic import BaseModel
 
 from app.dependencies import get_fetcher, get_migration_service, get_parser
 from app.errors import APIError, ErrorCode
@@ -771,10 +771,7 @@ def _is_valid_value_type(value_type: str) -> bool:
 # -----------------------------------------------------------------------------
 
 
-from pydantic import BaseModel as PydanticBaseModel
-
-
-class SchemaDigestRequest(PydanticBaseModel):
+class SchemaDigestRequest(BaseModel):
     """Request to compute schema digest for a template."""
 
     template_name: str

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from PIL import Image
+    pass
 
 from app.config import get_settings
 from app.schemas.magic_import import (

@@ -4,7 +4,6 @@ Tests for the BaSyx and DTR registry clients.
 Uses pytest with respx for mocking httpx requests.
 """
 
-import base64
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,13 +14,11 @@ from app.services.dataspace.registry.basyx_client import (
     BaSyxClient,
     BaSyxClientError,
     BaSyxConflictError,
-    BaSyxNotFoundError,
 )
 from app.services.dataspace.registry.dtr_client import (
     DTRClient,
     DTRClientError,
     DTRConflictError,
-    DTRNotFoundError,
     DTRAuthenticationError,
 )
 

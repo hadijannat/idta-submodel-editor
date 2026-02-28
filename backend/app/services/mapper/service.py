@@ -17,7 +17,6 @@ from fastapi import UploadFile
 
 from app.config import get_settings
 from app.errors import APIError, ErrorCode
-from app.schemas.form_data import SubmodelFormData
 from app.schemas.mapper import (
     DatasetColumnProfile,
     DatasetFileInfo,

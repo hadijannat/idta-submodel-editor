@@ -16,7 +16,6 @@ from basyx.aas import model
 from basyx.aas.adapter import aasx
 
 from app.utils.semantic_resolver import (
-    get_description_text,
     get_unit_from_concept_description,
     resolve_semantic_label,
     resolve_semantic_description,

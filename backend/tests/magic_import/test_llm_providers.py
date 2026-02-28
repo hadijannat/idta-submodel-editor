@@ -1,11 +1,11 @@
 """Tests for LLM Providers."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.schemas.magic_import import ExtractionHint, LLMFieldExtraction, Snippet
+from app.schemas.magic_import import ExtractionHint, Snippet
 from app.services.magic_import.llm.provider_base import LLMProvider
 
 

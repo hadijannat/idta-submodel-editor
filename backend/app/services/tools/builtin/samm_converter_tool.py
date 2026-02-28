@@ -11,6 +11,7 @@ and AAS (Asset Administration Shell) structures.
 from __future__ import annotations
 
 import logging
+from importlib.util import find_spec
 from typing import ClassVar
 
 from fastapi import APIRouter
@@ -85,12 +86,7 @@ class SAMMConverterTool(BaseTool):
 
     def get_capabilities(self) -> dict:
         """Get SAMM Converter capabilities."""
-        try:
-            import rdflib
-
-            rdflib_available = True
-        except ImportError:
-            rdflib_available = False
+        rdflib_available = find_spec("rdflib") is not None
 
         return {
             "import_ttl": True,

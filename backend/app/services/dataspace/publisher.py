@@ -17,11 +17,8 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from io import BytesIO
 from typing import Any
 
-from basyx.aas import model
-from basyx.aas.adapter import json as aas_json
 
 from app.services.hydrator import HydratorService
 from app.services.dataspace.registry.basyx_client import (
@@ -34,7 +31,6 @@ from app.services.dataspace.registry.dtr_client import (
     DTRClientError,
     DTRConflictError,
 )
-from app.utils.aasx_reader import SafeAASXReader
 
 logger = logging.getLogger(__name__)
 
@@ -419,16 +415,6 @@ class AASPublisher:
 
         # Build specificAssetIds
         specific_asset_ids = asset_ids or []
-
-        # Build submodel reference
-        submodel_refs = [
-            {
-                "type": "ExternalReference",
-                "keys": [
-                    {"type": "Submodel", "value": submodel_id}
-                ],
-            }
-        ]
 
         descriptor = {
             "id": aas_id,

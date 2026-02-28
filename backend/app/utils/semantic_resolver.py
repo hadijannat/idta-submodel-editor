@@ -38,7 +38,6 @@ def resolve_semantic_label(
     Returns:
         Human-readable label or None if not found
     """
-    from basyx.aas import model
 
     if language_priority is None:
         language_priority = DEFAULT_LANGUAGE_PRIORITY

@@ -18,7 +18,6 @@ from app.services import settings_service
 from app.services.settings_service import (
     ProviderType,
     get_provider_models,
-    PROVIDER_MODELS,
 )
 
 logger = logging.getLogger(__name__)

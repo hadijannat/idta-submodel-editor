@@ -13,7 +13,6 @@ from pydantic import BaseModel
 from app.services.tools.registry import ToolRegistry, get_tool_registry
 from app.services.tools.capabilities import (
     generate_capability_report,
-    generate_all_capability_reports,
 )
 
 

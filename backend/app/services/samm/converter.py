@@ -196,8 +196,6 @@ class SAMMConverter:
         """Convert SAMM aspect to AAS template structure and UI schema."""
         warnings: list[ConversionWarning] = []
 
-        # Build property map for lookup
-        prop_map = {p.urn: p for p in aspect.properties}
         char_map = {c.urn: c for c in aspect.characteristics}
         entity_map = {e.urn: e for e in aspect.entities}
 

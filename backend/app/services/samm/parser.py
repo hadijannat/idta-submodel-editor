@@ -15,13 +15,9 @@ from typing import Any
 from app.services.samm.models import (
     SAMMAspect,
     SAMMCharacteristic,
-    SAMMConstraint,
     SAMMEntity,
     SAMMEnumeration,
-    SAMMEvent,
-    SAMMOperation,
     SAMMProperty,
-    SAMMUnit,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,7 +80,7 @@ class SAMMParser:
     def _parse_ttl_rdflib(self, content: str) -> SAMMAspect:
         """Parse TTL using rdflib."""
         from rdflib import Graph, Namespace, URIRef
-        from rdflib.namespace import RDF, RDFS, XSD
+        from rdflib.namespace import RDF
 
         g = Graph()
         g.parse(data=content, format="turtle")
@@ -171,7 +167,6 @@ class SAMMParser:
 
     def _parse_property_rdflib(self, g, prop_uri, SAMM, SAMM_C) -> SAMMProperty | None:
         """Parse a property using rdflib."""
-        from rdflib import URIRef
 
         uri = str(prop_uri)
         match = re.search(r"#([^#]+)$", uri)

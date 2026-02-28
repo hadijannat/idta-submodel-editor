@@ -5,7 +5,7 @@ Tests the schema digest computation, recipe migration, and form data migration.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.services.template_ops.migration_service import MigrationService
 from app.schemas.template_ops import (
