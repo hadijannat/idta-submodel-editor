@@ -5,7 +5,7 @@
  * property fields, collections, lists, and export functionality.
  */
 
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 export class FormEditorPage {
   readonly page: Page;
@@ -101,8 +101,40 @@ export class FormEditorPage {
         break;
     }
 
+    await expect(stepButton).toBeVisible();
+    await expect(stepButton).toBeEnabled();
     await stepButton.click();
-    await this.page.waitForTimeout(500); // Wait for step transition
+    await expect(stepButton).toHaveClass(/\bactive\b/);
+  }
+
+  /**
+   * Wait for Magic Import panel content to be rendered.
+   * Accept either heading-first or panel-first render paths.
+   */
+  async waitForMagicImportPanel(timeout: number = 30000): Promise<void> {
+    const magicImportHeading = this.page.getByRole('heading', {
+      name: /^Magic Import/i,
+    });
+    const magicImportPanel = this.page.locator('.magic-import-panel');
+
+    try {
+      await Promise.race([
+        magicImportHeading.waitFor({ state: 'visible', timeout }),
+        magicImportPanel.waitFor({ state: 'visible', timeout }),
+      ]);
+    } catch {
+      const activeStepText = (
+        await this.stepperSidebar
+          .locator('button.wizard-step.active .wizard-step-title')
+          .first()
+          .textContent()
+          .catch(() => null)
+      )?.trim();
+
+      throw new Error(
+        `Magic Import panel did not become visible within ${timeout}ms (active step: ${activeStepText || 'unknown'})`
+      );
+    }
   }
 
   // --------------------------------------------------------------------------
