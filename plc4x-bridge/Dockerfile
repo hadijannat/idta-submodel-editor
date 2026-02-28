@@ -16,7 +16,7 @@ COPY src ./src
 RUN mvn package -DskipTests -B
 
 # Runtime stage
-FROM eclipse-temurin:25-jre-alpine
+FROM eclipse-temurin:17-jre-alpine
 
 LABEL maintainer="IDTA Submodel Editor Team"
 LABEL description="PLC4X Bridge - Industrial PLC to BaSyx AAS Bridge"
