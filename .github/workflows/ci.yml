@@ -19,6 +19,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      frontend_lockfile: ${{ steps.filter.outputs.frontend_lockfile }}
       plc4x: ${{ steps.filter.outputs.plc4x }}
       docker: ${{ steps.filter.outputs.docker }}
       workflows: ${{ steps.filter.outputs.workflows }}
@@ -37,6 +38,8 @@ jobs:
               - 'backend/**'
             frontend:
               - 'frontend/**'
+            frontend_lockfile:
+              - 'frontend/package-lock.json'
             plc4x:
               - 'plc4x-bridge/**'
             docker:
@@ -149,7 +152,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '25'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
@@ -169,7 +172,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '25'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
@@ -189,7 +192,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '25'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
@@ -207,6 +210,28 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/
 
+  frontend-lockfile-audit:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend_lockfile == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run high-severity audit gate
+        run: npm audit --audit-level=high
+        working-directory: frontend
+
   frontend-build:
     runs-on: ubuntu-latest
     needs: [frontend-lint, frontend-typecheck, frontend-test]
@@ -216,7 +241,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '25'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
@@ -340,6 +365,29 @@ jobs:
         if: env.BUILD_FRONTEND_IMAGE == 'true'
         run: docker build -t idta-frontend:ci --build-arg VITE_API_URL=http://localhost:8000 ./frontend
 
+      - name: Build frontend development target
+        if: env.BUILD_FRONTEND_IMAGE == 'true'
+        run: docker build --target development -t idta-frontend:ci-development --build-arg VITE_API_URL=http://localhost:8000 ./frontend
+
       - name: Build plc4x image
         if: env.BUILD_PLC4X_IMAGE == 'true'
         run: docker build -t idta-plc4x-bridge:ci ./plc4x-bridge
+
+      - name: Smoke test plc4x image startup
+        if: env.BUILD_PLC4X_IMAGE == 'true'
+        run: |
+          set -euo pipefail
+          cid=$(docker run -d --rm -p 18090:8090 idta-plc4x-bridge:ci)
+          cleanup() {
+            docker logs "$cid" || true
+            docker rm -f "$cid" || true
+          }
+          trap cleanup EXIT
+          for i in {1..24}; do
+            if curl -fsS http://localhost:18090/actuator/health > /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "plc4x image health endpoint did not become ready in time"
+          exit 1

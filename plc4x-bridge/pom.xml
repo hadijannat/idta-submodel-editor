@@ -21,7 +21,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <plc4x.version>0.12.0</plc4x.version>
+        <plc4x.version>0.13.1</plc4x.version>
         <springdoc.version>2.3.0</springdoc.version>
     </properties>
 
