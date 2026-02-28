@@ -136,6 +136,7 @@ jobs:
       - name: Start services with compose profiles
         if: ${{ inputs.use_compose }}
         run: |
+          set -euo pipefail
           profiles="${{ inputs.compose_profiles }}"
           profiles="${profiles//,/ }"
           read -r -a profile_list <<< "$profiles"
@@ -144,7 +145,50 @@ jobs:
             [ -n "$profile" ] || continue
             profile_args+=(--profile "$profile")
           done
-          docker compose "${profile_args[@]}" up -d --wait --wait-timeout ${{ inputs.compose_wait_timeout }}
+          docker compose "${profile_args[@]}" up -d
+
+      - name: Wait for compose services
+        if: ${{ inputs.use_compose }}
+        run: |
+          set -euo pipefail
+
+          wait_for_url() {
+            local name="$1"
+            local url="$2"
+            local timeout="$3"
+            local elapsed=0
+
+            while [ "$elapsed" -lt "$timeout" ]; do
+              if curl -fsS "$url" > /dev/null; then
+                echo "$name is ready"
+                return 0
+              fi
+
+              elapsed=$((elapsed + 5))
+              echo "Waiting for $name at $url... (${elapsed}/${timeout}s)"
+              sleep 5
+            done
+
+            echo "Timed out waiting for $name at $url"
+            return 1
+          }
+
+          timeout=${{ inputs.compose_wait_timeout }}
+          wait_for_url backend http://localhost:8000/health "$timeout"
+          wait_for_url frontend http://localhost:8080 "$timeout"
+
+          profile_text="${{ inputs.compose_profiles }}"
+          profile_text="${profile_text//,/ }"
+          profile_text=" $profile_text "
+          if [[ "$profile_text" == *" dataspace "* || "$profile_text" == *" plc "* ]]; then
+            wait_for_url basyx-registry http://localhost:4002/api/v1/registry "$timeout"
+            wait_for_url basyx-aas-server http://localhost:4001/shells "$timeout"
+            wait_for_url dtr http://localhost:4003/actuator/health "$timeout"
+          fi
+
+          if [[ "$profile_text" == *" plc "* ]]; then
+            wait_for_url plc4x-bridge http://localhost:8090/actuator/health "$timeout"
+          fi
 
       - name: Warm up template cache
         continue-on-error: true
@@ -166,6 +210,21 @@ jobs:
           path: |
             frontend/playwright-report/
             frontend/test-results/
+
+      - name: Dump compose diagnostics
+        if: ${{ failure() && inputs.use_compose }}
+        run: |
+          set -euo pipefail
+          profiles="${{ inputs.compose_profiles }}"
+          profiles="${profiles//,/ }"
+          read -r -a profile_list <<< "$profiles"
+          profile_args=()
+          for profile in "${profile_list[@]}"; do
+            [ -n "$profile" ] || continue
+            profile_args+=(--profile "$profile")
+          done
+          docker compose "${profile_args[@]}" ps || true
+          docker compose "${profile_args[@]}" logs --no-color --tail 200 || true
 
       - name: Stop compose services
         if: ${{ always() && inputs.use_compose }}
