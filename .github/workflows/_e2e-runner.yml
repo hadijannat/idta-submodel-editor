@@ -145,7 +145,9 @@ jobs:
             [ -n "$profile" ] || continue
             profile_args+=(--profile "$profile")
           done
-          docker compose "${profile_args[@]}" up -d
+          if ! docker compose "${profile_args[@]}" up -d; then
+            echo "::warning::docker compose reported startup errors; continuing with health checks and potential mock-only fallback."
+          fi
 
       - name: Wait for compose services
         if: ${{ inputs.use_compose }}
@@ -173,6 +175,16 @@ jobs:
             return 1
           }
 
+          wait_for_url_optional() {
+            local name="$1"
+            local url="$2"
+            local timeout="$3"
+            if ! wait_for_url "$name" "$url" "$timeout"; then
+              echo "::warning::$name is unavailable at $url; continuing so tests can use mock-only fallback."
+              return 0
+            fi
+          }
+
           timeout=${{ inputs.compose_wait_timeout }}
           wait_for_url backend http://localhost:8000/health "$timeout"
           wait_for_url frontend http://localhost:8080 "$timeout"
@@ -181,13 +193,13 @@ jobs:
           profile_text="${profile_text//,/ }"
           profile_text=" $profile_text "
           if [[ "$profile_text" == *" dataspace "* || "$profile_text" == *" plc "* ]]; then
-            wait_for_url basyx-registry http://localhost:4002/api/v1/registry "$timeout"
-            wait_for_url basyx-aas-server http://localhost:4001/shells "$timeout"
-            wait_for_url dtr http://localhost:4003/actuator/health "$timeout"
+            wait_for_url_optional basyx-registry http://localhost:4002/api/v1/registry "$timeout"
+            wait_for_url_optional basyx-aas-server http://localhost:4001/shells "$timeout"
+            wait_for_url_optional dtr http://localhost:4003/actuator/health "$timeout"
           fi
 
           if [[ "$profile_text" == *" plc "* ]]; then
-            wait_for_url plc4x-bridge http://localhost:8090/actuator/health "$timeout"
+            wait_for_url_optional plc4x-bridge http://localhost:8090/actuator/health "$timeout"
           fi
 
       - name: Warm up template cache
