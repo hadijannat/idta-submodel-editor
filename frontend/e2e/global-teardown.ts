@@ -46,7 +46,7 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
             }
             cleanedCount++;
           }
-        } catch (error) {
+        } catch {
           // Ignore errors when cleaning up
         }
       }
@@ -55,7 +55,7 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
     if (cleanedCount > 0) {
       console.log(`   Cleaned ${cleanedCount} temporary file(s)`);
     }
-  } catch (error) {
+  } catch {
     // Ignore errors reading temp directory
   }
 
@@ -73,7 +73,7 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
       console.log(`   Failed: ${summary.failed ?? 'N/A'}`);
       console.log(`   Skipped: ${summary.skipped ?? 'N/A'}`);
       console.log(`   Duration: ${summary.duration ?? 'N/A'}`);
-    } catch (error) {
+    } catch {
       // Ignore errors reading summary
     }
   }
