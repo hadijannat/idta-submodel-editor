@@ -55,10 +55,22 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Validate PR token
+        if: steps.git-check.outputs.changed == 'true'
+        env:
+          FIXTURE_PR_TOKEN: ${{ secrets.FIXTURE_PR_TOKEN }}
+        run: |
+          if [ -z "$FIXTURE_PR_TOKEN" ]; then
+            echo "Missing FIXTURE_PR_TOKEN secret (PAT with repo and workflow scopes)." >&2
+            exit 1
+          fi
+
       - name: Create PR
         if: steps.git-check.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0
         with:
+          # Use a PAT so downstream pull_request workflows are triggered.
+          token: ${{ secrets.FIXTURE_PR_TOKEN }}
           commit-message: "chore: refresh AAS fixtures"
           title: "chore: refresh AAS fixtures"
           body: "Automated fixture refresh from scheduled workflow."
