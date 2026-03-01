@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useForm, UseFormReturn } from 'react-hook-form';
+import { useForm, UseFormReturn, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import type { SubmodelUISchema, UIElementSchema } from '../types/ui-schema';
@@ -90,7 +90,7 @@ interface UseSubmodelFormReturn {
  */
 function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
   const required = isRequired(element.cardinality);
-  const withSemanticFields = (schema: z.AnyZodObject) =>
+  const withSemanticFields = <T extends z.ZodRawShape>(schema: z.ZodObject<T>) =>
     schema.extend({
       semanticId: z.string().optional().nullable(),
       valueId: z.string().optional().nullable(),
@@ -131,22 +131,18 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
     }
 
     case 'MultiLanguageProperty': {
+      const translationsSchema = z.record(z.string(), z.string());
       const valueSchema = z
-        .record(z.string())
-        .optional()
+        .record(z.string(), z.string())
         .refine(
-          (value) =>
-            !!value &&
-            Object.values(value).some(
-              (entry) => entry !== undefined && entry.trim().length > 0
-            ),
+          (value) => Object.values(value).some((entry) => entry.trim().length > 0),
           {
             message: 'At least one translation is required',
           }
         );
       return withSemanticFields(
         z.object({
-          value: required ? valueSchema : z.record(z.string()).optional(),
+          value: required ? valueSchema : translationsSchema.optional(),
         })
       );
     }
@@ -400,7 +396,7 @@ export function useSubmodelForm(
 
   // Generate Zod schema from UI schema
   const zodSchema = useMemo(() => {
-    if (!schema) return z.object({ elements: z.record(z.any()) });
+    if (!schema) return z.object({ elements: z.record(z.string(), z.any()) });
 
     const elementsSchema: Record<string, z.ZodTypeAny> = {};
     for (const element of schema.elements) {
@@ -432,8 +428,11 @@ export function useSubmodelForm(
   }, [schema]);
 
   // Initialize form
-  const form = useForm<SubmodelFormData>({
-    resolver: zodResolver(zodSchema),
+  const resolver = zodResolver(
+    zodSchema
+  ) as unknown as Resolver<SubmodelFormData, unknown, SubmodelFormData>;
+  const form = useForm<SubmodelFormData, unknown, SubmodelFormData>({
+    resolver,
     defaultValues,
     mode: 'onBlur',
   });

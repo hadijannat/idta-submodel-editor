@@ -65,21 +65,15 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
   const missingLanguages = detectMissingLanguages(values, requiredLanguages);
 
   // Check if a language has a value
-  const hasValue = useCallback(
-    (lang: string) => {
-      return values?.[lang] && values[lang].trim().length > 0;
-    },
-    [values]
-  );
+  const hasValue = (lang: string) => {
+    return values?.[lang] && values[lang].trim().length > 0;
+  };
 
   // Check if text has Unicode issues
-  const hasUnicodeIssue = useCallback(
-    (lang: string) => {
-      const text = values?.[lang];
-      return text ? hasProblematicUnicode(text) : false;
-    },
-    [values]
-  );
+  const hasUnicodeIssue = (lang: string) => {
+    const text = values?.[lang];
+    return text ? hasProblematicUnicode(text) : false;
+  };
 
   // Handle text change with Unicode sanitization
   const handleTextChange = useCallback(
@@ -132,6 +126,7 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
           return (
             <button
               key={lang}
+              id={`${path}-tab-${lang}`}
               type="button"
               role="tab"
               aria-selected={activeTab === index}

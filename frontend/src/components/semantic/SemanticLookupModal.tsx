@@ -51,6 +51,11 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
     const readyProviders = providers.filter((p) => p.status === 'ready');
     return [{ id: 'all', label: 'All providers', status: 'ready' as const }, ...readyProviders];
   }, [providers]);
+  const hasSearchQuery = query.trim().length >= 2;
+  const visibleResults = hasSearchQuery ? results : [];
+  const visibleError = hasSearchQuery ? error : null;
+  const showSearchLoading = hasSearchQuery && loading;
+  const activePreview = selected ? preview : null;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -70,13 +75,9 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    if (!currentSemanticId) {
-      setSelected(null);
-      setDetails(null);
-      return;
-    }
+    if (!isOpen || !currentSemanticId) return;
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tracks async fetch progress for externally provided currentSemanticId.
     setLoadingDetails(true);
     resolveSemantic(currentSemanticId)
       .then((res) => {
@@ -99,11 +100,7 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setResults([]);
-      setError(null);
-      return;
-    }
+    if (trimmed.length < 2) return;
 
     let active = true;
     const timer = window.setTimeout(() => {
@@ -142,14 +139,10 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
   }, [query, providerFilter, kindFilter, language, isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    if (!selected) {
-      setDetails(null);
-      setPreview(null);
-      return;
-    }
+    if (!isOpen || !selected) return;
 
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tracks async fetch progress for user-selected semantic entries.
     setLoadingDetails(true);
     Promise.all([
       resolveSemantic(selected.canonicalId, selected.provider, language),
@@ -181,16 +174,37 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleApply = async () => {
-    if (!selected) return;
-    const semanticId =
-      preview?.semanticId || selected.canonicalIri || selected.canonicalId;
-    onApply(semanticId);
+  const handleClose = () => {
+    setSelected(null);
+    setDetails(null);
+    setPreview(null);
     onClose();
   };
 
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setError(null);
+    if (value.trim().length < 2) {
+      setLoading(false);
+    }
+  };
+
+  const handleResultSelect = (entry: SemanticEntry) => {
+    setSelected(entry);
+    setDetails(null);
+    setPreview(null);
+  };
+
+  const handleApply = async () => {
+    if (!selected) return;
+    const semanticId =
+      activePreview?.semanticId || selected.canonicalIri || selected.canonicalId;
+    onApply(semanticId);
+    handleClose();
+  };
+
   const renderDetails = () => {
-    const entry = details || selected;
+    const entry = selected ? details || selected : null;
     if (!entry) {
       return <p className="semantic-muted">Select a result to see details.</p>;
     }
@@ -224,34 +238,34 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
             </div>
           )}
         </div>
-        {preview?.warnings?.length ? (
+        {activePreview?.warnings?.length ? (
           <div className="semantic-warning">
             <strong>Warnings</strong>
             <ul>
-              {preview.warnings.map((warning) => (
+              {activePreview.warnings.map((warning) => (
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
           </div>
         ) : null}
-        {preview?.notes?.length ? (
+        {activePreview?.notes?.length ? (
           <div className="semantic-note">
             <strong>Notes</strong>
             <ul>
-              {preview.notes.map((note) => (
+              {activePreview.notes.map((note) => (
                 <li key={note}>{note}</li>
               ))}
             </ul>
           </div>
         ) : null}
-        {preview?.elementType && (
+        {activePreview?.elementType && (
           <p className="semantic-muted">
-            Suggested element type: {preview.elementType}
+            Suggested element type: {activePreview.elementType}
           </p>
         )}
-        {preview?.valueType && (
+        {activePreview?.valueType && (
           <p className="semantic-muted">
-            Suggested value type: {preview.valueType}
+            Suggested value type: {activePreview.valueType}
           </p>
         )}
       </div>
@@ -268,7 +282,7 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
               Search ECLASS or IEC CDD to attach a semantic identifier.
             </p>
           </div>
-          <button type="button" className="semantic-btn semantic-btn-ghost" onClick={onClose}>
+          <button type="button" className="semantic-btn semantic-btn-ghost" onClick={handleClose}>
             Close
           </button>
         </div>
@@ -279,7 +293,7 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
             className="aas-input"
             placeholder="Search for a term (min 2 chars)…"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => handleQueryChange(event.target.value)}
           />
           <div className="semantic-filters">
             <label>
@@ -328,22 +342,24 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
 
         <div className="semantic-modal-body">
           <div className="semantic-results">
-            {loading && <p className="semantic-muted">Searching…</p>}
-            {!loading && error && <p className="semantic-error">{error}</p>}
-            {!loading && !error && results.length === 0 && query.trim().length >= 2 && (
+            {showSearchLoading && <p className="semantic-muted">Searching…</p>}
+            {!showSearchLoading && visibleError && (
+              <p className="semantic-error">{visibleError}</p>
+            )}
+            {!showSearchLoading && !visibleError && visibleResults.length === 0 && hasSearchQuery && (
               <p className="semantic-muted">No results.</p>
             )}
-            {!loading && query.trim().length < 2 && (
+            {!showSearchLoading && !hasSearchQuery && (
               <p className="semantic-muted">Type at least two characters to search.</p>
             )}
             <ul>
-              {results.map((entry) => (
+              {visibleResults.map((entry) => (
                 <li
                   key={`${entry.provider}-${entry.canonicalId}`}
                   className={`semantic-result-item${
                     selected?.canonicalId === entry.canonicalId ? ' selected' : ''
                   }`}
-                  onClick={() => setSelected(entry)}
+                  onClick={() => handleResultSelect(entry)}
                 >
                   <div>
                     <strong>{entry.preferredName || entry.canonicalId}</strong>
@@ -368,7 +384,7 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
           <button
             type="button"
             className="semantic-btn semantic-btn-ghost"
-            onClick={onClose}
+            onClick={handleClose}
           >
             Cancel
           </button>

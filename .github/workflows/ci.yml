@@ -53,6 +53,29 @@ jobs:
               - '.github/workflows/**'
               - '.github/actions/**'
 
+  workflow-lint:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install YAML lint tool
+        run: |
+          python -m pip install --upgrade pip
+          pip install yamllint
+
+      - name: Lint GitHub workflow files
+        run: |
+          yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable}}" \
+            .github/workflows
+
   backend:
     runs-on: ubuntu-latest
     steps:
@@ -71,6 +94,20 @@ jobs:
           pip install -r backend/requirements.txt
           pip install pytest-cov
 
+      - name: Verify secure Pillow resolution
+        run: |
+          python - <<'PY'
+          import re
+          from PIL import __version__ as pillow_version
+
+          parts = tuple(int(token) for token in re.findall(r"\d+", pillow_version)[:3])
+          if parts < (12, 1, 1) or parts >= (13, 0, 0):
+              raise SystemExit(
+                  f"Pillow {pillow_version} is outside the supported secure range [12.1.1, 13.0.0)"
+              )
+          print(f"Using Pillow {pillow_version}")
+          PY
+
       - name: Run backend tests with coverage
         run: |
           PYTHONPATH=backend pytest backend/tests \
@@ -79,7 +116,7 @@ jobs:
             --cov-report=term-missing
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: coverage.xml
@@ -109,7 +146,7 @@ jobs:
 
       - name: Upload mypy report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-mypy-report
           path: backend-mypy-report.txt
@@ -139,7 +176,7 @@ jobs:
 
       - name: Upload ruff report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-ruff-report
           path: backend-ruff-report.txt
@@ -150,7 +187,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '25'
           cache: 'npm'
@@ -170,7 +207,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '25'
           cache: 'npm'
@@ -190,7 +227,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '25'
           cache: 'npm'
@@ -205,7 +242,7 @@ jobs:
         working-directory: frontend
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: frontend/coverage/
@@ -218,7 +255,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '25'
           cache: 'npm'
@@ -239,7 +276,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '25'
           cache: 'npm'
@@ -254,7 +291,7 @@ jobs:
         working-directory: frontend
 
       - name: Upload built frontend
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist
@@ -384,10 +421,12 @@ jobs:
           }
           trap cleanup EXIT
           for i in {1..24}; do
-            if curl -fsS http://localhost:18090/actuator/health > /dev/null; then
+            if curl -fsS http://localhost:18090/actuator/health > /dev/null && \
+               (curl -fsS http://localhost:18090/v3/api-docs > /dev/null || \
+                curl -fsS http://localhost:18090/api-docs > /dev/null); then
               exit 0
             fi
             sleep 5
           done
-          echo "plc4x image health endpoint did not become ready in time"
+          echo "plc4x image health/docs endpoints did not become ready in time"
           exit 1
