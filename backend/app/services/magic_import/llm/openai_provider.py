@@ -29,6 +29,10 @@ class OpenAIProvider(LLMProvider):
         self._client = None
         self._api_key = api_key or self.settings.openai_api_key
         self._model = model or self.settings.magic_import_llm_model
+        timeout = getattr(self.settings, "magic_import_llm_request_timeout_seconds", 60.0)
+        retries = getattr(self.settings, "magic_import_llm_max_retries", 2)
+        self._request_timeout_seconds = max(float(timeout), 1.0)
+        self._max_retries = max(int(retries), 0)
 
     @property
     def name(self) -> str:
@@ -49,7 +53,11 @@ class OpenAIProvider(LLMProvider):
             try:
                 from openai import AsyncOpenAI
 
-                self._client = AsyncOpenAI(api_key=self._api_key)
+                self._client = AsyncOpenAI(
+                    api_key=self._api_key,
+                    timeout=self._request_timeout_seconds,
+                    max_retries=self._max_retries,
+                )
             except ImportError:
                 raise RuntimeError("openai package not installed")
         return self._client
