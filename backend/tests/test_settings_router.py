@@ -1,8 +1,10 @@
 """Tests for Settings API Router."""
 
+import sys
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -307,6 +309,58 @@ class TestValidateProvider:
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is True
+
+
+class TestDirectOpenAIValidation:
+    """Direct unit tests for OpenAI key validation internals."""
+
+    @pytest.mark.asyncio
+    async def test_validate_openai_calls_models_list(self, monkeypatch):
+        """Ensure validation path still uses AsyncOpenAI.models.list()."""
+        from app.routers.settings import _validate_openai
+
+        mock_client = MagicMock()
+        mock_client.models = MagicMock(list=AsyncMock(return_value=[]))
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "openai",
+            SimpleNamespace(AsyncOpenAI=mock_async_openai),
+        )
+
+        valid, message = await _validate_openai("sk-test-key")
+
+        assert valid is True
+        assert "valid" in message.lower()
+        mock_async_openai.assert_called_once_with(
+            api_key="sk-test-key",
+            timeout=10.0,
+            max_retries=0,
+        )
+        mock_client.models.list.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_validate_openai_maps_unauthorized_error(self, monkeypatch):
+        """Ensure auth failures map to stable user-facing message."""
+        from app.routers.settings import _validate_openai
+
+        mock_client = MagicMock()
+        mock_client.models = MagicMock(
+            list=AsyncMock(side_effect=Exception("401 Unauthorized"))
+        )
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "openai",
+            SimpleNamespace(AsyncOpenAI=mock_async_openai),
+        )
+
+        valid, message = await _validate_openai("invalid-key")
+
+        assert valid is False
+        assert message == "Invalid API key"
 
 
 class TestUpdateLLMSettings:

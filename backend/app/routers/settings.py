@@ -350,7 +350,11 @@ async def _validate_openai(api_key: str) -> tuple[bool, str]:
     try:
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(api_key=api_key)
+        client = AsyncOpenAI(
+            api_key=api_key,
+            timeout=10.0,
+            max_retries=0,
+        )
         # List models is a lightweight validation
         await client.models.list()
         return True, "API key is valid"
