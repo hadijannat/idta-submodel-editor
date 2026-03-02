@@ -1,5 +1,5 @@
 # Build stage
-FROM maven:3-eclipse-temurin-17 AS builder
+FROM maven:3-eclipse-temurin-25 AS builder
 
 WORKDIR /build
 
@@ -12,8 +12,9 @@ RUN mvn dependency:go-offline -B
 # Copy source code
 COPY src ./src
 
-# Build the application
-RUN mvn package -DskipTests -B
+# Build the application.
+# Java 25 requires explicit full annotation processing for Lombok-generated methods.
+RUN mvn package -DskipTests -B -Dmaven.compiler.proc=full
 
 # Runtime stage
 FROM eclipse-temurin:17-jre-alpine
