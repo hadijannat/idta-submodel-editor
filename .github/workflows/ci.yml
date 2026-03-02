@@ -363,6 +363,17 @@ jobs:
       frontend_dist_artifact: frontend-dist
       playwright_install_args: --with-deps chromium
 
+  e2e-regression:
+    needs: [changes, frontend-build, backend]
+    if: needs.changes.outputs.frontend_lockfile == 'true'
+    uses: ./.github/workflows/_e2e-runner.yml
+    secrets: inherit
+    with:
+      test_command: npm run test:e2e -- --project=chromium
+      artifact_name: e2e-regression-report
+      frontend_dist_artifact: frontend-dist
+      playwright_install_args: --with-deps chromium
+
   plc4x-bridge:
     runs-on: ubuntu-latest
     needs: changes
