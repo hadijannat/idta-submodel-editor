@@ -11,7 +11,7 @@ import type { PassportCardType } from './utils/passportRegistry';
 
 export interface ExportButtonProps {
   /** Reference to the card element to export */
-  cardRef: React.RefObject<HTMLDivElement>;
+  cardRef: React.RefObject<HTMLDivElement | null>;
   /** Type of passport card (used for filename) */
   passportType?: PassportCardType;
   /** Whether the button should be disabled */

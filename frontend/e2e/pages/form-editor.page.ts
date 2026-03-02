@@ -9,6 +9,8 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 export class FormEditorPage {
   readonly page: Page;
+  private recentPageErrors: string[] = [];
+  private static magicImportWarmupAttempted = false;
 
   // Main sections
   readonly formContainer: Locator;
@@ -38,6 +40,11 @@ export class FormEditorPage {
 
   constructor(page: Page) {
     this.page = page;
+
+    this.page.on('pageerror', (error) => {
+      const summary = error.stack || error.message;
+      this.trackPageError(summary);
+    });
 
     // Main sections - using actual class names from App.tsx
     // The form container is the main content area (.app-main) - use getByRole for specificity
@@ -85,26 +92,62 @@ export class FormEditorPage {
     step: 'configure' | 'magic-import' | 'fill-fields' | 'export'
   ): Promise<void> {
     let stepButton: Locator;
+    let expectedStepTitle: RegExp;
 
     switch (step) {
       case 'configure':
         stepButton = this.configureInstanceStep;
+        expectedStepTitle = /Configure Instance/i;
         break;
       case 'magic-import':
         stepButton = this.magicImportStep;
+        expectedStepTitle = /Magic Import/i;
         break;
       case 'fill-fields':
         stepButton = this.fillFieldsStep;
+        expectedStepTitle = /Fill.*Fields/i;
         break;
       case 'export':
         stepButton = this.exportStep;
+        expectedStepTitle = /Export/i;
         break;
     }
 
     await expect(stepButton).toBeVisible();
     await expect(stepButton).toBeEnabled();
-    await stepButton.click();
-    await expect(stepButton).toHaveClass(/\bactive\b/);
+
+    if (step === 'magic-import') {
+      await this.warmMagicImportModules();
+    }
+
+    const activeStepTitleBeforeClick = (
+      await this.stepperSidebar
+        .locator('button.wizard-step.active')
+        .first()
+        .textContent()
+        .catch(() => null)
+    )
+      ?.replace(/\s+/g, ' ')
+      .trim();
+    if (!activeStepTitleBeforeClick || !expectedStepTitle.test(activeStepTitleBeforeClick)) {
+      await stepButton.click();
+    }
+
+    await expect
+      .poll(
+        async () => {
+          const activeStep = this.stepperSidebar
+            .locator('button.wizard-step.active')
+            .first();
+          const activeText = (await activeStep.textContent().catch(() => null)) ?? '';
+          return activeText.replace(/\s+/g, ' ').trim();
+        },
+        {
+          timeout: 20000,
+          message: `Expected step "${step}" to become active`,
+        }
+      )
+      .toMatch(expectedStepTitle);
   }
 
   /**
@@ -116,12 +159,31 @@ export class FormEditorPage {
       name: /^Magic Import/i,
     });
     const magicImportPanel = this.page.locator('.magic-import-panel');
+    const loadingIndicator = this.page.getByText(/Loading Magic Import/i);
+
+    const waitForPanel = async (waitTimeout: number) =>
+      Promise.race([
+        magicImportHeading.waitFor({ state: 'visible', timeout: waitTimeout }),
+        magicImportPanel.waitFor({ state: 'visible', timeout: waitTimeout }),
+      ]);
+
+    const startedAt = Date.now();
 
     try {
+      const firstWindow = Math.min(timeout, 10000);
       await Promise.race([
-        magicImportHeading.waitFor({ state: 'visible', timeout }),
-        magicImportPanel.waitFor({ state: 'visible', timeout }),
+        waitForPanel(firstWindow),
+        loadingIndicator.waitFor({ state: 'visible', timeout: firstWindow }),
       ]);
+
+      if (
+        !(await magicImportHeading.isVisible().catch(() => false)) &&
+        !(await magicImportPanel.isVisible().catch(() => false))
+      ) {
+        const elapsed = Date.now() - startedAt;
+        const remainingTimeout = Math.max(timeout - elapsed, 1000);
+        await waitForPanel(remainingTimeout);
+      }
     } catch {
       const activeStepText = (
         await this.stepperSidebar
@@ -130,11 +192,86 @@ export class FormEditorPage {
           .textContent()
           .catch(() => null)
       )?.trim();
+      const rootSnippet = await this.page
+        .locator('#root')
+        .innerHTML()
+        .then((html) => html.replace(/\s+/g, ' ').slice(0, 280))
+        .catch(() => null);
+      const pageErrors = this.recentPageErrors.length
+        ? this.recentPageErrors.slice(-3).join(' | ')
+        : 'none';
 
       throw new Error(
-        `Magic Import panel did not become visible within ${timeout}ms (active step: ${activeStepText || 'unknown'})`
+        `Magic Import panel did not become visible within ${timeout}ms (active step: ${activeStepText || 'unknown'}, recent page errors: ${pageErrors}, root snippet: ${rootSnippet || '<unavailable>'})`
       );
     }
+  }
+
+  private trackPageError(summary: string): void {
+    this.recentPageErrors.push(summary);
+    if (this.recentPageErrors.length > 10) {
+      this.recentPageErrors = this.recentPageErrors.slice(-10);
+    }
+  }
+
+  private async warmMagicImportModules(timeout: number = 5000): Promise<void> {
+    if (FormEditorPage.magicImportWarmupAttempted) {
+      return;
+    }
+    FormEditorPage.magicImportWarmupAttempted = true;
+
+    const viteProbe = await this.page.request
+      .get('/@vite/client', {
+        failOnStatusCode: false,
+        timeout: 2000,
+      })
+      .catch(() => null);
+
+    if (!viteProbe?.ok()) {
+      return;
+    }
+
+    const modulePaths = [
+      '/src/components/MagicImport/index.tsx',
+      '/src/components/MagicImport/MagicImportPanel.tsx',
+      '/src/components/MagicImport/useMagicImport.ts',
+    ];
+    const deadline = Date.now() + timeout;
+    let attempt = 0;
+
+    while (Date.now() < deadline) {
+      attempt += 1;
+      const checks = await Promise.all(
+        modulePaths.map(async (path) => {
+          const response = await this.page.request
+            .get(`${path}?e2eWarmup=${attempt}`, {
+              failOnStatusCode: false,
+              timeout: 2000,
+            })
+            .catch(() => null);
+          if (!response?.ok()) {
+            return false;
+          }
+
+          const contentType = response.headers()['content-type'] ?? '';
+          return !contentType || contentType.includes('javascript');
+        })
+      );
+
+      if (checks.every(Boolean)) {
+        return;
+      }
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        break;
+      }
+      await this.page.waitForTimeout(Math.min(300, remainingMs));
+    }
+
+    this.trackPageError(
+      `Magic Import warm-up did not confirm module fetches within ${timeout}ms`
+    );
   }
 
   // --------------------------------------------------------------------------
