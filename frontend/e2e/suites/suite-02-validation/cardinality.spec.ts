@@ -17,6 +17,7 @@ const LIST_FIELD_SELECTOR =
   '.aas-list, .list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]';
 const REQUIRED_LIST_FIELD_SELECTOR =
   '.aas-list[data-required="true"], .aas-list[data-cardinality*="[1"], .list-field[data-required="true"]';
+const ADD_ITEM_BUTTON_SELECTOR = 'button.aas-btn-add[aria-label="Add item"], button[aria-label="Add item"]';
 const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"]';
 
@@ -176,7 +177,7 @@ test.describe('Cardinality Validation', () => {
         return;
       }
 
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
 
       if (await addButton.isVisible()) {
         // Add items until button is disabled or we hit a reasonable limit

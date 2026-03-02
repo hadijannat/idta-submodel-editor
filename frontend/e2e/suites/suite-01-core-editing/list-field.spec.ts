@@ -18,6 +18,7 @@ const LIST_FIELD_SELECTOR =
 const REQUIRED_LIST_FIELD_SELECTOR =
   '.aas-list[data-required="true"], .aas-list[data-cardinality*="[1"], .list-field[data-required="true"]';
 const LIST_ITEM_SELECTOR = '.aas-list-item, .list-item, [data-testid="list-item"]';
+const ADD_ITEM_BUTTON_SELECTOR = 'button.aas-btn-add[aria-label="Add item"], button[aria-label="Add item"]';
 const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
 
@@ -48,7 +49,7 @@ test.describe('List Fields', () => {
       const initialCount = await listField.locator(LIST_ITEM_SELECTOR).count();
 
       // Click add button
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (await addButton.isVisible()) {
         await addButton.click();
 
@@ -66,7 +67,7 @@ test.describe('List Fields', () => {
         return;
       }
 
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (await addButton.isVisible()) {
         // Add 3 items
         await addButton.click();
@@ -90,7 +91,7 @@ test.describe('List Fields', () => {
       }
 
       // First add an item
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (await addButton.isVisible()) {
         await addButton.click();
 
@@ -117,7 +118,7 @@ test.describe('List Fields', () => {
         return;
       }
 
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (await addButton.isVisible()) {
         await addButton.click();
 
@@ -149,7 +150,7 @@ test.describe('List Fields', () => {
         return;
       }
 
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (await addButton.isVisible()) {
         await addButton.click();
 
@@ -174,7 +175,7 @@ test.describe('List Fields', () => {
         return;
       }
 
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (await addButton.isVisible()) {
         await addButton.click();
 
@@ -209,7 +210,7 @@ test.describe('List Fields', () => {
         return;
       }
 
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (!(await addButton.isVisible())) {
         test.skip();
         return;
@@ -255,7 +256,7 @@ test.describe('List Fields', () => {
         return;
       }
 
-      const addButton = listField.getByRole('button', { name: /add/i });
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
       if (await addButton.isVisible()) {
         // Try to add many items
         for (let i = 0; i < 20; i++) {
