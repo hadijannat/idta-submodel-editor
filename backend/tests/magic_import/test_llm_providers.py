@@ -1,7 +1,7 @@
 """Tests for LLM Providers."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -156,6 +156,95 @@ class TestOpenAIProvider:
 
         extractions = provider._parse_response("not valid json")
         assert extractions == []
+
+    @pytest.mark.asyncio
+    @patch("app.services.magic_import.llm.openai_provider.get_settings")
+    async def test_extract_structured_uses_expected_chat_completions_call(
+        self,
+        mock_settings,
+        sample_hints,
+        sample_snippets,
+    ):
+        """Test OpenAI extraction call shape for SDK compatibility."""
+        mock_settings.return_value = MagicMock(
+            openai_api_key="sk-test-key",
+            magic_import_llm_model="gpt-4o-mini",
+        )
+
+        from app.services.magic_import.llm.openai_provider import OpenAIProvider
+
+        provider = OpenAIProvider()
+
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(
+                message=MagicMock(
+                    content=json.dumps(
+                        {
+                            "extractions": [
+                                {
+                                    "path": "SerialNumber",
+                                    "value": "SN-12345",
+                                    "evidence_quote": "serial number SN-12345",
+                                    "confidence": 0.95,
+                                }
+                            ]
+                        }
+                    )
+                )
+            )
+        ]
+        mock_response.usage = MagicMock(
+            prompt_tokens=7,
+            completion_tokens=5,
+            total_tokens=12,
+        )
+
+        create_mock = AsyncMock(return_value=mock_response)
+        provider._client = MagicMock(
+            chat=MagicMock(
+                completions=MagicMock(
+                    create=create_mock,
+                )
+            )
+        )
+
+        result = await provider.extract_structured(
+            hints=sample_hints,
+            snippets=sample_snippets,
+            max_tokens=123,
+        )
+
+        create_mock.assert_awaited_once()
+        call_kwargs = create_mock.await_args.kwargs
+        assert call_kwargs["model"] == "gpt-4o-mini"
+        assert call_kwargs["max_tokens"] == 123
+        assert call_kwargs["temperature"] == 0.1
+        assert call_kwargs["response_format"] == {"type": "json_object"}
+        assert len(call_kwargs["messages"]) == 2
+        assert result.tokens_used == 12
+        assert result.prompt_tokens == 7
+        assert result.completion_tokens == 5
+        assert result.extractions[0].path == "SerialNumber"
+
+    @pytest.mark.asyncio
+    @patch("app.services.magic_import.llm.openai_provider.get_settings")
+    async def test_extract_structured_requires_api_key(self, mock_settings, sample_hints, sample_snippets):
+        """Test extraction fails fast when API key is missing."""
+        mock_settings.return_value = MagicMock(
+            openai_api_key=None,
+            magic_import_llm_model="gpt-4o-mini",
+        )
+
+        from app.services.magic_import.llm.openai_provider import OpenAIProvider
+
+        provider = OpenAIProvider()
+
+        with pytest.raises(RuntimeError, match="not configured"):
+            await provider.extract_structured(
+                hints=sample_hints,
+                snippets=sample_snippets,
+            )
 
 
 class TestAnthropicProvider:
