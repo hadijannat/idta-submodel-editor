@@ -97,6 +97,37 @@ test.describe('Magic Import PDF Upload', () => {
       await formEditor.waitForMagicImportPanel();
     });
 
+    test('waits for Magic Import panel when loading indicator appears first', async ({ page }) => {
+      const templateSelector = new TemplateSelectorPage(page);
+      const formEditor = new FormEditorPage(page);
+
+      await templateSelector.goto();
+      await templateSelector.searchAndSelectTemplate(TEST_TEMPLATE);
+      await formEditor.waitForFormReady();
+
+      await page.evaluate(() => {
+        const loadingMarker = document.createElement('div');
+        loadingMarker.setAttribute('data-testid', 'e2e-magic-import-loading');
+        loadingMarker.textContent = 'Loading Magic Import...';
+        document.body.appendChild(loadingMarker);
+      });
+
+      await formEditor.goToStep('magic-import');
+      await formEditor.waitForMagicImportPanel();
+
+      const activeStepTitle = page
+        .locator('.wizard-stepper button.wizard-step.active .wizard-step-title')
+        .first();
+      await expect(activeStepTitle).toHaveText(/Magic Import/i);
+      await expect(page.locator('.magic-import-panel')).toBeVisible();
+
+      await page.evaluate(() => {
+        document
+          .querySelectorAll('[data-testid="e2e-magic-import-loading"]')
+          .forEach((node) => node.remove());
+      });
+    });
+
     test('file upload input is available', async ({ page }) => {
       const templateSelector = new TemplateSelectorPage(page);
       const formEditor = new FormEditorPage(page);
