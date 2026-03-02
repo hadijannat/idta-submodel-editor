@@ -398,6 +398,35 @@ jobs:
         if: env.BUILD_BACKEND_IMAGE == 'true'
         run: docker build -t idta-backend:ci ./backend
 
+      - name: Smoke test backend image startup
+        if: env.BUILD_BACKEND_IMAGE == 'true'
+        run: |
+          set -euo pipefail
+          cid=$(docker run -d -p 18000:8000 \
+            -e SECRET_KEY=ci-smoke-test-secret-key-at-least-thirty-two-characters \
+            -e ALLOW_INSECURE_PROD_AUTH=true \
+            idta-backend:ci)
+          cleanup() {
+            docker logs "$cid" || true
+            docker rm -f "$cid" || true
+          }
+          trap cleanup EXIT
+          for i in {1..24}; do
+            status=$(docker inspect -f '{{.State.Status}}' "$cid")
+            if [ "$status" != "running" ]; then
+              echo "backend image exited before readiness checks completed"
+              docker logs "$cid" || true
+              exit 1
+            fi
+            if curl -fsS http://localhost:18000/health > /dev/null && \
+               curl -fsS http://localhost:18000/metrics > /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "backend image health/metrics endpoints did not become ready in time"
+          exit 1
+
       - name: Build frontend image
         if: env.BUILD_FRONTEND_IMAGE == 'true'
         run: docker build -t idta-frontend:ci --build-arg VITE_API_URL=http://localhost:8000 ./frontend

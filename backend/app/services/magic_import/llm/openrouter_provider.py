@@ -51,6 +51,10 @@ class OpenRouterProvider(LLMProvider):
         self._client = None
         self._api_key = api_key or self.settings.openrouter_api_key
         self._model = model or self.settings.magic_import_llm_model
+        timeout = getattr(self.settings, "magic_import_llm_request_timeout_seconds", 60.0)
+        retries = getattr(self.settings, "magic_import_llm_max_retries", 2)
+        self._request_timeout_seconds = max(float(timeout), 1.0)
+        self._max_retries = max(int(retries), 0)
 
     @property
     def name(self) -> str:
@@ -74,6 +78,8 @@ class OpenRouterProvider(LLMProvider):
                 self._client = AsyncOpenAI(
                     api_key=self._api_key,
                     base_url=self.API_BASE,
+                    timeout=self._request_timeout_seconds,
+                    max_retries=self._max_retries,
                     default_headers={
                         "HTTP-Referer": "https://idta-submodel-editor.app",
                         "X-Title": "IDTA Submodel Editor - Magic Import",
@@ -199,6 +205,8 @@ class OpenRouterProvider(LLMProvider):
             client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=cls.API_BASE,
+                timeout=10.0,
+                max_retries=0,
             )
             response = await client.models.list()
 
@@ -233,6 +241,8 @@ class OpenRouterProvider(LLMProvider):
             client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=cls.API_BASE,
+                timeout=10.0,
+                max_retries=0,
             )
             # List models is a lightweight way to validate the key
             await client.models.list()
