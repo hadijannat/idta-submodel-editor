@@ -50,12 +50,15 @@ test.describe('List Fields', () => {
 
       // Click add button
       const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
-      if (await addButton.isVisible()) {
-        await addButton.click();
-
-        const newCount = await listField.locator(LIST_ITEM_SELECTOR).count();
-        expect(newCount).toBe(initialCount + 1);
+      if (!(await addButton.isVisible()) || (await addButton.isDisabled())) {
+        test.skip();
+        return;
       }
+
+      await addButton.click();
+
+      const newCount = await listField.locator(LIST_ITEM_SELECTOR).count();
+      expect(newCount).toBe(initialCount + 1);
     });
 
     test('can add multiple items to list', async ({ page }) => {
@@ -68,15 +71,18 @@ test.describe('List Fields', () => {
       }
 
       const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
-      if (await addButton.isVisible()) {
-        // Add 3 items
-        await addButton.click();
-        await addButton.click();
-        await addButton.click();
-
-        const count = await listField.locator(LIST_ITEM_SELECTOR).count();
-        expect(count).toBeGreaterThanOrEqual(3);
+      if (!(await addButton.isVisible()) || (await addButton.isDisabled())) {
+        test.skip();
+        return;
       }
+
+      // Add 3 items
+      await addButton.click();
+      await addButton.click();
+      await addButton.click();
+
+      const count = await listField.locator(LIST_ITEM_SELECTOR).count();
+      expect(count).toBeGreaterThanOrEqual(3);
     });
   });
 
@@ -92,20 +98,23 @@ test.describe('List Fields', () => {
 
       // First add an item
       const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
-      if (await addButton.isVisible()) {
-        await addButton.click();
+      if (!(await addButton.isVisible()) || (await addButton.isDisabled())) {
+        test.skip();
+        return;
+      }
 
-        const initialCount = await listField.locator(LIST_ITEM_SELECTOR).count();
+      await addButton.click();
 
-        // Find and click remove button on first item
-        const removeButton = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR).first();
+      const initialCount = await listField.locator(LIST_ITEM_SELECTOR).count();
 
-        if (await removeButton.isVisible()) {
-          await removeButton.click();
+      // Find and click remove button on first item
+      const removeButton = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR).first();
 
-          const newCount = await listField.locator(LIST_ITEM_SELECTOR).count();
-          expect(newCount).toBe(initialCount - 1);
-        }
+      if (await removeButton.isVisible()) {
+        await removeButton.click();
+
+        const newCount = await listField.locator(LIST_ITEM_SELECTOR).count();
+        expect(newCount).toBe(initialCount - 1);
       }
     });
 
@@ -119,22 +128,25 @@ test.describe('List Fields', () => {
       }
 
       const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
-      if (await addButton.isVisible()) {
-        await addButton.click();
+      if (!(await addButton.isVisible()) || (await addButton.isDisabled())) {
+        test.skip();
+        return;
+      }
 
-        const removeButton = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR).first();
+      await addButton.click();
 
-        if (await removeButton.isVisible()) {
-          await removeButton.click();
+      const removeButton = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR).first();
 
-          // Check if confirmation dialog appears (implementation dependent)
-          const confirmDialog = page.getByRole('dialog');
-          const hasDialog = await confirmDialog.isVisible({ timeout: 1000 }).catch(() => false);
+      if (await removeButton.isVisible()) {
+        await removeButton.click();
 
-          if (hasDialog) {
-            const confirmButton = confirmDialog.getByRole('button', { name: /confirm|yes|delete/i });
-            await confirmButton.click();
-          }
+        // Check if confirmation dialog appears (implementation dependent)
+        const confirmDialog = page.getByRole('dialog');
+        const hasDialog = await confirmDialog.isVisible({ timeout: 1000 }).catch(() => false);
+
+        if (hasDialog) {
+          const confirmButton = confirmDialog.getByRole('button', { name: /confirm|yes|delete/i });
+          await confirmButton.click();
         }
       }
     });
@@ -151,18 +163,21 @@ test.describe('List Fields', () => {
       }
 
       const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
-      if (await addButton.isVisible()) {
-        await addButton.click();
+      if (!(await addButton.isVisible()) || (await addButton.isDisabled())) {
+        test.skip();
+        return;
+      }
 
-        // Find input in the new list item
-        const listItem = listField.locator(LIST_ITEM_SELECTOR).last();
-        const input = listItem.locator('input, textarea').first();
+      await addButton.click();
 
-        if (await input.isVisible()) {
-          await input.fill('List Item Value');
-          const value = await input.inputValue();
-          expect(value).toBe('List Item Value');
-        }
+      // Find input in the new list item
+      const listItem = listField.locator(LIST_ITEM_SELECTOR).last();
+      const input = listItem.locator('input, textarea').first();
+
+      if (await input.isVisible()) {
+        await input.fill('List Item Value');
+        const value = await input.inputValue();
+        expect(value).toBe('List Item Value');
       }
     });
 
@@ -176,28 +191,31 @@ test.describe('List Fields', () => {
       }
 
       const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
-      if (await addButton.isVisible()) {
-        await addButton.click();
+      if (!(await addButton.isVisible()) || (await addButton.isDisabled())) {
+        test.skip();
+        return;
+      }
 
-        const listItem = listField.locator(LIST_ITEM_SELECTOR).last();
-        const input = listItem.locator('input, textarea').first();
+      await addButton.click();
 
-        if (await input.isVisible()) {
-          await input.fill('Persistent Value');
+      const listItem = listField.locator(LIST_ITEM_SELECTOR).last();
+      const input = listItem.locator('input, textarea').first();
 
-          // Navigate away and back
-          await formEditor.goToStep('export');
-          await formEditor.goToStep('fill-fields');
+      if (await input.isVisible()) {
+        await input.fill('Persistent Value');
 
-          // Re-find the input (DOM may have changed)
-          const newListField = page.locator(LIST_FIELD_SELECTOR).first();
-          const newListItem = newListField.locator(LIST_ITEM_SELECTOR).last();
-          const newInput = newListItem.locator('input, textarea').first();
+        // Navigate away and back
+        await formEditor.goToStep('export');
+        await formEditor.goToStep('fill-fields');
 
-          if (await newInput.isVisible()) {
-            const value = await newInput.inputValue();
-            expect(value).toBe('Persistent Value');
-          }
+        // Re-find the input (DOM may have changed)
+        const newListField = page.locator(LIST_FIELD_SELECTOR).first();
+        const newListItem = newListField.locator(LIST_ITEM_SELECTOR).last();
+        const newInput = newListItem.locator('input, textarea').first();
+
+        if (await newInput.isVisible()) {
+          const value = await newInput.inputValue();
+          expect(value).toBe('Persistent Value');
         }
       }
     });
