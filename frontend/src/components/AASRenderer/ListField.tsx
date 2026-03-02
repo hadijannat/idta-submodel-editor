@@ -238,7 +238,12 @@ export const ListField: React.FC<ListFieldProps> = ({
   );
 
   return (
-    <div className={`aas-list aas-depth-${depth}`} data-id-short={schema.idShort}>
+    <div
+      className={`aas-list aas-depth-${depth}`}
+      data-id-short={schema.idShort}
+      data-cardinality={schema.cardinality}
+      data-required={minItems > 0 ? 'true' : 'false'}
+    >
       <div className="aas-list-header">
         <span className="aas-list-title">{displayTitle}</span>
         <span className="aas-list-count">({fields.length} items)</span>

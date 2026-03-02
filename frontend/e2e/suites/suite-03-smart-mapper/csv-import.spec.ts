@@ -166,52 +166,87 @@ test.describe('CSV Import', () => {
       const mapperStep = page.getByRole('button', { name: /smart.*mapper/i }).first();
 
       const isMapperVisible = await mapperStep.isVisible().catch(() => false);
-      if (isMapperVisible) {
-        await mapperStep.click();
-
-        // Upload CSV
-        const fileInput = page.locator('input[type="file"]');
-        const csvFixture = loadCsvFixture('nameplate-complete.csv');
-
-        if (await fileInput.isVisible()) {
-          await fileInput.setInputFiles({
-            name: 'nameplate-complete.csv',
-            mimeType: 'text/csv',
-            buffer: Buffer.from(csvFixture.content),
-          });
-
-          // Wait for processing
-          await page.waitForTimeout(2000);
-
-          // Should show column mapping UI
-          const mappingTable = page.locator('.mapping-table, [data-testid="mapping-table"]');
-          await expect(mappingTable).toBeVisible({ timeout: 10000 });
-        }
+      if (!isMapperVisible) {
+        test.skip();
+        return;
       }
+
+      await mapperStep.click();
+
+      const mapperPanel = page.locator('.smart-mapper');
+      await expect(mapperPanel).toBeVisible();
+
+      // Upload CSV
+      const fileInput = mapperPanel.locator('input#smart-mapper-file');
+      const csvFixture = loadCsvFixture('nameplate-complete.csv');
+
+      if (!(await fileInput.isVisible())) {
+        test.skip();
+        return;
+      }
+
+      await fileInput.setInputFiles({
+        name: 'nameplate-complete.csv',
+        mimeType: 'text/csv',
+        buffer: Buffer.from(csvFixture.content),
+      });
+
+      const profileButton = mapperPanel.getByRole('button', { name: /profile file/i }).first();
+      await expect(profileButton).toBeEnabled({ timeout: 5000 });
+      await profileButton.click();
+
+      // Should show Smart Mapper column mapping UI after profiling
+      const mapperLayout = mapperPanel.locator('.smart-mapper-layout');
+      await expect(mapperLayout).toBeVisible({ timeout: 15000 });
+      await expect(mapperPanel.locator('.smart-mapper-column').first()).toBeVisible({
+        timeout: 15000,
+      });
     });
 
     test('shows column preview after upload', async ({ page }) => {
       const templateSelector = new TemplateSelectorPage(page);
+      const formEditor = new FormEditorPage(page);
 
       await templateSelector.goto();
       await templateSelector.searchAndSelectTemplate(TEST_TEMPLATE);
+      await formEditor.waitForFormReady();
 
-      const mapperPanel = page.locator('.smart-mapper, [data-testid="smart-mapper"]');
+      const mapperStep = page.getByRole('button', { name: /smart.*mapper/i }).first();
+      const isMapperVisible = await mapperStep.isVisible().catch(() => false);
 
-      if (await mapperPanel.isVisible()) {
-        const fileInput = page.locator('input[type="file"]');
-        const csvFixture = loadCsvFixture('nameplate-complete.csv');
-
-        await fileInput.setInputFiles({
-          name: 'nameplate-complete.csv',
-          mimeType: 'text/csv',
-          buffer: Buffer.from(csvFixture.content),
-        });
-
-        // Should show column preview
-        const columnPreview = page.locator('.column-preview, [data-testid="column-preview"]');
-        await expect(columnPreview).toBeVisible({ timeout: 10000 });
+      if (!isMapperVisible) {
+        test.skip();
+        return;
       }
+
+      await mapperStep.click();
+
+      const mapperPanel = page.locator('.smart-mapper');
+      await expect(mapperPanel).toBeVisible();
+
+      const fileInput = mapperPanel.locator('input#smart-mapper-file');
+      const csvFixture = loadCsvFixture('nameplate-complete.csv');
+
+      await fileInput.setInputFiles({
+        name: 'nameplate-complete.csv',
+        mimeType: 'text/csv',
+        buffer: Buffer.from(csvFixture.content),
+      });
+
+      const profileButton = mapperPanel.getByRole('button', { name: /profile file/i }).first();
+      await expect(profileButton).toBeEnabled({ timeout: 5000 });
+      await profileButton.click();
+
+      // Should show profiled column preview data
+      const sourceColumns = mapperPanel.locator('.smart-mapper-column-title strong');
+      await expect(sourceColumns.first()).toBeVisible({ timeout: 15000 });
+
+      const sourceColumnCount = await sourceColumns.count();
+      expect(sourceColumnCount).toBeGreaterThan(0);
+
+      const profileMeta = mapperPanel.locator('.smart-mapper-meta').first();
+      await expect(profileMeta).toBeVisible();
+      await expect(profileMeta).toContainText(/columns/i);
     });
   });
 
