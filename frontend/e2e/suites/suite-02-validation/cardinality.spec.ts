@@ -13,6 +13,12 @@ import { createMinimalNameplateFormData } from '../../helpers/test-data-factory'
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
+const LIST_FIELD_SELECTOR =
+  '.aas-list, .list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]';
+const REQUIRED_LIST_FIELD_SELECTOR =
+  '.aas-list[data-required="true"], .aas-list[data-cardinality*="[1"], .list-field[data-required="true"]';
+const REMOVE_ITEM_BUTTON_SELECTOR =
+  'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"]';
 
 test.describe('Cardinality Validation', () => {
   let api: APIClient;
@@ -163,9 +169,7 @@ test.describe('Cardinality Validation', () => {
       await formEditor.goToStep('fill-fields');
 
       // Find a list field
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       if (!(await listField.isVisible())) {
         test.skip();
@@ -198,9 +202,7 @@ test.describe('Cardinality Validation', () => {
       await formEditor.goToStep('fill-fields');
 
       // Find a required list field
-      const listField = page.locator(
-        '.list-field[data-required="true"], [data-cardinality*="[1"]'
-      ).first();
+      const listField = page.locator(REQUIRED_LIST_FIELD_SELECTOR).first();
 
       if (!(await listField.isVisible())) {
         test.skip();
@@ -208,9 +210,7 @@ test.describe('Cardinality Validation', () => {
       }
 
       // Try to remove all items
-      const removeButtons = listField.locator(
-        '.remove-item, [data-testid="remove-item"], button[aria-label*="remove"]'
-      );
+      const removeButtons = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR);
 
       const count = await removeButtons.count();
 

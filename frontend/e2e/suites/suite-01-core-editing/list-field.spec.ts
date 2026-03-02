@@ -13,6 +13,13 @@ import { createMinimalNameplateFormData } from '../../helpers/test-data-factory'
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
+const LIST_FIELD_SELECTOR =
+  '.aas-list, .list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]';
+const REQUIRED_LIST_FIELD_SELECTOR =
+  '.aas-list[data-required="true"], .aas-list[data-cardinality*="[1"], .list-field[data-required="true"]';
+const LIST_ITEM_SELECTOR = '.aas-list-item, .list-item, [data-testid="list-item"]';
+const REMOVE_ITEM_BUTTON_SELECTOR =
+  'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
 
 test.describe('List Fields', () => {
   let formEditor: FormEditorPage;
@@ -30,9 +37,7 @@ test.describe('List Fields', () => {
   test.describe('Add Items', () => {
     test('can add item to list field', async ({ page }) => {
       // Find a list field in the form
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -40,22 +45,20 @@ test.describe('List Fields', () => {
         return;
       }
 
-      const initialCount = await listField.locator('.list-item, [data-testid="list-item"]').count();
+      const initialCount = await listField.locator(LIST_ITEM_SELECTOR).count();
 
       // Click add button
       const addButton = listField.getByRole('button', { name: /add/i });
       if (await addButton.isVisible()) {
         await addButton.click();
 
-        const newCount = await listField.locator('.list-item, [data-testid="list-item"]').count();
+        const newCount = await listField.locator(LIST_ITEM_SELECTOR).count();
         expect(newCount).toBe(initialCount + 1);
       }
     });
 
     test('can add multiple items to list', async ({ page }) => {
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -70,7 +73,7 @@ test.describe('List Fields', () => {
         await addButton.click();
         await addButton.click();
 
-        const count = await listField.locator('.list-item, [data-testid="list-item"]').count();
+        const count = await listField.locator(LIST_ITEM_SELECTOR).count();
         expect(count).toBeGreaterThanOrEqual(3);
       }
     });
@@ -78,9 +81,7 @@ test.describe('List Fields', () => {
 
   test.describe('Remove Items', () => {
     test('can remove item from list field', async ({ page }) => {
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -93,26 +94,22 @@ test.describe('List Fields', () => {
       if (await addButton.isVisible()) {
         await addButton.click();
 
-        const initialCount = await listField.locator('.list-item, [data-testid="list-item"]').count();
+        const initialCount = await listField.locator(LIST_ITEM_SELECTOR).count();
 
         // Find and click remove button on first item
-        const removeButton = listField.locator(
-          '.remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]'
-        ).first();
+        const removeButton = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR).first();
 
         if (await removeButton.isVisible()) {
           await removeButton.click();
 
-          const newCount = await listField.locator('.list-item, [data-testid="list-item"]').count();
+          const newCount = await listField.locator(LIST_ITEM_SELECTOR).count();
           expect(newCount).toBe(initialCount - 1);
         }
       }
     });
 
     test('confirm dialog appears for item removal', async ({ page }) => {
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -124,9 +121,7 @@ test.describe('List Fields', () => {
       if (await addButton.isVisible()) {
         await addButton.click();
 
-        const removeButton = listField.locator(
-          '.remove-item, [data-testid="remove-item"], button[aria-label*="remove"]'
-        ).first();
+        const removeButton = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR).first();
 
         if (await removeButton.isVisible()) {
           await removeButton.click();
@@ -146,9 +141,7 @@ test.describe('List Fields', () => {
 
   test.describe('Item Editing', () => {
     test('can edit values in list items', async ({ page }) => {
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -161,7 +154,7 @@ test.describe('List Fields', () => {
         await addButton.click();
 
         // Find input in the new list item
-        const listItem = listField.locator('.list-item, [data-testid="list-item"]').last();
+        const listItem = listField.locator(LIST_ITEM_SELECTOR).last();
         const input = listItem.locator('input, textarea').first();
 
         if (await input.isVisible()) {
@@ -173,9 +166,7 @@ test.describe('List Fields', () => {
     });
 
     test('list item values persist', async ({ page }) => {
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -187,7 +178,7 @@ test.describe('List Fields', () => {
       if (await addButton.isVisible()) {
         await addButton.click();
 
-        const listItem = listField.locator('.list-item, [data-testid="list-item"]').last();
+        const listItem = listField.locator(LIST_ITEM_SELECTOR).last();
         const input = listItem.locator('input, textarea').first();
 
         if (await input.isVisible()) {
@@ -198,10 +189,8 @@ test.describe('List Fields', () => {
           await formEditor.goToStep('fill-fields');
 
           // Re-find the input (DOM may have changed)
-          const newListField = page.locator(
-            '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-          ).first();
-          const newListItem = newListField.locator('.list-item, [data-testid="list-item"]').last();
+          const newListField = page.locator(LIST_FIELD_SELECTOR).first();
+          const newListItem = newListField.locator(LIST_ITEM_SELECTOR).last();
           const newInput = newListItem.locator('input, textarea').first();
 
           if (await newInput.isVisible()) {
@@ -211,13 +200,54 @@ test.describe('List Fields', () => {
         }
       }
     });
+
+    test('uses virtualized rendering when item count exceeds threshold', async ({ page }) => {
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
+
+      if (!(await listField.isVisible())) {
+        test.skip();
+        return;
+      }
+
+      const addButton = listField.getByRole('button', { name: /add/i });
+      if (!(await addButton.isVisible())) {
+        test.skip();
+        return;
+      }
+
+      for (let i = 0; i < 22; i++) {
+        if (await addButton.isDisabled()) {
+          break;
+        }
+        await addButton.click();
+      }
+
+      const listCountText = (await listField.locator('.aas-list-count').textContent()) ?? '';
+      const totalItems = Number(listCountText.match(/\d+/)?.[0] ?? '0');
+
+      if (totalItems <= 20) {
+        test.skip();
+        return;
+      }
+
+      const virtualizedContainer = listField.locator('.virtualized-list-container');
+      await expect(virtualizedContainer).toBeVisible();
+
+      const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+      const visibleItemCount = await visibleItems.count();
+      expect(visibleItemCount).toBeGreaterThan(0);
+      expect(visibleItemCount).toBeLessThan(totalItems);
+
+      const firstVisibleInput = visibleItems.first().locator('input, textarea').first();
+      await expect(firstVisibleInput).toBeVisible();
+      await firstVisibleInput.fill('Virtualized Item Value');
+      await expect(firstVisibleInput).toHaveValue('Virtualized Item Value');
+    });
   });
 
   test.describe('Cardinality Enforcement', () => {
     test('add button respects maximum cardinality', async ({ page }) => {
-      const listField = page.locator(
-        '.list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]'
-      ).first();
+      const listField = page.locator(LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -237,16 +267,14 @@ test.describe('List Fields', () => {
 
         // If max cardinality is enforced, button should be disabled
         // or the count should be limited
-        const count = await listField.locator('.list-item, [data-testid="list-item"]').count();
+        const count = await listField.locator(LIST_ITEM_SELECTOR).count();
         expect(count).toBeLessThanOrEqual(20);
       }
     });
 
     test('minimum cardinality shows validation warning', async ({ page }) => {
       // Find a required list field
-      const listField = page.locator(
-        '.list-field[data-required="true"], [data-cardinality*="[1"]'
-      ).first();
+      const listField = page.locator(REQUIRED_LIST_FIELD_SELECTOR).first();
 
       const isVisible = await listField.isVisible();
       if (!isVisible) {
@@ -256,9 +284,7 @@ test.describe('List Fields', () => {
       }
 
       // Clear all items if possible
-      const removeButtons = listField.locator(
-        '.remove-item, [data-testid="remove-item"]'
-      );
+      const removeButtons = listField.locator(REMOVE_ITEM_BUTTON_SELECTOR);
       const count = await removeButtons.count();
 
       for (let i = count - 1; i >= 0; i--) {
