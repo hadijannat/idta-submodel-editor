@@ -333,7 +333,11 @@ class TestDirectOpenAIValidation:
 
         assert valid is True
         assert "valid" in message.lower()
-        mock_async_openai.assert_called_once_with(api_key="sk-test-key")
+        mock_async_openai.assert_called_once_with(
+            api_key="sk-test-key",
+            timeout=10.0,
+            max_retries=0,
+        )
         mock_client.models.list.assert_awaited_once()
 
     @pytest.mark.asyncio

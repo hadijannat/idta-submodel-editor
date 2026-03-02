@@ -122,6 +122,31 @@ class TestOpenAIProvider:
         provider = OpenAIProvider()
         assert provider.is_available() is False
 
+    @patch("app.services.magic_import.llm.openai_provider.get_settings")
+    def test_client_uses_configured_timeout_and_retries(self, mock_settings):
+        """Test OpenAI client uses configured timeout/retry values."""
+        mock_settings.return_value = MagicMock(
+            openai_api_key="sk-test-key",
+            magic_import_llm_model="gpt-4o-mini",
+            magic_import_llm_request_timeout_seconds=45.0,
+            magic_import_llm_max_retries=1,
+        )
+
+        mock_client = MagicMock()
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        with patch.dict("sys.modules", {"openai": MagicMock(AsyncOpenAI=mock_async_openai)}):
+            from app.services.magic_import.llm.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider()
+            assert provider.client is mock_client
+
+        mock_async_openai.assert_called_once_with(
+            api_key="sk-test-key",
+            timeout=45.0,
+            max_retries=1,
+        )
+
     def test_parse_response_valid_json(self):
         """Test parsing valid JSON response."""
         from app.services.magic_import.llm.openai_provider import OpenAIProvider
@@ -419,6 +444,58 @@ class TestOpenRouterProvider:
 
         provider = OpenRouterProvider(model="custom-model")
         assert provider.model == "custom-model"
+
+    @patch("app.services.magic_import.llm.openrouter_provider.get_settings")
+    def test_client_uses_configured_timeout_and_retries(self, mock_settings):
+        """Test OpenRouter client uses configured timeout/retry values."""
+        mock_settings.return_value = MagicMock(
+            openrouter_api_key="sk-or-test-key",
+            magic_import_llm_model="openai/gpt-4o",
+            magic_import_llm_request_timeout_seconds=30.0,
+            magic_import_llm_max_retries=3,
+        )
+
+        mock_client = MagicMock()
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        with patch.dict("sys.modules", {"openai": MagicMock(AsyncOpenAI=mock_async_openai)}):
+            from app.services.magic_import.llm.openrouter_provider import OpenRouterProvider
+
+            provider = OpenRouterProvider()
+            assert provider.client is mock_client
+
+        mock_async_openai.assert_called_once_with(
+            api_key="sk-or-test-key",
+            base_url="https://openrouter.ai/api/v1",
+            timeout=30.0,
+            max_retries=3,
+            default_headers={
+                "HTTP-Referer": "https://idta-submodel-editor.app",
+                "X-Title": "IDTA Submodel Editor - Magic Import",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_validate_api_key_uses_fast_client_options(self):
+        """Test OpenRouter key validation uses short timeout and no retries."""
+        from app.services.magic_import.llm.openrouter_provider import OpenRouterProvider
+
+        mock_client = MagicMock()
+        mock_client.models.list = AsyncMock(return_value=MagicMock())
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        with patch.dict("sys.modules", {"openai": MagicMock(AsyncOpenAI=mock_async_openai)}):
+            valid, message = await OpenRouterProvider.validate_api_key("sk-or-test-key")
+
+        assert valid is True
+        assert "valid" in message.lower()
+        mock_async_openai.assert_called_once_with(
+            api_key="sk-or-test-key",
+            base_url="https://openrouter.ai/api/v1",
+            timeout=10.0,
+            max_retries=0,
+        )
+        mock_client.models.list.assert_awaited_once()
 
     def test_parse_response_valid_json(self):
         """Test parsing valid JSON response."""
