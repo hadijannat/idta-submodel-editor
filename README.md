@@ -1,4 +1,4 @@
-# Universal IDTA Submodel Template Editor
+# IDTA Submodel Template Editor
 
 [![CI](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/ci.yml)
 [![Docs](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/docs.yml/badge.svg)](https://github.com/hadijannat/idta-submodel-editor/actions/workflows/docs.yml)
