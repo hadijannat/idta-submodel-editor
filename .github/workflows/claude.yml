@@ -65,7 +65,7 @@ jobs:
         if: steps.trigger.outputs.should_run == 'true'
         id: claude-attempt-1
         continue-on-error: true
-        uses: anthropics/claude-code-action@ba7fa4bcf054319261202aef93d71a89112a8d00
+        uses: anthropics/claude-code-action@26ec041249acb0a944c0a47b6c0c13f05dbc5b44
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -85,7 +85,7 @@ jobs:
         if: steps.trigger.outputs.should_run == 'true' && steps.claude-attempt-1.outcome == 'failure'
         id: claude-attempt-2
         continue-on-error: true
-        uses: anthropics/claude-code-action@ba7fa4bcf054319261202aef93d71a89112a8d00
+        uses: anthropics/claude-code-action@26ec041249acb0a944c0a47b6c0c13f05dbc5b44
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
