@@ -39,6 +39,7 @@ jobs:
             frontend:
               - 'frontend/**'
             frontend_lockfile:
+              - 'frontend/package.json'
               - 'frontend/package-lock.json'
             plc4x:
               - 'plc4x-bridge/**'
