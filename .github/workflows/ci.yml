@@ -26,80 +26,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 0
 
       - name: Detect changed paths
         id: filter
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
-          BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-
-          changed_files=""
-          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$BASE_REF" ]; then
-            git fetch --no-tags origin "$BASE_REF"
-            base_commit=$(git merge-base HEAD "origin/$BASE_REF")
-            changed_files=$(git diff --name-only "$base_commit"...HEAD)
-          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
-            changed_files=$(git diff --name-only "$BEFORE_SHA"...HEAD)
-          else
-            changed_files=$(git show --pretty='' --name-only HEAD)
-          fi
-
-          backend=false
-          frontend=false
-          frontend_lockfile=false
-          plc4x=false
-          docker=false
-          workflows=false
-
-          while IFS= read -r file; do
-            [ -n "$file" ] || continue
-            case "$file" in
-              backend/*)
-                backend=true
-                ;;
-            esac
-            case "$file" in
-              frontend/*)
-                frontend=true
-                ;;
-            esac
-            case "$file" in
-              frontend/package.json|frontend/package-lock.json)
-                frontend_lockfile=true
-                ;;
-            esac
-            case "$file" in
-              plc4x-bridge/*)
-                plc4x=true
-                ;;
-            esac
-            case "$file" in
-              backend/Dockerfile|frontend/Dockerfile|plc4x-bridge/Dockerfile|docker-compose.yml|docker-compose.yaml|docker-compose.*)
-                docker=true
-                ;;
-            esac
-            case "$file" in
-              .github/workflows/*|.github/actions/*)
-                workflows=true
-                ;;
-            esac
-          done <<< "$changed_files"
-
-          printf 'Changed files:\n%s\n' "${changed_files:-<none>}"
-
-          {
-            echo "backend=$backend"
-            echo "frontend=$frontend"
-            echo "frontend_lockfile=$frontend_lockfile"
-            echo "plc4x=$plc4x"
-            echo "docker=$docker"
-            echo "workflows=$workflows"
-          } >> "$GITHUB_OUTPUT"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/compute_changed_paths.py
 
   workflow-lint:
     runs-on: ubuntu-latest
@@ -123,6 +55,9 @@ jobs:
         run: |
           yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable}}" \
             .github/workflows
+
+      - name: Test workflow helpers
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
 
   backend:
     runs-on: ubuntu-latest
