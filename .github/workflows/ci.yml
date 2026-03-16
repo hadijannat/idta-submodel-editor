@@ -56,6 +56,22 @@ jobs:
           yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable}}" \
             .github/workflows
 
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.11
+          ACTIONLINT_SHA256: 900919a84f2229bac68ca9cd4103ea297abc35e9689ebb842c6e34a3d1b01b0a
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" "${url}"
+          echo "${ACTIONLINT_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" actionlint
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Run actionlint
+        run: actionlint
+
       - name: Test workflow helpers
         run: python -m unittest discover -s .github/scripts -p 'test_*.py'
 
@@ -438,12 +454,8 @@ jobs:
             -e SECRET_KEY=ci-smoke-test-secret-key-at-least-thirty-two-characters \
             -e ALLOW_INSECURE_PROD_AUTH=true \
             idta-backend:ci)
-          cleanup() {
-            docker logs "$cid" || true
-            docker rm -f "$cid" || true
-          }
-          trap cleanup EXIT
-          for i in {1..24}; do
+          trap 'docker logs "$cid" || true; docker rm -f "$cid" || true' EXIT
+          for _ in {1..24}; do
             status=$(docker inspect -f '{{.State.Status}}' "$cid")
             if [ "$status" != "running" ]; then
               echo "backend image exited before readiness checks completed"
@@ -476,12 +488,8 @@ jobs:
         run: |
           set -euo pipefail
           cid=$(docker run -d --rm -p 18090:8090 idta-plc4x-bridge:ci)
-          cleanup() {
-            docker logs "$cid" || true
-            docker rm -f "$cid" || true
-          }
-          trap cleanup EXIT
-          for i in {1..24}; do
+          trap 'docker logs "$cid" || true; docker rm -f "$cid" || true' EXIT
+          for _ in {1..24}; do
             if curl -fsS http://localhost:18090/actuator/health > /dev/null && \
                (curl -fsS http://localhost:18090/v3/api-docs > /dev/null || \
                 curl -fsS http://localhost:18090/api-docs > /dev/null); then
