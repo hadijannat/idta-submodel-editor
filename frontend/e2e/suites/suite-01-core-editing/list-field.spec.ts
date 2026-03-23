@@ -397,6 +397,7 @@ test.describe('List Fields', () => {
         return;
       }
 
+      const tailScrollTop = await virtualizedContainer.evaluate((element) => element.scrollTop);
       const { control: tailControl, index: tailIndex } = tailEditableItem;
       const sentinelValue = `Tail Sentinel Value ${tailIndex}`;
       await tailControl.fill(sentinelValue);
@@ -405,9 +406,12 @@ test.describe('List Fields', () => {
       await addButton.click();
       await expect(listField.locator('.aas-list-count')).toContainText(`(${totalItems + 1} items)`);
 
-      await virtualizedContainer.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-      });
+      await virtualizedContainer.evaluate(
+        (element, scrollTop) => {
+          element.scrollTop = scrollTop;
+        },
+        tailScrollTop
+      );
 
       const updatedVisibleCount = await visibleItems.count();
       expect(updatedVisibleCount).toBeGreaterThan(0);
@@ -415,9 +419,12 @@ test.describe('List Fields', () => {
 
       await expect
         .poll(async () => {
-          await virtualizedContainer.evaluate((element) => {
-            element.scrollTop = element.scrollHeight;
-          });
+          await virtualizedContainer.evaluate(
+            (element, scrollTop) => {
+              element.scrollTop = scrollTop;
+            },
+            tailScrollTop
+          );
           return getVisibleTextControlValueAtIndex(listField, tailIndex);
         })
         .toBe(sentinelValue);
