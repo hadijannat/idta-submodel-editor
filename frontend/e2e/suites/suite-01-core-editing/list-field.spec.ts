@@ -24,6 +24,14 @@ const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
 const VIRTUALIZED_ITEM_HEIGHT_ESTIMATE = 120;
 
+function getIndexedListItemSelector(index: number): string {
+  return [
+    `.aas-list-item[data-index="${index}"]`,
+    `.list-item[data-index="${index}"]`,
+    `[data-testid="list-item"][data-index="${index}"]`,
+  ].join(', ');
+}
+
 async function openExpandableListTemplate(
   page: Page,
   formEditor: FormEditorPage
@@ -77,7 +85,7 @@ async function findLastVisibleEditableListItem(
     if (index >= 0) {
       return {
         control: listField
-          .locator(`${LIST_ITEM_SELECTOR}[data-index="${index}"]`)
+          .locator(getIndexedListItemSelector(index))
           .locator('input, textarea')
           .first(),
         index,
@@ -93,7 +101,7 @@ async function getVisibleTextControlValueAtIndex(
   targetIndex: number
 ): Promise<string | null> {
   const control = listField
-    .locator(`${LIST_ITEM_SELECTOR}[data-index="${targetIndex}"]`)
+    .locator(getIndexedListItemSelector(targetIndex))
     .locator('input, textarea')
     .first();
   const isVisible = await control.isVisible().catch(() => false);
