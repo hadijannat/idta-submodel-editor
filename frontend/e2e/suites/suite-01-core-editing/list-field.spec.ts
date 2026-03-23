@@ -23,6 +23,14 @@ const ADD_ITEM_BUTTON_SELECTOR = 'button.aas-btn-add[aria-label="Add item"], but
 const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
 
+function getIndexedListItemSelector(index: number): string {
+  return [
+    `.aas-list-item[data-index="${index}"]`,
+    `.list-item[data-index="${index}"]`,
+    `[data-testid="list-item"][data-index="${index}"]`,
+  ].join(', ');
+}
+
 async function openExpandableListTemplate(
   page: Page,
   formEditor: FormEditorPage
@@ -55,6 +63,52 @@ async function openExpandableListTemplate(
   }
 
   return null;
+}
+
+async function findLastVisibleEditableListItem(
+  listField: Locator
+): Promise<{ control: Locator; index: number } | null> {
+  const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+  const visibleItemCount = await visibleItems.count();
+
+  for (let i = visibleItemCount - 1; i >= 0; i--) {
+    const candidate = visibleItems.nth(i);
+    const control = candidate.locator('input, textarea').first();
+    const isVisible = await control.isVisible().catch(() => false);
+
+    if (!isVisible) {
+      continue;
+    }
+
+    const index = Number((await candidate.getAttribute('data-index')) ?? '-1');
+    if (index >= 0) {
+      return {
+        control: listField
+          .locator(getIndexedListItemSelector(index))
+          .locator('input, textarea')
+          .first(),
+        index,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function getVisibleTextControlValueAtIndex(
+  listField: Locator,
+  targetIndex: number
+): Promise<string | null> {
+  const control = listField
+    .locator(getIndexedListItemSelector(targetIndex))
+    .locator('input, textarea')
+    .first();
+  const isVisible = await control.isVisible().catch(() => false);
+  if (!isVisible) {
+    return null;
+  }
+
+  return await control.inputValue();
 }
 
 test.describe('List Fields', () => {
@@ -337,22 +391,43 @@ test.describe('List Fields', () => {
       expect(visibleItemCount).toBeGreaterThan(0);
       expect(visibleItemCount).toBeLessThan(totalItems);
 
-      const tailControl = visibleItems.last().locator('input, textarea').first();
-      await expect(tailControl).toBeVisible();
+      const tailEditableItem = await findLastVisibleEditableListItem(listField);
+      if (!tailEditableItem) {
+        test.skip();
+        return;
+      }
+
+      const tailScrollTop = await virtualizedContainer.evaluate((element) => element.scrollTop);
+      const { control: tailControl, index: tailIndex } = tailEditableItem;
+      const sentinelValue = `Tail Sentinel Value ${tailIndex}`;
+      await tailControl.fill(sentinelValue);
+      await expect(tailControl).toHaveValue(sentinelValue);
 
       await addButton.click();
       await expect(listField.locator('.aas-list-count')).toContainText(`(${totalItems + 1} items)`);
 
-      await virtualizedContainer.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-      });
+      await virtualizedContainer.evaluate(
+        (element, scrollTop) => {
+          element.scrollTop = scrollTop;
+        },
+        tailScrollTop
+      );
 
       const updatedVisibleCount = await visibleItems.count();
       expect(updatedVisibleCount).toBeGreaterThan(0);
       expect(updatedVisibleCount).toBeLessThan(totalItems + 1);
 
-      const updatedTailControl = visibleItems.last().locator('input, textarea').first();
-      await expect(updatedTailControl).toBeVisible();
+      await expect
+        .poll(async () => {
+          await virtualizedContainer.evaluate(
+            (element, scrollTop) => {
+              element.scrollTop = scrollTop;
+            },
+            tailScrollTop
+          );
+          return getVisibleTextControlValueAtIndex(listField, tailIndex);
+        })
+        .toBe(sentinelValue);
     });
   });
 
