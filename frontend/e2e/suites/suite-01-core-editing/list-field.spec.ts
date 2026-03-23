@@ -22,7 +22,6 @@ const LIST_ITEM_SELECTOR = '.aas-list-item, .list-item, [data-testid="list-item"
 const ADD_ITEM_BUTTON_SELECTOR = 'button.aas-btn-add[aria-label="Add item"], button[aria-label="Add item"]';
 const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
-const VIRTUALIZED_ITEM_HEIGHT_ESTIMATE = 120;
 
 function getIndexedListItemSelector(index: number): string {
   return [
@@ -406,19 +405,21 @@ test.describe('List Fields', () => {
       await addButton.click();
       await expect(listField.locator('.aas-list-count')).toContainText(`(${totalItems + 1} items)`);
 
-      await virtualizedContainer.evaluate(
-        (element, { index, itemHeight }) => {
-          element.scrollTop = Math.max(0, index * itemHeight);
-        },
-        { index: tailIndex, itemHeight: VIRTUALIZED_ITEM_HEIGHT_ESTIMATE }
-      );
+      await virtualizedContainer.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
 
       const updatedVisibleCount = await visibleItems.count();
       expect(updatedVisibleCount).toBeGreaterThan(0);
       expect(updatedVisibleCount).toBeLessThan(totalItems + 1);
 
       await expect
-        .poll(async () => getVisibleTextControlValueAtIndex(listField, tailIndex))
+        .poll(async () => {
+          await virtualizedContainer.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+          });
+          return getVisibleTextControlValueAtIndex(listField, tailIndex);
+        })
         .toBe(sentinelValue);
     });
   });
