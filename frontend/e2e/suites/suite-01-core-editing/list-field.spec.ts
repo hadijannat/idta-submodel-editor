@@ -5,7 +5,7 @@
  * cardinality enforcement, and item ordering.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { TemplateSelectorPage } from '../../pages/template-selector.page';
 import { FormEditorPage } from '../../pages/form-editor.page';
 import { APIClient } from '../../helpers/api-client';
@@ -13,6 +13,7 @@ import { createMinimalNameplateFormData } from '../../helpers/test-data-factory'
 
 const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:8000';
 const TEST_TEMPLATE = 'Digital Nameplate';
+const VIRTUALIZATION_TEMPLATE = 'Carbon Footprint';
 const LIST_FIELD_SELECTOR =
   '.aas-list, .list-field, [data-testid*="list-"], [data-modeltype="SubmodelElementList"]';
 const REQUIRED_LIST_FIELD_SELECTOR =
@@ -21,6 +22,40 @@ const LIST_ITEM_SELECTOR = '.aas-list-item, .list-item, [data-testid="list-item"
 const ADD_ITEM_BUTTON_SELECTOR = 'button.aas-btn-add[aria-label="Add item"], button[aria-label="Add item"]';
 const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
+
+async function openExpandableListTemplate(
+  page: Page,
+  formEditor: FormEditorPage
+): Promise<Locator | null> {
+  const templateSelector = new TemplateSelectorPage(page);
+  await templateSelector.goto();
+  await templateSelector.searchAndSelectTemplate(VIRTUALIZATION_TEMPLATE);
+  await formEditor.waitForFormReady();
+  await formEditor.goToStep('fill-fields');
+
+  const editorToggle = page.getByRole('button', { name: /^Editor$/ });
+  if (await editorToggle.isVisible().catch(() => false)) {
+    await editorToggle.click();
+  }
+
+  const listFields = page.locator(LIST_FIELD_SELECTOR);
+  const listFieldCount = await listFields.count();
+
+  for (let i = 0; i < listFieldCount; i++) {
+    const candidate = listFields.nth(i);
+    const addButton = candidate.locator(ADD_ITEM_BUTTON_SELECTOR).first();
+    const isVisible = await candidate.isVisible().catch(() => false);
+    const canAdd =
+      (await addButton.isVisible().catch(() => false)) &&
+      !(await addButton.isDisabled().catch(() => true));
+
+    if (isVisible && canAdd) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 test.describe('List Fields', () => {
   let formEditor: FormEditorPage;
@@ -221,9 +256,8 @@ test.describe('List Fields', () => {
     });
 
     test('uses virtualized rendering when item count exceeds threshold', async ({ page }) => {
-      const listField = page.locator(LIST_FIELD_SELECTOR).first();
-
-      if (!(await listField.isVisible())) {
+      const listField = await openExpandableListTemplate(page, formEditor);
+      if (!listField) {
         test.skip();
         return;
       }
@@ -261,6 +295,64 @@ test.describe('List Fields', () => {
       await expect(firstVisibleInput).toBeVisible();
       await firstVisibleInput.fill('Virtualized Item Value');
       await expect(firstVisibleInput).toHaveValue('Virtualized Item Value');
+    });
+
+    test('preserves tail item state when scrolling and appending in a virtualized list', async ({ page }) => {
+      const listField = await openExpandableListTemplate(page, formEditor);
+      if (!listField) {
+        test.skip();
+        return;
+      }
+
+      const addButton = listField.locator(ADD_ITEM_BUTTON_SELECTOR).first();
+      if (!(await addButton.isVisible())) {
+        test.skip();
+        return;
+      }
+
+      for (let i = 0; i < 22; i++) {
+        if (await addButton.isDisabled()) {
+          break;
+        }
+        await addButton.click();
+      }
+
+      const listCountText = (await listField.locator('.aas-list-count').textContent()) ?? '';
+      const totalItems = Number(listCountText.match(/\d+/)?.[0] ?? '0');
+
+      if (totalItems <= 20) {
+        test.skip();
+        return;
+      }
+
+      const virtualizedContainer = listField.locator('.virtualized-list-container');
+      await expect(virtualizedContainer).toBeVisible();
+
+      await virtualizedContainer.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+
+      const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+      const visibleItemCount = await visibleItems.count();
+      expect(visibleItemCount).toBeGreaterThan(0);
+      expect(visibleItemCount).toBeLessThan(totalItems);
+
+      const tailControl = visibleItems.last().locator('input, textarea').first();
+      await expect(tailControl).toBeVisible();
+
+      await addButton.click();
+      await expect(listField.locator('.aas-list-count')).toContainText(`(${totalItems + 1} items)`);
+
+      await virtualizedContainer.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+
+      const updatedVisibleCount = await visibleItems.count();
+      expect(updatedVisibleCount).toBeGreaterThan(0);
+      expect(updatedVisibleCount).toBeLessThan(totalItems + 1);
+
+      const updatedTailControl = visibleItems.last().locator('input, textarea').first();
+      await expect(updatedTailControl).toBeVisible();
     });
   });
 
