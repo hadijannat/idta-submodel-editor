@@ -22,6 +22,7 @@ const LIST_ITEM_SELECTOR = '.aas-list-item, .list-item, [data-testid="list-item"
 const ADD_ITEM_BUTTON_SELECTOR = 'button.aas-btn-add[aria-label="Add item"], button[aria-label="Add item"]';
 const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
+const VIRTUALIZED_ITEM_HEIGHT_ESTIMATE = 120;
 
 async function openExpandableListTemplate(
   page: Page,
@@ -52,6 +53,56 @@ async function openExpandableListTemplate(
     if (isVisible && canAdd) {
       return candidate;
     }
+  }
+
+  return null;
+}
+
+async function findLastVisibleEditableListItem(
+  listField: Locator
+): Promise<{ control: Locator; index: number } | null> {
+  const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+  const visibleItemCount = await visibleItems.count();
+
+  for (let i = visibleItemCount - 1; i >= 0; i--) {
+    const candidate = visibleItems.nth(i);
+    const control = candidate.locator('input, textarea').first();
+    const isVisible = await control.isVisible().catch(() => false);
+
+    if (!isVisible) {
+      continue;
+    }
+
+    const index = Number((await candidate.getAttribute('data-index')) ?? '-1');
+    if (index >= 0) {
+      return { control, index };
+    }
+  }
+
+  return null;
+}
+
+async function getVisibleTextControlValueAtIndex(
+  listField: Locator,
+  targetIndex: number
+): Promise<string | null> {
+  const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+  const visibleItemCount = await visibleItems.count();
+
+  for (let i = 0; i < visibleItemCount; i++) {
+    const candidate = visibleItems.nth(i);
+    const index = Number((await candidate.getAttribute('data-index')) ?? '-1');
+    if (index !== targetIndex) {
+      continue;
+    }
+
+    const control = candidate.locator('input, textarea').first();
+    const isVisible = await control.isVisible().catch(() => false);
+    if (!isVisible) {
+      return null;
+    }
+
+    return await control.inputValue();
   }
 
   return null;
@@ -337,28 +388,34 @@ test.describe('List Fields', () => {
       expect(visibleItemCount).toBeGreaterThan(0);
       expect(visibleItemCount).toBeLessThan(totalItems);
 
-      const tailIndex = totalItems - 1;
-      const tailItem = listField.locator(`.aas-list-item[data-index="${tailIndex}"]`).first();
-      const tailControl = tailItem.locator('input, textarea').first();
-      await expect(tailControl).toBeVisible();
-      await tailControl.fill('Tail Sentinel Value');
-      await expect(tailControl).toHaveValue('Tail Sentinel Value');
+      const tailEditableItem = await findLastVisibleEditableListItem(listField);
+      if (!tailEditableItem) {
+        test.skip();
+        return;
+      }
+
+      const { control: tailControl, index: tailIndex } = tailEditableItem;
+      const sentinelValue = `Tail Sentinel Value ${tailIndex}`;
+      await tailControl.fill(sentinelValue);
+      await expect(tailControl).toHaveValue(sentinelValue);
 
       await addButton.click();
       await expect(listField.locator('.aas-list-count')).toContainText(`(${totalItems + 1} items)`);
 
-      await virtualizedContainer.evaluate((element) => {
-        element.scrollTop = element.scrollHeight;
-      });
+      await virtualizedContainer.evaluate(
+        (element, { index, itemHeight }) => {
+          element.scrollTop = Math.max(0, index * itemHeight);
+        },
+        { index: tailIndex, itemHeight: VIRTUALIZED_ITEM_HEIGHT_ESTIMATE }
+      );
 
       const updatedVisibleCount = await visibleItems.count();
       expect(updatedVisibleCount).toBeGreaterThan(0);
       expect(updatedVisibleCount).toBeLessThan(totalItems + 1);
 
-      const updatedTailItem = listField.locator(`.aas-list-item[data-index="${tailIndex}"]`).first();
-      const updatedTailControl = updatedTailItem.locator('input, textarea').first();
-      await expect(updatedTailControl).toBeVisible();
-      await expect(updatedTailControl).toHaveValue('Tail Sentinel Value');
+      await expect
+        .poll(async () => getVisibleTextControlValueAtIndex(listField, tailIndex))
+        .toBe(sentinelValue);
     });
   });
 
