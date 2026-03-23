@@ -75,7 +75,13 @@ async function findLastVisibleEditableListItem(
 
     const index = Number((await candidate.getAttribute('data-index')) ?? '-1');
     if (index >= 0) {
-      return { control, index };
+      return {
+        control: listField
+          .locator(`${LIST_ITEM_SELECTOR}[data-index="${index}"]`)
+          .locator('input, textarea')
+          .first(),
+        index,
+      };
     }
   }
 
@@ -86,26 +92,16 @@ async function getVisibleTextControlValueAtIndex(
   listField: Locator,
   targetIndex: number
 ): Promise<string | null> {
-  const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
-  const visibleItemCount = await visibleItems.count();
-
-  for (let i = 0; i < visibleItemCount; i++) {
-    const candidate = visibleItems.nth(i);
-    const index = Number((await candidate.getAttribute('data-index')) ?? '-1');
-    if (index !== targetIndex) {
-      continue;
-    }
-
-    const control = candidate.locator('input, textarea').first();
-    const isVisible = await control.isVisible().catch(() => false);
-    if (!isVisible) {
-      return null;
-    }
-
-    return await control.inputValue();
+  const control = listField
+    .locator(`${LIST_ITEM_SELECTOR}[data-index="${targetIndex}"]`)
+    .locator('input, textarea')
+    .first();
+  const isVisible = await control.isVisible().catch(() => false);
+  if (!isVisible) {
+    return null;
   }
 
-  return null;
+  return await control.inputValue();
 }
 
 test.describe('List Fields', () => {
