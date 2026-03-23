@@ -337,8 +337,12 @@ test.describe('List Fields', () => {
       expect(visibleItemCount).toBeGreaterThan(0);
       expect(visibleItemCount).toBeLessThan(totalItems);
 
-      const tailControl = visibleItems.last().locator('input, textarea').first();
+      const tailIndex = totalItems - 1;
+      const tailItem = listField.locator(`.aas-list-item[data-index="${tailIndex}"]`).first();
+      const tailControl = tailItem.locator('input, textarea').first();
       await expect(tailControl).toBeVisible();
+      await tailControl.fill('Tail Sentinel Value');
+      await expect(tailControl).toHaveValue('Tail Sentinel Value');
 
       await addButton.click();
       await expect(listField.locator('.aas-list-count')).toContainText(`(${totalItems + 1} items)`);
@@ -351,8 +355,10 @@ test.describe('List Fields', () => {
       expect(updatedVisibleCount).toBeGreaterThan(0);
       expect(updatedVisibleCount).toBeLessThan(totalItems + 1);
 
-      const updatedTailControl = visibleItems.last().locator('input, textarea').first();
+      const updatedTailItem = listField.locator(`.aas-list-item[data-index="${tailIndex}"]`).first();
+      const updatedTailControl = updatedTailItem.locator('input, textarea').first();
       await expect(updatedTailControl).toBeVisible();
+      await expect(updatedTailControl).toHaveValue('Tail Sentinel Value');
     });
   });
 
