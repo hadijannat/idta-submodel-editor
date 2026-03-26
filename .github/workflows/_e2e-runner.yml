@@ -71,6 +71,15 @@ jobs:
           pip install -r backend/requirements.txt
           pip install aas-test-engines
 
+      - name: Verify aas-test-engines installation
+        run: |
+          aas_test_engines check_file --help > /dev/null
+          python - <<'PY'
+          from importlib import metadata
+
+          print(f"Using aas-test-engines {metadata.version('aas-test-engines')}")
+          PY
+
       - name: Install frontend dependencies
         run: npm ci
         working-directory: frontend
