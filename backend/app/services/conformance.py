@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from importlib import metadata
 import re
 import subprocess
 import time
@@ -31,17 +32,11 @@ class ConformanceResult:
 def get_engine_version() -> str | None:
     """Get aas-test-engines version once per process."""
     try:
-        proc = subprocess.run(
-            ["aas_test_engines", "--version"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        output = (proc.stdout or proc.stderr or "").strip()
-        return output or None
-    except Exception:
+        version = metadata.version("aas-test-engines")
+    except metadata.PackageNotFoundError:
         return None
+
+    return f"aas-test-engines {version}"
 
 
 def _parse_issues(output: str) -> tuple[list[ConformanceIssue], list[ConformanceIssue]]:

@@ -47,7 +47,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const conformanceAvailable = await isConformanceToolAvailable();
   if (conformanceAvailable) {
     const version = await getConformanceToolVersion();
-    console.log(`✓ Conformance tool available: ${version}`);
+    console.log(`✓ Conformance tool available${version ? `: ${version}` : ''}`);
   } else {
     console.log(
       '⚠️  aas-test-engines not available. Conformance tests will be skipped.'
