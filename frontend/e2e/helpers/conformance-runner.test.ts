@@ -82,6 +82,42 @@ describe('conformance runner helpers', () => {
     ]);
   });
 
+  it('falls back to parsing plain-text output when JSON is unavailable', () => {
+    const result = parseConformanceOutput(
+      'FAILED check meta model\nWARNING minor issue',
+      ''
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.errors).toEqual([
+      {
+        level: 'error',
+        message: 'FAILED check meta model',
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      {
+        level: 'warning',
+        message: 'WARNING minor issue',
+      },
+    ]);
+  });
+
+  it('extracts JSON output even when the CLI prints a preamble', () => {
+    const result = parseConformanceOutput(
+      'Running conformance check...\n{"m":"Check","l":2,"s":[{"m":"invalid shell","l":2,"s":[]}]}',
+      ''
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.errors).toEqual([
+      {
+        level: 'error',
+        message: 'invalid shell',
+      },
+    ]);
+  });
+
   it('checks conformance tool availability with the supported help command', async () => {
     mockExecFileSuccess();
 
@@ -135,6 +171,22 @@ describe('conformance runner helpers', () => {
         callback(new Error('python missing'), '', '');
       });
 
+    await expect(getConformanceToolVersion()).resolves.toBeNull();
+  });
+
+  it('keeps availability true when version lookup is unavailable', async () => {
+    execFileMock
+      .mockImplementationOnce((_file, _args, _options, callback) => {
+        callback(null, '', '');
+      })
+      .mockImplementationOnce((_file, _args, _options, callback) => {
+        callback(new Error('python3 missing'), '', '');
+      })
+      .mockImplementationOnce((_file, _args, _options, callback) => {
+        callback(new Error('python missing'), '', '');
+      });
+
+    await expect(isConformanceToolAvailable()).resolves.toBe(true);
     await expect(getConformanceToolVersion()).resolves.toBeNull();
   });
 

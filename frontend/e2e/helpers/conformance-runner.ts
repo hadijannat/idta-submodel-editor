@@ -251,40 +251,46 @@ export function parseConformanceOutput(stdout: string, stderr: string): Conforma
     duration_ms: 0,
   };
 
-  // Try to parse JSON output
-  try {
-    if (stdout.trim().startsWith('{')) {
-      const parsed = JSON.parse(stdout) as ConformanceTreeNode;
+  // Try to parse JSON output even if the CLI prints a short preamble first.
+  const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as ConformanceTreeNode;
       collectTreeIssues(parsed, result);
       result.passed = result.errors.length === 0;
       return result;
+    } catch {
+      // Fall through to line-based parsing when JSON is malformed.
     }
-  } catch {
-    // Fall back to line-by-line parsing
-    const lines = (stdout + '\n' + stderr).split('\n');
+  }
 
-    for (const line of lines) {
-      const trimmed = line.trim();
+  // Fall back to line-by-line parsing
+  const lines = (stdout + '\n' + stderr).split('\n');
 
-      if (trimmed.toLowerCase().includes('error:') || trimmed.toLowerCase().includes('[error]')) {
-        result.passed = false;
-        result.errors.push({
-          level: 'error',
-          message: trimmed,
-        });
-      } else if (
-        trimmed.toLowerCase().includes('warning:') ||
-        trimmed.toLowerCase().includes('[warning]')
-      ) {
-        result.warnings.push({
-          level: 'warning',
-          message: trimmed,
-        });
-      } else if (trimmed.toLowerCase().includes('passed') || trimmed.toLowerCase().includes('valid')) {
-        // Keep passed as true
-      } else if (trimmed.toLowerCase().includes('failed') || trimmed.toLowerCase().includes('invalid')) {
-        result.passed = false;
-      }
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const normalized = trimmed.toLowerCase();
+    const isError =
+      /\b(error|failed|invalid)\b/i.test(trimmed) || normalized.includes('[error]');
+    const isWarning = /\bwarning\b/i.test(trimmed) || normalized.includes('[warning]');
+
+    if (!trimmed) {
+      continue;
+    }
+
+    if (isError) {
+      result.passed = false;
+      result.errors.push({
+        level: 'error',
+        message: trimmed,
+      });
+    } else if (isWarning) {
+      result.warnings.push({
+        level: 'warning',
+        message: trimmed,
+      });
+    } else if (normalized.includes('passed') || normalized.includes('valid')) {
+      // Keep passed as true
     }
   }
 
