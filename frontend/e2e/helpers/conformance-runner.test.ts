@@ -50,4 +50,40 @@ describe('conformance runner helpers', () => {
       },
     ]);
   });
+
+  it('falls back to parsing plain-text output when JSON is unavailable', () => {
+    const result = parseConformanceOutput(
+      'FAILED check meta model\nWARNING minor issue',
+      ''
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.errors).toEqual([
+      {
+        level: 'error',
+        message: 'FAILED check meta model',
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      {
+        level: 'warning',
+        message: 'WARNING minor issue',
+      },
+    ]);
+  });
+
+  it('extracts JSON output even when the CLI prints a preamble', () => {
+    const result = parseConformanceOutput(
+      'Running conformance check...\n{"m":"Check","l":2,"s":[{"m":"invalid shell","l":2,"s":[]}]}',
+      ''
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.errors).toEqual([
+      {
+        level: 'error',
+        message: 'invalid shell',
+      },
+    ]);
+  });
 });
