@@ -11,18 +11,11 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { promisify } from 'util';
 
-const execFileAsync = promisify(execFile);
 const CONFORMANCE_BINARY = 'aas_test_engines';
 const PYTHON_BINARIES = ['python3', 'python'];
 const CONFORMANCE_VERSION_SNIPPET =
   "from importlib import metadata; print(metadata.version('aas-test-engines'))";
-type ExecFileRunner = (
-  file: string,
-  args: string[],
-  options: { timeout: number }
-) => Promise<{ stdout: string; stderr: string }>;
 
 // ============================================================================
 // Types
@@ -76,6 +69,47 @@ interface ConformanceTreeNode {
   s?: ConformanceTreeNode[];
 }
 
+interface ExecFileResult {
+  stdout: string;
+  stderr: string;
+}
+
+type ExecFileImplementation = typeof execFile;
+type ExecFileError = Error & {
+  stdout?: string;
+  stderr?: string;
+};
+
+let execFileImplementation: ExecFileImplementation = execFile;
+
+export function setExecFileImplementationForTests(
+  implementation: ExecFileImplementation | null
+): void {
+  execFileImplementation = implementation ?? execFile;
+}
+
+function execFileAsync(file: string, args: string[], timeout: number): Promise<ExecFileResult> {
+  return new Promise((resolve, reject) => {
+    execFileImplementation(file, args, { timeout }, (error, stdout, stderr) => {
+      const stdoutText = String(stdout ?? '');
+      const stderrText = String(stderr ?? '');
+
+      if (error) {
+        const execError = error as ExecFileError;
+        execError.stdout = stdoutText;
+        execError.stderr = stderrText;
+        reject(execError);
+        return;
+      }
+
+      resolve({
+        stdout: stdoutText,
+        stderr: stderrText,
+      });
+    });
+  });
+}
+
 // ============================================================================
 // Conformance Runner
 // ============================================================================
@@ -111,7 +145,7 @@ export async function runConformanceCheck(
 
     // Execute
     const timeout = options.timeout ?? 30000;
-    const { stdout, stderr } = await execFileAsync(CONFORMANCE_BINARY, args, { timeout });
+    const { stdout, stderr } = await execFileAsync(CONFORMANCE_BINARY, args, timeout);
 
     // Parse result
     const result = parseConformanceOutput(stdout, stderr);
@@ -130,6 +164,7 @@ export async function runConformanceCheck(
 
     // If we couldn't parse meaningful output, add the error
     if (result.errors.length === 0 && execError.message) {
+      result.passed = false;
       result.errors.push({
         level: 'error',
         message: `Conformance check failed: ${execError.message}`,
@@ -216,7 +251,7 @@ export function parseConformanceOutput(stdout: string, stderr: string): Conforma
     duration_ms: 0,
   };
 
-  // Try to parse JSON output
+  // Try to parse JSON output even if the CLI prints a short preamble first.
   const jsonMatch = stdout.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
@@ -269,11 +304,9 @@ export function parseConformanceOutput(stdout: string, stderr: string): Conforma
 /**
  * Check if aas-test-engines is installed and available.
  */
-export async function isConformanceToolAvailable(
-  execRunner: ExecFileRunner = execFileAsync
-): Promise<boolean> {
+export async function isConformanceToolAvailable(): Promise<boolean> {
   try {
-    await execRunner(CONFORMANCE_BINARY, ['check_file', '--help'], { timeout: 5000 });
+    await execFileAsync(CONFORMANCE_BINARY, ['check_file', '--help'], 5000);
     return true;
   } catch {
     return false;
@@ -283,15 +316,13 @@ export async function isConformanceToolAvailable(
 /**
  * Get the version of aas-test-engines.
  */
-export async function getConformanceToolVersion(
-  execRunner: ExecFileRunner = execFileAsync
-): Promise<string | null> {
+export async function getConformanceToolVersion(): Promise<string | null> {
   for (const pythonBinary of PYTHON_BINARIES) {
     try {
-      const { stdout } = await execRunner(
+      const { stdout } = await execFileAsync(
         pythonBinary,
         ['-c', CONFORMANCE_VERSION_SNIPPET],
-        { timeout: 5000 }
+        5000
       );
       const version = stdout.trim();
       if (version) {
