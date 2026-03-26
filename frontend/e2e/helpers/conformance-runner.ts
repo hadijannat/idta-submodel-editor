@@ -18,6 +18,11 @@ const CONFORMANCE_BINARY = 'aas_test_engines';
 const PYTHON_BINARIES = ['python3', 'python'];
 const CONFORMANCE_VERSION_SNIPPET =
   "from importlib import metadata; print(metadata.version('aas-test-engines'))";
+type ExecFileRunner = (
+  file: string,
+  args: string[],
+  options: { timeout: number }
+) => Promise<{ stdout: string; stderr: string }>;
 
 // ============================================================================
 // Types
@@ -264,9 +269,11 @@ export function parseConformanceOutput(stdout: string, stderr: string): Conforma
 /**
  * Check if aas-test-engines is installed and available.
  */
-export async function isConformanceToolAvailable(): Promise<boolean> {
+export async function isConformanceToolAvailable(
+  execRunner: ExecFileRunner = execFileAsync
+): Promise<boolean> {
   try {
-    await execFileAsync(CONFORMANCE_BINARY, ['check_file', '--help'], { timeout: 5000 });
+    await execRunner(CONFORMANCE_BINARY, ['check_file', '--help'], { timeout: 5000 });
     return true;
   } catch {
     return false;
@@ -276,10 +283,12 @@ export async function isConformanceToolAvailable(): Promise<boolean> {
 /**
  * Get the version of aas-test-engines.
  */
-export async function getConformanceToolVersion(): Promise<string | null> {
+export async function getConformanceToolVersion(
+  execRunner: ExecFileRunner = execFileAsync
+): Promise<string | null> {
   for (const pythonBinary of PYTHON_BINARIES) {
     try {
-      const { stdout } = await execFileAsync(
+      const { stdout } = await execRunner(
         pythonBinary,
         ['-c', CONFORMANCE_VERSION_SNIPPET],
         { timeout: 5000 }

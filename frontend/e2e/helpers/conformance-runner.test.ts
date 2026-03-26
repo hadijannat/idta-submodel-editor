@@ -1,6 +1,81 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildConformanceArgs, parseConformanceOutput } from './conformance-runner';
+import {
+  buildConformanceArgs,
+  getConformanceToolVersion,
+  isConformanceToolAvailable,
+  parseConformanceOutput,
+} from './conformance-runner';
+
+type ExecRunner = NonNullable<Parameters<typeof isConformanceToolAvailable>[0]>;
+
+describe('conformance runner environment detection', () => {
+  it('detects the conformance CLI when check_file help succeeds', async () => {
+    const calls: Parameters<ExecRunner>[] = [];
+    const execRunner: ExecRunner = async (...args) => {
+      calls.push(args);
+      return { stdout: '', stderr: '' };
+    };
+
+    await expect(isConformanceToolAvailable(execRunner)).resolves.toBe(true);
+    expect(calls).toEqual([[
+      'aas_test_engines',
+      ['check_file', '--help'],
+      { timeout: 5000 },
+    ]]);
+  });
+
+  it('falls back from python3 to python when resolving the version', async () => {
+    const calls: Parameters<ExecRunner>[] = [];
+    let invocation = 0;
+    const execRunner: ExecRunner = async (...args) => {
+      calls.push(args);
+      invocation += 1;
+      if (invocation === 1) {
+        throw Object.assign(new Error('python3 missing'), { code: 'ENOENT' });
+      }
+      return { stdout: '1.2.3\n', stderr: '' };
+    };
+
+    await expect(getConformanceToolVersion(execRunner)).resolves.toBe('aas-test-engines 1.2.3');
+    expect(calls).toEqual([
+      [
+        'python3',
+        ['-c', "from importlib import metadata; print(metadata.version('aas-test-engines'))"],
+        { timeout: 5000 },
+      ],
+      [
+        'python',
+        ['-c', "from importlib import metadata; print(metadata.version('aas-test-engines'))"],
+        { timeout: 5000 },
+      ],
+    ]);
+  });
+
+  it('keeps availability true when version lookup is unavailable', async () => {
+    const availabilityRunner: ExecRunner = async () => ({ stdout: '', stderr: '' });
+    const versionCalls: Parameters<ExecRunner>[] = [];
+    const versionRunner: ExecRunner = async (...args) => {
+      versionCalls.push(args);
+      throw Object.assign(new Error('metadata unavailable'), { code: 'ENOENT' });
+    };
+
+    await expect(isConformanceToolAvailable(availabilityRunner)).resolves.toBe(true);
+    await expect(getConformanceToolVersion(versionRunner)).resolves.toBeNull();
+    expect(versionCalls).toEqual([
+      [
+        'python3',
+        ['-c', "from importlib import metadata; print(metadata.version('aas-test-engines'))"],
+        { timeout: 5000 },
+      ],
+      [
+        'python',
+        ['-c', "from importlib import metadata; print(metadata.version('aas-test-engines'))"],
+        { timeout: 5000 },
+      ],
+    ]);
+  });
+});
 
 describe('conformance runner helpers', () => {
   it('uses the supported aas-test-engines CLI arguments', () => {
