@@ -11,9 +11,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { promisify } from 'util';
 
-const execFileAsync = promisify(execFile);
 const CONFORMANCE_BINARY = 'aas_test_engines';
 const PYTHON_BINARIES = ['python3', 'python'];
 const CONFORMANCE_VERSION_SNIPPET =
@@ -71,6 +69,47 @@ interface ConformanceTreeNode {
   s?: ConformanceTreeNode[];
 }
 
+interface ExecFileResult {
+  stdout: string;
+  stderr: string;
+}
+
+type ExecFileImplementation = typeof execFile;
+type ExecFileError = Error & {
+  stdout?: string;
+  stderr?: string;
+};
+
+let execFileImplementation: ExecFileImplementation = execFile;
+
+export function setExecFileImplementationForTests(
+  implementation: ExecFileImplementation | null
+): void {
+  execFileImplementation = implementation ?? execFile;
+}
+
+function execFileAsync(file: string, args: string[], timeout: number): Promise<ExecFileResult> {
+  return new Promise((resolve, reject) => {
+    execFileImplementation(file, args, { timeout }, (error, stdout, stderr) => {
+      const stdoutText = String(stdout ?? '');
+      const stderrText = String(stderr ?? '');
+
+      if (error) {
+        const execError = error as ExecFileError;
+        execError.stdout = stdoutText;
+        execError.stderr = stderrText;
+        reject(execError);
+        return;
+      }
+
+      resolve({
+        stdout: stdoutText,
+        stderr: stderrText,
+      });
+    });
+  });
+}
+
 // ============================================================================
 // Conformance Runner
 // ============================================================================
@@ -106,7 +145,7 @@ export async function runConformanceCheck(
 
     // Execute
     const timeout = options.timeout ?? 30000;
-    const { stdout, stderr } = await execFileAsync(CONFORMANCE_BINARY, args, { timeout });
+    const { stdout, stderr } = await execFileAsync(CONFORMANCE_BINARY, args, timeout);
 
     // Parse result
     const result = parseConformanceOutput(stdout, stderr);
@@ -125,6 +164,7 @@ export async function runConformanceCheck(
 
     // If we couldn't parse meaningful output, add the error
     if (result.errors.length === 0 && execError.message) {
+      result.passed = false;
       result.errors.push({
         level: 'error',
         message: `Conformance check failed: ${execError.message}`,
@@ -260,7 +300,7 @@ export function parseConformanceOutput(stdout: string, stderr: string): Conforma
  */
 export async function isConformanceToolAvailable(): Promise<boolean> {
   try {
-    await execFileAsync(CONFORMANCE_BINARY, ['check_file', '--help'], { timeout: 5000 });
+    await execFileAsync(CONFORMANCE_BINARY, ['check_file', '--help'], 5000);
     return true;
   } catch {
     return false;
@@ -276,7 +316,7 @@ export async function getConformanceToolVersion(): Promise<string | null> {
       const { stdout } = await execFileAsync(
         pythonBinary,
         ['-c', CONFORMANCE_VERSION_SNIPPET],
-        { timeout: 5000 }
+        5000
       );
       const version = stdout.trim();
       if (version) {
