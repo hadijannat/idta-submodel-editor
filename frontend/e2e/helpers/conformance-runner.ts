@@ -7,13 +7,15 @@
  * Requires: pip install aas-test-engines
  */
 
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+const CONFORMANCE_BINARY = 'aas_test_engines';
+const PYTHON_BINARIES = ['python3', 'python'];
+const CONFORMANCE_VERSION_SNIPPET =
+  "from importlib import metadata; print(metadata.version('aas-test-engines'))";
 
 // ============================================================================
 // Types
@@ -49,15 +51,63 @@ export interface ConformanceOptions {
   timeout?: number;
 
   /**
-   * AAS version to validate against.
-   * @default 'v3.0'
+   * Retained for API compatibility. aas-test-engines 1.x does not expose a
+   * validation-version flag for `check_file`, so this value is currently unused.
    */
   version?: string;
 
   /**
-   * Additional validation rules to apply.
+   * Retained for API compatibility. aas-test-engines 1.x does not expose a
+   * rule-selection flag for `check_file`, so this value is currently unused.
    */
   rules?: string[];
+}
+
+interface ConformanceTreeNode {
+  m?: string;
+  l?: number;
+  s?: ConformanceTreeNode[];
+}
+
+interface ExecFileResult {
+  stdout: string;
+  stderr: string;
+}
+
+type ExecFileImplementation = typeof execFile;
+type ExecFileError = Error & {
+  stdout?: string;
+  stderr?: string;
+};
+
+let execFileImplementation: ExecFileImplementation = execFile;
+
+export function setExecFileImplementationForTests(
+  implementation: ExecFileImplementation | null
+): void {
+  execFileImplementation = implementation ?? execFile;
+}
+
+function execFileAsync(file: string, args: string[], timeout: number): Promise<ExecFileResult> {
+  return new Promise((resolve, reject) => {
+    execFileImplementation(file, args, { timeout }, (error, stdout, stderr) => {
+      const stdoutText = String(stdout ?? '');
+      const stderrText = String(stderr ?? '');
+
+      if (error) {
+        const execError = error as ExecFileError;
+        execError.stdout = stdoutText;
+        execError.stderr = stderrText;
+        reject(execError);
+        return;
+      }
+
+      resolve({
+        stdout: stdoutText,
+        stderr: stderrText,
+      });
+    });
+  });
 }
 
 // ============================================================================
@@ -91,11 +141,11 @@ export async function runConformanceCheck(
     }
 
     // Build command
-    const cmd = buildConformanceCommand(tempFile, options);
+    const args = buildConformanceArgs(tempFile, options);
 
     // Execute
     const timeout = options.timeout ?? 30000;
-    const { stdout, stderr } = await execAsync(cmd, { timeout });
+    const { stdout, stderr } = await execFileAsync(CONFORMANCE_BINARY, args, timeout);
 
     // Parse result
     const result = parseConformanceOutput(stdout, stderr);
@@ -114,6 +164,7 @@ export async function runConformanceCheck(
 
     // If we couldn't parse meaningful output, add the error
     if (result.errors.length === 0 && execError.message) {
+      result.passed = false;
       result.errors.push({
         level: 'error',
         message: `Conformance check failed: ${execError.message}`,
@@ -132,39 +183,65 @@ export async function runConformanceCheck(
 }
 
 /**
- * Build the aas-test-engines command.
+ * Build the aas-test-engines command arguments.
+ *
+ * Exported for unit tests.
  */
-function buildConformanceCommand(filePath: string, options: ConformanceOptions): string {
-  const args = ['aas_test_engines', 'check_file'];
+export function buildConformanceArgs(filePath: string, options: ConformanceOptions): string[] {
+  const args = ['check_file'];
 
   // Format
   args.push('--format', options.format);
 
-  // Version
-  if (options.version) {
-    args.push('--version', options.version);
-  }
-
-  // Additional rules
-  if (options.rules?.length) {
-    for (const rule of options.rules) {
-      args.push('--rule', rule);
-    }
-  }
-
-  // Output format (JSON for easier parsing)
-  args.push('--output-format', 'json');
+  // aas-test-engines 1.x supports --output, but not --output-format / --version / --rule.
+  args.push('--output', 'json');
 
   // File path
   args.push(filePath);
 
-  return args.join(' ');
+  return args;
+}
+
+/**
+ * Parse aas-test-engines' JSON tree into flat issues.
+ */
+function collectTreeIssues(node: ConformanceTreeNode, result: ConformanceResult): void {
+  const children = Array.isArray(node.s) ? node.s : [];
+  if (children.length > 0) {
+    for (const child of children) {
+      collectTreeIssues(child, result);
+    }
+    return;
+  }
+
+  const message = typeof node.m === 'string' ? node.m.trim() : '';
+  if (!message) {
+    return;
+  }
+
+  if ((node.l ?? 0) >= 2) {
+    result.passed = false;
+    result.errors.push({
+      level: 'error',
+      message,
+    });
+    return;
+  }
+
+  if ((node.l ?? 0) === 1) {
+    result.warnings.push({
+      level: 'warning',
+      message,
+    });
+  }
 }
 
 /**
  * Parse the conformance tool output.
+ *
+ * Exported for unit tests.
  */
-function parseConformanceOutput(stdout: string, stderr: string): ConformanceResult {
+export function parseConformanceOutput(stdout: string, stderr: string): ConformanceResult {
   const result: ConformanceResult = {
     passed: true,
     errors: [],
@@ -174,64 +251,46 @@ function parseConformanceOutput(stdout: string, stderr: string): ConformanceResu
     duration_ms: 0,
   };
 
-  // Try to parse JSON output
-  try {
-    const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      result.passed = parsed.passed ?? parsed.valid ?? true;
-      result.score = parsed.score;
-
-      // Parse issues
-      if (parsed.issues) {
-        for (const issue of parsed.issues) {
-          const conformanceIssue: ConformanceIssue = {
-            level: issue.level === 'error' ? 'error' : 'warning',
-            rule: issue.rule,
-            path: issue.path,
-            message: issue.message,
-          };
-
-          if (conformanceIssue.level === 'error') {
-            result.errors.push(conformanceIssue);
-          } else {
-            result.warnings.push(conformanceIssue);
-          }
-        }
-      }
-
-      // Update passed status based on errors
-      if (result.errors.length > 0) {
-        result.passed = false;
-      }
+  // Try to parse JSON output even if the CLI prints a short preamble first.
+  const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as ConformanceTreeNode;
+      collectTreeIssues(parsed, result);
+      result.passed = result.errors.length === 0;
+      return result;
+    } catch {
+      // Fall through to line-based parsing when JSON is malformed.
     }
-  } catch {
-    // Fall back to line-by-line parsing
-    const lines = (stdout + '\n' + stderr).split('\n');
+  }
 
-    for (const line of lines) {
-      const trimmed = line.trim();
+  // Fall back to line-by-line parsing
+  const lines = (stdout + '\n' + stderr).split('\n');
 
-      if (trimmed.toLowerCase().includes('error:') || trimmed.toLowerCase().includes('[error]')) {
-        result.passed = false;
-        result.errors.push({
-          level: 'error',
-          message: trimmed,
-        });
-      } else if (
-        trimmed.toLowerCase().includes('warning:') ||
-        trimmed.toLowerCase().includes('[warning]')
-      ) {
-        result.warnings.push({
-          level: 'warning',
-          message: trimmed,
-        });
-      } else if (trimmed.toLowerCase().includes('passed') || trimmed.toLowerCase().includes('valid')) {
-        // Keep passed as true
-      } else if (trimmed.toLowerCase().includes('failed') || trimmed.toLowerCase().includes('invalid')) {
-        result.passed = false;
-      }
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const normalized = trimmed.toLowerCase();
+    const isError =
+      /\b(error|failed|invalid)\b/i.test(trimmed) || normalized.includes('[error]');
+    const isWarning = /\bwarning\b/i.test(trimmed) || normalized.includes('[warning]');
+
+    if (!trimmed) {
+      continue;
+    }
+
+    if (isError) {
+      result.passed = false;
+      result.errors.push({
+        level: 'error',
+        message: trimmed,
+      });
+    } else if (isWarning) {
+      result.warnings.push({
+        level: 'warning',
+        message: trimmed,
+      });
+    } else if (normalized.includes('passed') || normalized.includes('valid')) {
+      // Keep passed as true
     }
   }
 
@@ -247,7 +306,7 @@ function parseConformanceOutput(stdout: string, stderr: string): ConformanceResu
  */
 export async function isConformanceToolAvailable(): Promise<boolean> {
   try {
-    await execAsync('aas_test_engines --version', { timeout: 5000 });
+    await execFileAsync(CONFORMANCE_BINARY, ['check_file', '--help'], 5000);
     return true;
   } catch {
     return false;
@@ -258,12 +317,23 @@ export async function isConformanceToolAvailable(): Promise<boolean> {
  * Get the version of aas-test-engines.
  */
 export async function getConformanceToolVersion(): Promise<string | null> {
-  try {
-    const { stdout } = await execAsync('aas_test_engines --version', { timeout: 5000 });
-    return stdout.trim();
-  } catch {
-    return null;
+  for (const pythonBinary of PYTHON_BINARIES) {
+    try {
+      const { stdout } = await execFileAsync(
+        pythonBinary,
+        ['-c', CONFORMANCE_VERSION_SNIPPET],
+        5000
+      );
+      const version = stdout.trim();
+      if (version) {
+        return `aas-test-engines ${version}`;
+      }
+    } catch {
+      continue;
+    }
   }
+
+  return null;
 }
 
 /**

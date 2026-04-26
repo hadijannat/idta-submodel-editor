@@ -44,6 +44,7 @@ export const VirtualizedList: React.FC<VirtualizedListProps> = ({
     getScrollElement: () => parentRef.current,
     estimateSize: () => ESTIMATED_ITEM_HEIGHT,
     overscan: OVERSCAN_COUNT,
+    getItemKey: (index) => fields[index]?.id ?? index,
   });
 
   const items = virtualizer.getVirtualItems();

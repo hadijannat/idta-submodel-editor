@@ -17,14 +17,14 @@
   },
   "homepage": "https://github.com/hadijannat/idta-submodel-editor#readme",
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^20.19.0 || >=22.13.0"
   },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "npm run test:unit",
     "test:unit": "vitest run",
@@ -43,32 +43,34 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@tanstack/react-virtual": "^3.13.19",
+    "@tanstack/react-virtual": "^3.13.23",
     "html-to-image": "^1.11.13",
     "localforage": "^1.10.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-hook-form": "^7.71.2",
+    "react-dom": "^19.2.5",
+    "react-hook-form": "^7.72.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.58.2",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.5.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.56.1",
-    "@vitejs/plugin-react": "^5.1.4",
-    "@vitest/coverage-v8": "^4.0.18",
-    "eslint": "^8.56.0",
-    "eslint-plugin-react-hooks": "^7.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@typescript-eslint/parser": "^8.58.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^10.2.0",
+    "eslint-plugin-react-hooks": "^7.1.0-canary-9627b5a1-20260327",
     "eslint-plugin-react-refresh": "^0.4.26",
-    "jsdom": "^28.1.0",
-    "typescript": "^5.3.3",
-    "vite": "^7.3.1",
-    "vitest": "^4.0.18"
+    "globals": "^17.4.0",
+    "jsdom": "^29.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.5",
+    "vitest": "^4.1.2"
   },
   "overrides": {
     "ajv": "^6.14.0"
