@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import functools
+import os
 import re
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - CI installs yamllint, which brings PyYAML.
+    yaml = None
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -12,21 +20,62 @@ WORKFLOW_PATHS = (
     REPO_ROOT / ".github" / "workflows" / "claude.yml",
     REPO_ROOT / ".github" / "workflows" / "claude-code-review.yml",
 )
-CLAUDE_ACTION_PATTERN = re.compile(r"uses:\s+anthropics/claude-code-action@([0-9a-f]{40})\b")
 ACTION_METADATA_URL_TEMPLATE = (
     "https://raw.githubusercontent.com/anthropics/claude-code-action/{sha}/action.yml"
 )
+CLAUDE_ACTION_USES_PATTERN = re.compile(
+    r"^anthropics/claude-code-action@([0-9a-f]{40})$"
+)
 
 
-def _indent_width(line: str) -> int:
-    return len(line) - len(line.lstrip(" "))
+def _load_yaml_mapping(text: str, source: str) -> dict[str, Any]:
+    if yaml is None:
+        raise unittest.SkipTest("PyYAML is required to parse workflow YAML.")
+
+    loaded = yaml.safe_load(text) or {}
+    if not isinstance(loaded, dict):
+        raise AssertionError(f"{source} did not parse as a YAML mapping.")
+    return loaded
+
+
+def _iter_workflow_steps(workflow: dict[str, Any]):
+    jobs = workflow.get("jobs", {})
+    if not isinstance(jobs, dict):
+        return
+
+    for job in jobs.values():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get("steps", [])
+        if not isinstance(steps, list):
+            continue
+        for step in steps:
+            if isinstance(step, dict):
+                yield step
+
+
+def _claude_action_sha(step: dict[str, Any]) -> str | None:
+    uses = step.get("uses")
+    if not isinstance(uses, str):
+        return None
+    match = CLAUDE_ACTION_USES_PATTERN.match(uses)
+    return match.group(1) if match else None
+
+
+def _extract_action_shas(workflow_path: Path) -> set[str]:
+    workflow = _load_yaml_mapping(workflow_path.read_text(), str(workflow_path))
+    return {
+        sha
+        for step in _iter_workflow_steps(workflow)
+        if (sha := _claude_action_sha(step)) is not None
+    }
 
 
 def _extract_shared_sha() -> str:
     pinned_shas: dict[str, set[str]] = {}
 
     for workflow_path in WORKFLOW_PATHS:
-        matches = set(CLAUDE_ACTION_PATTERN.findall(workflow_path.read_text()))
+        matches = _extract_action_shas(workflow_path)
         if not matches:
             raise AssertionError(f"{workflow_path} does not pin anthropics/claude-code-action.")
         pinned_shas[workflow_path.name] = matches
@@ -47,58 +96,17 @@ def _extract_shared_sha() -> str:
 
 
 def _extract_used_inputs(workflow_path: Path) -> set[str]:
-    lines = workflow_path.read_text().splitlines()
+    workflow = _load_yaml_mapping(workflow_path.read_text(), str(workflow_path))
     used_inputs: set[str] = set()
-    line_index = 0
-
-    while line_index < len(lines):
-        line = lines[line_index]
-        match = CLAUDE_ACTION_PATTERN.search(line)
-        if not match:
-            line_index += 1
+    for step in _iter_workflow_steps(workflow):
+        if _claude_action_sha(step) is None:
             continue
-
-        uses_indent = _indent_width(line)
-        line_index += 1
-
-        while line_index < len(lines):
-            line = lines[line_index]
-            stripped = line.strip()
-            indent = _indent_width(line)
-
-            if stripped.startswith("- ") and indent <= uses_indent:
-                break
-
-            if stripped == "with:" and indent > uses_indent:
-                with_indent = indent
-                key_indent: int | None = None
-                line_index += 1
-
-                while line_index < len(lines):
-                    line = lines[line_index]
-                    stripped = line.strip()
-                    indent = _indent_width(line)
-
-                    if stripped and indent <= with_indent:
-                        break
-
-                    if not stripped:
-                        line_index += 1
-                        continue
-
-                    if key_indent is None and indent > with_indent:
-                        key_indent = indent
-
-                    if key_indent is not None and indent == key_indent:
-                        key_match = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):", stripped)
-                        if key_match:
-                            used_inputs.add(key_match.group(1))
-
-                    line_index += 1
-
-                continue
-
-            line_index += 1
+        with_block = step.get("with", {})
+        if not isinstance(with_block, dict):
+            raise AssertionError(
+                f"{workflow_path.name} has a Claude action step with a non-mapping with: block."
+            )
+        used_inputs.update(str(key) for key in with_block)
 
     return used_inputs
 
@@ -106,37 +114,21 @@ def _extract_used_inputs(workflow_path: Path) -> set[str]:
 @functools.lru_cache(maxsize=1)
 def _fetch_supported_inputs(sha: str) -> set[str]:
     url = ACTION_METADATA_URL_TEMPLATE.format(sha=sha)
-    with urllib.request.urlopen(url, timeout=10) as response:
-        action_metadata = response.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            action_metadata = response.read().decode("utf-8")
+    except (OSError, TimeoutError, urllib.error.URLError) as exc:
+        raise AssertionError(
+            "Network-dependent Claude action metadata check failed while fetching "
+            f"{url}: {exc}. Retry CI or verify the pinned action inputs manually."
+        ) from exc
 
-    lines = action_metadata.splitlines()
-    input_names: set[str] = set()
-    inputs_indent: int | None = None
-    key_indent: int | None = None
+    metadata = _load_yaml_mapping(action_metadata, url)
+    inputs = metadata.get("inputs", {})
+    if not isinstance(inputs, dict):
+        raise AssertionError(f"Failed to parse inputs from {url}.")
 
-    for line in lines:
-        stripped = line.strip()
-        indent = _indent_width(line)
-
-        if inputs_indent is None:
-            if stripped == "inputs:":
-                inputs_indent = indent
-            continue
-
-        if not stripped:
-            continue
-
-        if indent <= inputs_indent:
-            break
-
-        if key_indent is None and indent > inputs_indent:
-            key_indent = indent
-
-        if key_indent is not None and indent == key_indent:
-            key_match = re.match(r"([A-Za-z_][A-Za-z0-9_-]*):$", stripped)
-            if key_match:
-                input_names.add(key_match.group(1))
-
+    input_names = {str(name) for name in inputs}
     if not input_names:
         raise AssertionError(f"Failed to parse inputs from {url}.")
 
@@ -147,6 +139,14 @@ class ClaudeWorkflowPinTests(unittest.TestCase):
     def test_claude_workflows_share_one_pinned_action_sha(self) -> None:
         self.assertRegex(_extract_shared_sha(), r"^[0-9a-f]{40}$")
 
+    def test_claude_workflow_inputs_are_parseable(self) -> None:
+        for workflow_path in WORKFLOW_PATHS:
+            self.assertTrue(_extract_used_inputs(workflow_path))
+
+    @unittest.skipUnless(
+        os.environ.get("CI") or os.environ.get("VERIFY_CLAUDE_ACTION_INPUTS"),
+        "network-dependent upstream action metadata check; set VERIFY_CLAUDE_ACTION_INPUTS=1 to run locally",
+    )
     def test_pinned_claude_action_supports_all_workflow_inputs(self) -> None:
         pinned_sha = _extract_shared_sha()
         supported_inputs = _fetch_supported_inputs(pinned_sha)

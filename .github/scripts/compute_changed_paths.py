@@ -4,21 +4,59 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 ZERO_SHA = "0" * 40
+RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+DEFAULT_FETCH_ATTEMPTS = 2
 
 
-def fetch_json(url: str, token: str | None) -> Any:
+def _is_retryable_fetch_error(exc: BaseException) -> bool:
+    if isinstance(exc, HTTPError):
+        return exc.code in RETRYABLE_HTTP_STATUS_CODES
+    return isinstance(exc, (TimeoutError, URLError))
+
+
+def fetch_json(
+    url: str,
+    token: str | None,
+    *,
+    attempts: int = DEFAULT_FETCH_ATTEMPTS,
+    backoff_seconds: float = 1.0,
+) -> Any:
     headers = {"Accept": "application/vnd.github+json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(url, headers=headers)
-    with urlopen(request) as response:  # noqa: S310 - GitHub API endpoint is fixed by the workflow
-        return json.load(response)
+
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            with urlopen(request, timeout=10) as response:  # noqa: S310 - GitHub API endpoint is fixed by the workflow
+                return json.load(response)
+        except Exception as exc:
+            if attempt >= max(1, attempts) or not _is_retryable_fetch_error(exc):
+                raise
+            print(
+                f"warning: GitHub API request failed on attempt {attempt}; retrying: {exc}",
+                file=sys.stderr,
+            )
+            time.sleep(backoff_seconds * attempt)
+
+    raise RuntimeError("unreachable")
+
+
+def warn_if_unauthenticated(token: str | None) -> None:
+    if not token:
+        print(
+            "warning: GITHUB_TOKEN is unset; GitHub API requests are unauthenticated "
+            "and may be rate-limited.",
+            file=sys.stderr,
+        )
 
 
 def collect_pull_request_files(
@@ -144,6 +182,7 @@ def main() -> int:
     if not event_name or not repository or not event_path:
         raise RuntimeError("GITHUB_EVENT_NAME, GITHUB_REPOSITORY, and GITHUB_EVENT_PATH are required.")
 
+    warn_if_unauthenticated(token)
     payload = json.loads(Path(event_path).read_text(encoding="utf-8"))
     changed_files = determine_changed_files(event_name, repository, payload, token)
 
