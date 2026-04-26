@@ -225,6 +225,7 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
           </div>
         );
 
+      case 'SubmodelElement':
       case 'Operation':
       case 'Capability':
       case 'BasicEventElement':

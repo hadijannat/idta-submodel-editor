@@ -59,7 +59,8 @@ class HydratorService:
             reader.read_into(object_store, file_store)
 
         # Find the submodel
-        submodel = self._find_submodel(object_store)
+        aas_obj = self._find_aas(object_store)
+        submodel = self._find_submodel(object_store, aas_obj)
         if not submodel:
             raise ValueError("No Submodel found in template")
 
@@ -121,7 +122,8 @@ class HydratorService:
         with SafeAASXReader(BytesIO(template_aasx_bytes)) as reader:
             reader.read_into(object_store, file_store)
 
-        submodel = self._find_submodel(object_store)
+        aas_obj = self._find_aas(object_store)
+        submodel = self._find_submodel(object_store, aas_obj)
         if not submodel:
             raise ValueError("No Submodel found in template")
 
@@ -142,13 +144,56 @@ class HydratorService:
         return output.getvalue().decode("utf-8")
 
     def _find_submodel(
-        self, object_store: model.DictObjectStore
+        self,
+        object_store: model.DictObjectStore,
+        aas_obj: model.AssetAdministrationShell | None = None,
     ) -> model.Submodel | None:
-        """Find the first Submodel in the object store."""
+        """Find the primary template Submodel deterministically."""
+        submodels = [obj for obj in object_store if isinstance(obj, model.Submodel)]
+        if not submodels:
+            return None
+
+        def submodel_id(submodel: model.Submodel) -> str:
+            return str(getattr(submodel, "id_", None) or getattr(submodel, "id", "") or "")
+
+        template_submodels = [
+            submodel
+            for submodel in submodels
+            if "submodeltemplate" in submodel_id(submodel).lower()
+        ]
+        if template_submodels:
+            return sorted(template_submodels, key=submodel_id)[0]
+
+        referenced_ids = self._aas_submodel_reference_ids(aas_obj)
+        if referenced_ids:
+            by_id = {submodel_id(submodel): submodel for submodel in submodels}
+            for ref_id in sorted(referenced_ids):
+                if ref_id in by_id:
+                    return by_id[ref_id]
+
+        return sorted(submodels, key=submodel_id)[0]
+
+    def _find_aas(
+        self,
+        object_store: model.DictObjectStore,
+    ) -> model.AssetAdministrationShell | None:
+        """Find the first AssetAdministrationShell in the object store."""
         for obj in object_store:
-            if isinstance(obj, model.Submodel):
+            if isinstance(obj, model.AssetAdministrationShell):
                 return obj
         return None
+
+    def _aas_submodel_reference_ids(
+        self,
+        aas_obj: model.AssetAdministrationShell | None,
+    ) -> set[str]:
+        if aas_obj is None:
+            return set()
+        result = set()
+        for ref in aas_obj.submodel or []:
+            if getattr(ref, "key", None):
+                result.add(ref.key[-1].value)
+        return result
 
     def _apply_metadata(
         self,
@@ -335,8 +380,9 @@ class HydratorService:
             if value is None:
                 return None
             if isinstance(value, str):
-                trimmed = value.strip()
-                return trimmed if trimmed else None
+                if value.strip() == "":
+                    return None
+                return value
             return str(value)
 
         if "semanticId" in value_data:
@@ -384,7 +430,29 @@ class HydratorService:
     ) -> None:
         """Hydrate a Property element."""
         if "value" in value_data:
-            element.value = self._coerce_value(value_data["value"], element.value_type)
+            submitted_value = value_data["value"]
+            if self._values_equivalent_for_hydration(element.value, submitted_value):
+                return
+            try:
+                element.value = self._coerce_value(submitted_value, element.value_type)
+            except (TypeError, ValueError) as exc:
+                logger.warning(
+                    "Skipping invalid value for property %s: %s",
+                    element.id_short,
+                    exc,
+                )
+
+    def _values_equivalent_for_hydration(self, existing: Any, submitted: Any) -> bool:
+        """Return true when JSON-shaped form data represents the current value."""
+        if existing is None:
+            return submitted in (None, "")
+        if submitted is None:
+            return False
+        if hasattr(existing, "year") and str(submitted) == str(existing.year):
+            return True
+        if hasattr(existing, "isoformat") and str(submitted) == existing.isoformat():
+            return True
+        return str(existing) == str(submitted)
 
     def _hydrate_multilang(
         self,
@@ -619,7 +687,9 @@ class HydratorService:
     ) -> None:
         """Hydrate an Entity element."""
         if "globalAssetId" in value_data:
-            element.global_asset_id = value_data["globalAssetId"]
+            global_asset_id = value_data["globalAssetId"]
+            if global_asset_id is not None and str(global_asset_id).strip():
+                element.global_asset_id = str(global_asset_id)
         if "statements" in value_data:
             self._hydrate_elements(element.statement, value_data["statements"])
 
@@ -697,6 +767,10 @@ class HydratorService:
                 if isinstance(value, time):
                     return value
                 return time.fromisoformat(str(value))
+            elif "gyear" in type_str:
+                if isinstance(value, model.datatypes.GYear):
+                    return value
+                return model.datatypes.GYear(int(str(value)))
             else:
                 return str(value)
         except (ValueError, TypeError):

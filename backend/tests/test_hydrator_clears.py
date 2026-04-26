@@ -1,4 +1,5 @@
 import base64
+from datetime import date
 
 import pytest
 from basyx.aas import model
@@ -81,6 +82,47 @@ def test_hydrator_clears_blank_file_value_without_invalid_path():
 
     assert file_element.value is None
     assert file_element.content_type == "application/pdf"
+
+
+def test_hydrator_ignores_blank_entity_global_asset_id():
+    hydrator = HydratorService()
+    entity = model.Entity(
+        id_short="entity",
+        entity_type=model.EntityType.CO_MANAGED_ENTITY,
+        global_asset_id=None,
+        statement=(),
+    )
+
+    hydrator._hydrate_entity(entity, {"globalAssetId": "", "statements": {}})
+
+    assert entity.global_asset_id is None
+
+
+def test_hydrator_coerces_gyear_property_values():
+    hydrator = HydratorService()
+    prop = model.Property(
+        id_short="year",
+        value_type=model.datatypes.GYear,
+        value=model.datatypes.GYear(1988),
+    )
+
+    hydrator._hydrate_property(prop, {"value": "2024"})
+
+    assert isinstance(prop.value, model.datatypes.GYear)
+    assert prop.value.year == 2024
+
+
+def test_hydrator_skips_invalid_property_assignment():
+    hydrator = HydratorService()
+    prop = model.Property(
+        id_short="date",
+        value_type=model.datatypes.Date,
+        value=date(2023, 1, 1),
+    )
+
+    hydrator._hydrate_property(prop, {"value": "2023"})
+
+    assert prop.value == date(2023, 1, 1)
 
 
 def test_hydrator_updates_annotated_relationship_annotations():

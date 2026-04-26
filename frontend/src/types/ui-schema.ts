@@ -9,6 +9,7 @@
  * Supported SubmodelElement types.
  */
 export type ElementModelType =
+  | 'SubmodelElement'
   | 'Property'
   | 'SubmodelElementCollection'
   | 'SubmodelElementList'

@@ -125,14 +125,65 @@ class TestParserService:
         """Empty lists with type metadata should emit form-compatible templates."""
         parser = ParserService()
 
+        property_template = parser._create_template_from_type(
+            model.Property,
+            model.datatypes.Double,
+        )
         blob_template = parser._create_template_from_type(model.Blob)
         entity_template = parser._create_template_from_type(model.Entity)
 
+        assert property_template["constraints"] is not None
+        assert "step" in property_template
+        assert "unit" in property_template
+        assert "valueId" in property_template
         assert blob_template["modelType"] == "Blob"
         assert blob_template["contentType"] == "application/octet-stream"
         assert "valueEncoding" in blob_template
         assert entity_template["modelType"] == "Entity"
         assert entity_template["statements"] == []
+
+    def test_find_submodel_prefers_template_identifier(self):
+        """Multi-submodel AASX packages should select the template submodel."""
+        parser = ParserService()
+        asset_id = model.Submodel(
+            id_="urn:asset-identification",
+            id_short="AssetIdentification",
+            submodel_element=[
+                model.Property(
+                    id_short="AssetId",
+                    value_type=model.datatypes.String,
+                    value="asset",
+                )
+            ],
+        )
+        template = model.Submodel(
+            id_="https://admin-shell.io/idta/SubmodelTemplate/Example/1/0",
+            id_short="ExampleTemplate",
+            submodel_element=[
+                model.Property(
+                    id_short="TemplateValue",
+                    value_type=model.datatypes.String,
+                    value="template",
+                )
+            ],
+        )
+        aas_obj = model.AssetAdministrationShell(
+            id_="urn:test:aas",
+            id_short="TestAAS",
+            asset_information=model.AssetInformation(
+                asset_kind=model.AssetKind.INSTANCE,
+                global_asset_id="urn:test:asset",
+            ),
+            submodel={
+                model.ModelReference.from_referable(asset_id),
+                model.ModelReference.from_referable(template),
+            },
+        )
+        object_store = model.DictObjectStore([aas_obj, asset_id, template])
+
+        selected = parser._find_submodel(object_store, aas_obj)
+
+        assert selected is template
 
     def test_serialize_reference_none(self):
         """Test serializing None reference."""
