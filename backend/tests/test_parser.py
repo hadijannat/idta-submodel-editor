@@ -185,6 +185,46 @@ class TestParserService:
 
         assert selected is template
 
+    def test_find_submodel_ignores_unreferenced_template_identifier(self):
+        """AAS references should take precedence over unreferenced template-looking decoys."""
+        parser = ParserService()
+        referenced = model.Submodel(
+            id_="urn:referenced-submodel",
+            id_short="ReferencedSubmodel",
+            submodel_element=[
+                model.Property(
+                    id_short="ReferencedValue",
+                    value_type=model.datatypes.String,
+                    value="referenced",
+                )
+            ],
+        )
+        decoy = model.Submodel(
+            id_="https://admin-shell.io/idta/SubmodelTemplate/Decoy/1/0",
+            id_short="DecoyTemplate",
+            submodel_element=[
+                model.Property(
+                    id_short="DecoyValue",
+                    value_type=model.datatypes.String,
+                    value="decoy",
+                )
+            ],
+        )
+        aas_obj = model.AssetAdministrationShell(
+            id_="urn:test:aas",
+            id_short="TestAAS",
+            asset_information=model.AssetInformation(
+                asset_kind=model.AssetKind.INSTANCE,
+                global_asset_id="urn:test:asset",
+            ),
+            submodel={model.ModelReference.from_referable(referenced)},
+        )
+        object_store = model.DictObjectStore([aas_obj, decoy, referenced])
+
+        selected = parser._find_submodel(object_store, aas_obj)
+
+        assert selected is referenced
+
     def test_serialize_reference_none(self):
         """Test serializing None reference."""
         parser = ParserService()

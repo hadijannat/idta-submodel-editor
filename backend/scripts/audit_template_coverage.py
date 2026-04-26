@@ -112,6 +112,14 @@ STAGES = (
     "reparsed",
 )
 
+REPORT_DIR = Path("tmp/template-audit")
+AUDIT_CACHE_DIR = REPORT_DIR / "cache/templates"
+MAX_CONCURRENCY = 8
+DEFAULT_TEMPLATE_TIMEOUT_SECONDS = 120.0
+DEFAULT_MAX_AASX_BYTES = 256 * 1024 * 1024
+DEFAULT_MAX_SCHEMA_NODES = 100_000
+MAX_VALIDATION_DETAILS = 25
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -139,7 +147,25 @@ def parse_args() -> argparse.Namespace:
         "--concurrency",
         type=int,
         default=4,
-        help="Maximum templates processed concurrently.",
+        help=f"Maximum templates processed concurrently. Capped at {MAX_CONCURRENCY}.",
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=DEFAULT_TEMPLATE_TIMEOUT_SECONDS,
+        help="Maximum wall-clock seconds per template.",
+    )
+    parser.add_argument(
+        "--max-aasx-bytes",
+        type=int,
+        default=DEFAULT_MAX_AASX_BYTES,
+        help="Reject fetched AASX files larger than this byte count.",
+    )
+    parser.add_argument(
+        "--max-schema-nodes",
+        type=int,
+        default=DEFAULT_MAX_SCHEMA_NODES,
+        help="Reject parsed UI schemas larger than this recursive node count.",
     )
     parser.add_argument(
         "--output",
@@ -159,6 +185,26 @@ def parse_args() -> argparse.Namespace:
         help="Always exit 0 after writing reports.",
     )
     return parser.parse_args()
+
+
+def resolve_report_path(path: Path, option_name: str) -> Path:
+    """Resolve and constrain generated reports to the gitignored audit directory."""
+    cwd = Path.cwd()
+    base_dir = (cwd / REPORT_DIR).resolve(strict=False)
+    candidate = path if path.is_absolute() else cwd / path
+    resolved = candidate.resolve(strict=False)
+
+    try:
+        resolved.relative_to(base_dir)
+    except ValueError as exc:
+        raise ValueError(
+            f"{option_name} must be under {REPORT_DIR}/, got {path}"
+        ) from exc
+
+    if resolved == base_dir:
+        raise ValueError(f"{option_name} must be a file path under {REPORT_DIR}/")
+
+    return resolved
 
 
 def iter_schema_elements(
@@ -472,6 +518,21 @@ def json_safe_value(value: Any) -> Any:
     return str(value)
 
 
+def dump_validation_results(results: list[Any]) -> list[dict[str, Any]]:
+    """Bound validation details so large audits do not duplicate huge payloads."""
+    dumped = [result.model_dump() for result in results[:MAX_VALIDATION_DETAILS]]
+    truncated = len(results) - MAX_VALIDATION_DETAILS
+    if truncated > 0:
+        dumped.append(
+            {
+                "field": "<truncated>",
+                "message": f"{truncated} additional validation result(s) omitted.",
+                "code": "truncated",
+            }
+        )
+    return dumped
+
+
 def parse_cardinality(cardinality: str | None) -> tuple[int, int | None]:
     value = str(cardinality or "").strip()
     if not value:
@@ -724,7 +785,10 @@ async def audit_template(
     fetcher: TemplateFetcherService,
     parser: ParserService,
     hydrator: HydratorService,
-    semaphore: asyncio.Semaphore,
+    *,
+    timeout_seconds: float,
+    max_aasx_bytes: int,
+    max_schema_nodes: int,
 ) -> dict[str, Any]:
     result = make_template_result(template)
     template_path = template.get("path")
@@ -737,171 +801,236 @@ async def audit_template(
         )
         return result
 
-    async with semaphore:
-        try:
-            aasx_bytes = await fetcher.fetch_template_aasx(str(template_path))
-            if not aasx_bytes:
-                add_failure(
-                    result,
-                    category="missing_aasx",
-                    stage="fetch",
-                    message="Fetched AASX was empty.",
-                )
-                return result
-            result["stages"]["fetched"] = True
-        except Exception as exc:
+    try:
+        return await asyncio.wait_for(
+            _audit_template_inner(
+                result,
+                str(template_path),
+                fetcher,
+                parser,
+                hydrator,
+                max_aasx_bytes=max_aasx_bytes,
+                max_schema_nodes=max_schema_nodes,
+            ),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        add_failure(
+            result,
+            category="template_timeout",
+            stage="timeout",
+            message=f"Template audit exceeded {timeout_seconds} seconds.",
+        )
+        return result
+
+
+async def _audit_template_inner(
+    result: dict[str, Any],
+    template_path: str,
+    fetcher: TemplateFetcherService,
+    parser: ParserService,
+    hydrator: HydratorService,
+    *,
+    max_aasx_bytes: int,
+    max_schema_nodes: int,
+) -> dict[str, Any]:
+    try:
+        aasx_bytes = await fetcher.fetch_template_aasx(template_path)
+        if not aasx_bytes:
             add_failure(
                 result,
-                category="fetch_failure",
+                category="missing_aasx",
                 stage="fetch",
-                message=f"{type(exc).__name__}: {exc}",
+                message="Fetched AASX was empty.",
             )
             return result
-
-        try:
-            schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
-            result["stages"]["parsed"] = True
-        except Exception as exc:
+        if len(aasx_bytes) > max_aasx_bytes:
             add_failure(
                 result,
-                category="parser_failure",
-                stage="parse",
-                message=f"{type(exc).__name__}: {exc}",
-            )
-            return result
-
-        analysis = analyze_schema(schema)
-        result["elementMetrics"] = analysis
-        for model_type, count in analysis["unknownModelTypes"].items():
-            add_failure(
-                result,
-                category="unsupported_model_type",
-                stage="metadata",
-                message=f"{count} node(s) use unsupported modelType {model_type}.",
-            )
-        for sample in analysis["missingRequiredMetadata"]:
-            add_failure(
-                result,
-                category="missing_metadata",
-                stage="metadata",
-                path=sample.get("path"),
+                category="aasx_too_large",
+                stage="fetch",
                 message=(
-                    f"{sample.get('modelType')} is missing required UI schema key "
-                    f"{sample.get('missingKey')}."
+                    f"Fetched AASX is {len(aasx_bytes)} bytes, "
+                    f"above max {max_aasx_bytes}."
+                ),
+            )
+            return result
+        result["stages"]["fetched"] = True
+    except Exception as exc:
+        add_failure(
+            result,
+            category="fetch_failure",
+            stage="fetch",
+            message=f"{type(exc).__name__}: {exc}",
+        )
+        return result
+
+    try:
+        schema = await asyncio.to_thread(parser.parse_aasx_to_ui_schema, aasx_bytes)
+        result["stages"]["parsed"] = True
+    except Exception as exc:
+        add_failure(
+            result,
+            category="parser_failure",
+            stage="parse",
+            message=f"{type(exc).__name__}: {exc}",
+        )
+        return result
+
+    analysis = analyze_schema(schema)
+    result["elementMetrics"] = analysis
+    if analysis["totalNodes"] > max_schema_nodes:
+        add_failure(
+            result,
+            category="schema_too_large",
+            stage="metadata",
+            message=(
+                f"Parsed schema has {analysis['totalNodes']} nodes, "
+                f"above max {max_schema_nodes}."
+            ),
+        )
+        return result
+    for model_type, count in analysis["unknownModelTypes"].items():
+        add_failure(
+            result,
+            category="unsupported_model_type",
+            stage="metadata",
+            message=f"{count} node(s) use unsupported modelType {model_type}.",
+        )
+    for sample in analysis["missingRequiredMetadata"]:
+        add_failure(
+            result,
+            category="missing_metadata",
+            stage="metadata",
+            path=sample.get("path"),
+            message=(
+                f"{sample.get('modelType')} is missing required UI schema key "
+                f"{sample.get('missingKey')}."
+            ),
+        )
+
+    try:
+        default_form_data = generate_default_form_data(schema)
+        result["stages"]["defaultFormGenerated"] = True
+    except Exception as exc:
+        add_failure(
+            result,
+            category="default_form_failure",
+            stage="defaults",
+            message=f"{type(exc).__name__}: {exc}",
+        )
+        return result
+
+    default_errors, default_warnings = validate_form_data(schema, default_form_data)
+    result["validation"]["defaultErrors"] = dump_validation_results(default_errors)
+    result["validation"]["defaultWarnings"] = dump_validation_results(default_warnings)
+    result["stages"]["defaultValidationPassed"] = len(default_errors) == 0
+    if default_errors:
+        add_failure(
+            result,
+            category="default_validation_errors",
+            stage="validate",
+            severity="warning",
+            message=f"Default frontend-shaped data produced {len(default_errors)} validation error(s).",
+        )
+
+    try:
+        required_form_data = generate_required_form_data(schema)
+        result["stages"]["requiredFormGenerated"] = True
+    except Exception as exc:
+        add_failure(
+            result,
+            category="required_form_failure",
+            stage="required-defaults",
+            message=f"{type(exc).__name__}: {exc}",
+        )
+        required_form_data = None
+
+    if required_form_data is not None:
+        required_errors, required_warnings = validate_form_data(
+            schema, required_form_data
+        )
+        result["validation"]["requiredErrors"] = dump_validation_results(
+            required_errors
+        )
+        result["validation"]["requiredWarnings"] = dump_validation_results(
+            required_warnings
+        )
+        result["stages"]["requiredValidationPassed"] = len(required_errors) == 0
+        if required_errors:
+            add_failure(
+                result,
+                category="validation_mismatch",
+                stage="validate",
+                message=(
+                    "Synthetic required form data did not satisfy backend "
+                    f"validation: {len(required_errors)} error(s)."
                 ),
             )
 
-        try:
-            default_form_data = generate_default_form_data(schema)
-            result["stages"]["defaultFormGenerated"] = True
-        except Exception as exc:
-            add_failure(
-                result,
-                category="default_form_failure",
-                stage="defaults",
-                message=f"{type(exc).__name__}: {exc}",
-            )
-            return result
+    try:
+        hydrated_store, hydrated_files = await asyncio.to_thread(
+            hydrator.hydrate_to_stores,
+            aasx_bytes,
+            default_form_data,
+        )
+        hydrated_aasx = await asyncio.to_thread(
+            hydrator.serialize_stores_to_aasx,
+            hydrated_store,
+            hydrated_files,
+        )
+        if not hydrated_aasx:
+            raise ValueError("Hydrated AASX was empty.")
+        result["stages"]["hydratedAasx"] = True
+    except Exception as exc:
+        add_failure(
+            result,
+            category="hydration_failure",
+            stage="hydrate-aasx",
+            message=f"{type(exc).__name__}: {exc}",
+        )
+        return result
 
-        default_errors, default_warnings = validate_form_data(schema, default_form_data)
-        result["validation"]["defaultErrors"] = [
-            error.model_dump() for error in default_errors
-        ]
-        result["validation"]["defaultWarnings"] = [
-            warning.model_dump() for warning in default_warnings
-        ]
-        result["stages"]["defaultValidationPassed"] = len(default_errors) == 0
-        if default_errors:
-            add_failure(
-                result,
-                category="default_validation_errors",
-                stage="validate",
-                severity="warning",
-                message=f"Default frontend-shaped data produced {len(default_errors)} validation error(s).",
-            )
+    try:
+        hydrated_json = await asyncio.to_thread(
+            hydrator.serialize_stores_to_json,
+            hydrated_store,
+        )
+        json.loads(hydrated_json)
+        result["stages"]["hydratedJson"] = True
+    except Exception as exc:
+        add_failure(
+            result,
+            category="hydration_failure",
+            stage="hydrate-json",
+            message=f"{type(exc).__name__}: {exc}",
+        )
 
-        try:
-            required_form_data = generate_required_form_data(schema)
-            result["stages"]["requiredFormGenerated"] = True
-        except Exception as exc:
-            add_failure(
-                result,
-                category="required_form_failure",
-                stage="required-defaults",
-                message=f"{type(exc).__name__}: {exc}",
-            )
-            required_form_data = None
+    try:
+        reparsed_schema = await asyncio.to_thread(
+            parser.parse_aasx_to_ui_schema,
+            hydrated_aasx,
+        )
+        result["stages"]["reparsed"] = True
+    except Exception as exc:
+        add_failure(
+            result,
+            category="round_trip_mismatch",
+            stage="reparse",
+            message=f"{type(exc).__name__}: {exc}",
+        )
+        return result
 
-        if required_form_data is not None:
-            required_errors, required_warnings = validate_form_data(
-                schema, required_form_data
-            )
-            result["validation"]["requiredErrors"] = [
-                error.model_dump() for error in required_errors
-            ]
-            result["validation"]["requiredWarnings"] = [
-                warning.model_dump() for warning in required_warnings
-            ]
-            result["stages"]["requiredValidationPassed"] = len(required_errors) == 0
-            if required_errors:
-                add_failure(
-                    result,
-                    category="validation_mismatch",
-                    stage="validate",
-                    message=(
-                        "Synthetic required form data did not satisfy backend "
-                        f"validation: {len(required_errors)} error(s)."
-                    ),
-                )
-
-        try:
-            hydrated_aasx = hydrator.hydrate_submodel(aasx_bytes, default_form_data)
-            if not hydrated_aasx:
-                raise ValueError("Hydrated AASX was empty.")
-            result["stages"]["hydratedAasx"] = True
-        except Exception as exc:
-            add_failure(
-                result,
-                category="hydration_failure",
-                stage="hydrate-aasx",
-                message=f"{type(exc).__name__}: {exc}",
-            )
-            return result
-
-        try:
-            hydrated_json = hydrator.hydrate_to_json(aasx_bytes, default_form_data)
-            json.loads(hydrated_json)
-            result["stages"]["hydratedJson"] = True
-        except Exception as exc:
-            add_failure(
-                result,
-                category="hydration_failure",
-                stage="hydrate-json",
-                message=f"{type(exc).__name__}: {exc}",
-            )
-
-        try:
-            reparsed_schema = parser.parse_aasx_to_ui_schema(hydrated_aasx)
-            result["stages"]["reparsed"] = True
-        except Exception as exc:
+    preservation = compare_preservation(schema, reparsed_schema)
+    result["preservation"] = preservation
+    for key, preserved in preservation.items():
+        if not preserved:
             add_failure(
                 result,
                 category="round_trip_mismatch",
-                stage="reparse",
-                message=f"{type(exc).__name__}: {exc}",
+                stage="preservation",
+                message=f"Round-trip preservation check failed: {key}.",
             )
-            return result
-
-        preservation = compare_preservation(schema, reparsed_schema)
-        result["preservation"] = preservation
-        for key, preserved in preservation.items():
-            if not preserved:
-                add_failure(
-                    result,
-                    category="round_trip_mismatch",
-                    stage="preservation",
-                    message=f"Round-trip preservation check failed: {key}.",
-                )
 
     return result
 
@@ -912,17 +1041,28 @@ async def run_audit(
     template_filters: list[str],
     max_templates: int | None,
     concurrency: int,
+    cache_dir: Path,
+    timeout_seconds: float,
+    max_aasx_bytes: int,
+    max_schema_nodes: int,
 ) -> dict[str, Any]:
-    fetcher = TemplateFetcherService()
-    parser = ParserService()
-    hydrator = HydratorService()
+    fetcher = TemplateFetcherService(
+        cache_dir=cache_dir,
+        local_templates_enabled=False,
+    )
+    effective_concurrency = min(max(1, concurrency), MAX_CONCURRENCY)
 
     report: dict[str, Any] = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "statuses": statuses,
         "templateFilters": template_filters,
         "maxTemplates": max_templates,
-        "concurrency": concurrency,
+        "concurrency": effective_concurrency,
+        "requestedConcurrency": concurrency,
+        "timeoutSeconds": timeout_seconds,
+        "maxAasxBytes": max_aasx_bytes,
+        "maxSchemaNodes": max_schema_nodes,
+        "cacheDir": str(cache_dir),
         "totals": {},
         "pipelineRates": {},
         "elements": {},
@@ -961,15 +1101,38 @@ async def run_audit(
     if max_templates is not None:
         selected_templates = selected_templates[:max_templates]
 
-    semaphore = asyncio.Semaphore(max(1, concurrency))
-    results = await asyncio.gather(
-        *[
-            audit_template(template, fetcher, parser, hydrator, semaphore)
-            for template in selected_templates
-        ]
-    )
+    results: list[dict[str, Any] | None] = [None] * len(selected_templates)
+    queue: asyncio.Queue[tuple[int, dict[str, Any]] | None] = asyncio.Queue()
+    for index, template in enumerate(selected_templates):
+        queue.put_nowait((index, template))
 
-    report["templates"] = results
+    async def worker() -> None:
+        while True:
+            item = await queue.get()
+            if item is None:
+                queue.task_done()
+                return
+            index, template = item
+            try:
+                results[index] = await audit_template(
+                    template,
+                    fetcher,
+                    ParserService(),
+                    HydratorService(),
+                    timeout_seconds=timeout_seconds,
+                    max_aasx_bytes=max_aasx_bytes,
+                    max_schema_nodes=max_schema_nodes,
+                )
+            finally:
+                queue.task_done()
+
+    workers = [asyncio.create_task(worker()) for _ in range(effective_concurrency)]
+    await queue.join()
+    for _ in workers:
+        queue.put_nowait(None)
+    await asyncio.gather(*workers)
+
+    report["templates"] = [result for result in results if result is not None]
     report["totals"] = {
         "listed": len(templates),
         "selected": len(selected_templates),
@@ -1097,7 +1260,8 @@ def _pct(count: int, total: int) -> float:
 def write_reports(report: dict[str, Any], output_path: Path, summary_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    with output_path.open("w", encoding="utf-8") as output_file:
+        json.dump(report, output_file, indent=2, sort_keys=True)
     summary_path.write_text(render_markdown_summary(report), encoding="utf-8")
 
 
@@ -1109,6 +1273,7 @@ def render_markdown_summary(report: dict[str, Any]) -> str:
         f"- Statuses: `{', '.join(report.get('statuses', []))}`",
         f"- Listed templates: `{report.get('totals', {}).get('listed', 0)}`",
         f"- Selected templates: `{report.get('totals', {}).get('selected', 0)}`",
+        f"- Cache directory: `{report.get('cacheDir')}`",
         f"- Should fail: `{report.get('shouldFail')}`",
         "",
         "## Pipeline",
@@ -1220,16 +1385,27 @@ def print_console_summary(report: dict[str, Any], output: Path, summary: Path) -
 
 def main() -> int:
     args = parse_args()
+    try:
+        output_path = resolve_report_path(args.output, "--output")
+        summary_path = resolve_report_path(args.summary, "--summary")
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     report = asyncio.run(
         run_audit(
             statuses=args.statuses,
             template_filters=args.template,
             max_templates=args.max_templates,
             concurrency=args.concurrency,
+            cache_dir=(Path.cwd() / AUDIT_CACHE_DIR).resolve(strict=False),
+            timeout_seconds=args.timeout_seconds,
+            max_aasx_bytes=args.max_aasx_bytes,
+            max_schema_nodes=args.max_schema_nodes,
         )
     )
-    write_reports(report, args.output, args.summary)
-    print_console_summary(report, args.output, args.summary)
+    write_reports(report, output_path, summary_path)
+    print_console_summary(report, output_path, summary_path)
     if report.get("shouldFail") and not args.no_fail:
         return 1
     return 0

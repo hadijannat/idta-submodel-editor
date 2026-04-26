@@ -98,6 +98,32 @@ def test_hydrator_ignores_blank_entity_global_asset_id():
     assert entity.global_asset_id is None
 
 
+def test_hydrator_find_submodel_ignores_unreferenced_template_identifier():
+    hydrator = HydratorService()
+    referenced = model.Submodel(
+        id_="urn:referenced-submodel",
+        id_short="ReferencedSubmodel",
+    )
+    decoy = model.Submodel(
+        id_="https://admin-shell.io/idta/SubmodelTemplate/Decoy/1/0",
+        id_short="DecoyTemplate",
+    )
+    aas_obj = model.AssetAdministrationShell(
+        id_="urn:test:aas",
+        id_short="TestAAS",
+        asset_information=model.AssetInformation(
+            asset_kind=model.AssetKind.INSTANCE,
+            global_asset_id="urn:test:asset",
+        ),
+        submodel={model.ModelReference.from_referable(referenced)},
+    )
+    object_store = model.DictObjectStore([aas_obj, decoy, referenced])
+
+    selected = hydrator._find_submodel(object_store, aas_obj)
+
+    assert selected is referenced
+
+
 def test_hydrator_coerces_gyear_property_values():
     hydrator = HydratorService()
     prop = model.Property(

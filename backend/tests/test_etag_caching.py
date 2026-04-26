@@ -1,5 +1,6 @@
 """Tests for ETag caching in the fetcher service."""
 
+import json
 import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -289,3 +290,77 @@ class TestFindAasxWithSha:
         # Original method should still work
         url = await fetcher._find_aasx_file(items)
         assert url == "https://example.com/template.aasx"
+
+
+class TestHtmlFallback:
+    """Tests for GitHub HTML fallback parsing."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_github_tree_items_skips_malformed_embedded_data(
+        self,
+        fetcher,
+    ):
+        """Fallback parser should keep scanning when GitHub emits extra scripts."""
+        expected_items = [
+            {
+                "name": "Version",
+                "path": "published/Template/1/0",
+                "contentType": "directory",
+            }
+        ]
+        valid_payload = json.dumps(
+            {
+                "payload": {
+                    "codeViewTreeRoute": {
+                        "tree": {
+                            "items": expected_items,
+                        }
+                    }
+                }
+            }
+        )
+        response = MagicMock()
+        response.text = (
+            '<script data-target="react-app.embeddedData">{invalid-json}</script>'
+            f'<script data-target="react-app.embeddedData">{valid_payload}</script>'
+        )
+
+        with patch("app.services.fetcher.httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.get.return_value = response
+
+            items = await fetcher._fetch_github_tree_items("published/Template")
+
+        assert items == expected_items
+
+    @pytest.mark.asyncio
+    async def test_find_aasx_file_via_html_uses_nested_item_paths(self, fetcher):
+        """Fallback AASX discovery should preserve nested GitHub tree paths."""
+
+        async def fake_tree_items(path):
+            if path == "published/Template":
+                return [
+                    {
+                        "name": "1/0",
+                        "path": "published/Template/1/0",
+                        "contentType": "directory",
+                    }
+                ]
+            return [
+                {
+                    "name": "template.aasx",
+                    "path": "published/Template/1/0/template.aasx",
+                    "contentType": "file",
+                }
+            ]
+
+        fetcher._fetch_github_tree_items = fake_tree_items
+
+        url = await fetcher._find_aasx_file_via_html("published/Template")
+
+        assert url == (
+            "https://raw.githubusercontent.com/"
+            "admin-shell-io/submodel-templates/main/"
+            "published/Template/1/0/template.aasx"
+        )

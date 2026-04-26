@@ -133,4 +133,24 @@ describe('useSubmodelForm zod v4 compatibility', () => {
 
     expect(isValid).toBe(true);
   });
+
+  it('preserves blob valueEncoding in generated defaults', () => {
+    const schema = makeSchema([
+      baseElement({
+        idShort: 'BlobValue',
+        modelType: 'Blob',
+        cardinality: '[0..1]',
+        contentType: 'application/octet-stream',
+        value: 'base64:aGVsbG8=',
+        valueEncoding: 'base64',
+      }),
+    ]);
+    const { result } = renderHook(() => useSubmodelForm({ initialSchema: schema }));
+
+    expect(result.current.form.getValues('elements.BlobValue')).toMatchObject({
+      value: 'base64:aGVsbG8=',
+      contentType: 'application/octet-stream',
+      valueEncoding: 'base64',
+    });
+  });
 });

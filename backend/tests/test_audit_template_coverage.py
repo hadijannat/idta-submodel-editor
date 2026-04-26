@@ -1,8 +1,12 @@
 from collections import defaultdict
+from pathlib import Path
+
+import pytest
 
 from scripts.audit_template_coverage import (
     _empty_coverage_counter,
     analyze_schema,
+    audit_template,
     build_required_element,
     classify_renderer,
     compare_preservation,
@@ -11,7 +15,10 @@ from scripts.audit_template_coverage import (
     generate_required_form_data,
     iter_schema_elements,
     json_safe_value,
+    merge_results,
     merge_metadata_coverage,
+    resolve_report_path,
+    run_audit,
 )
 
 
@@ -58,6 +65,16 @@ def test_iter_schema_elements_walks_nested_and_template_nodes():
                 "outputVariables": [property_schema("Output")],
                 "inoutputVariables": [],
             },
+            {
+                "idShort": "Entity",
+                "modelType": "Entity",
+                "statements": [property_schema("Statement")],
+            },
+            {
+                "idShort": "Annotated",
+                "modelType": "AnnotatedRelationshipElement",
+                "annotations": [property_schema("Annotation")],
+            },
         ]
     }
 
@@ -68,6 +85,8 @@ def test_iter_schema_elements_walks_nested_and_template_nodes():
     assert "List.itemTemplate.Template" in paths
     assert "Operation.inputVariables.Input" in paths
     assert "Operation.outputVariables.Output" in paths
+    assert "Entity.statements.Statement" in paths
+    assert "Annotated.annotations.Annotation" in paths
 
 
 def test_analyze_schema_classifies_renderers_and_missing_metadata():
@@ -215,6 +234,21 @@ def test_json_safe_value_serializes_frontend_wire_values():
     assert type(json_safe_value(CustomString("2024"))) is str
 
 
+def test_resolve_report_path_constrains_outputs_to_audit_dir(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    resolved = resolve_report_path(
+        Path("tmp/template-audit/report.json"),
+        "--output",
+    )
+
+    assert resolved == (tmp_path / "tmp/template-audit/report.json").resolve()
+    with pytest.raises(ValueError, match="must be under tmp/template-audit"):
+        resolve_report_path(Path("tmp/report.json"), "--output")
+    with pytest.raises(ValueError, match="must be under tmp/template-audit"):
+        resolve_report_path(tmp_path / "outside.json", "--summary")
+
+
 def test_metadata_coverage_merge_and_finalize():
     aggregate = defaultdict(_empty_coverage_counter)
     merge_metadata_coverage(
@@ -246,6 +280,103 @@ def test_metadata_coverage_merge_and_finalize():
     assert finalized["idShort"]["emitted"] == 2
     assert finalized["idShort"]["emittedPct"] == 66.67
     assert finalized["idShort"]["missingSamples"] == [{"path": "Missing"}]
+
+
+def test_merge_results_aggregates_pipeline_failures_and_preservation():
+    report = {
+        "totals": {"selected": 2},
+        "failures": [],
+        "templates": [
+            {
+                "name": "Template A",
+                "path": "published/A",
+                "stages": {
+                    "fetched": True,
+                    "parsed": True,
+                    "defaultFormGenerated": True,
+                    "defaultValidationPassed": False,
+                    "requiredFormGenerated": True,
+                    "requiredValidationPassed": True,
+                    "hydratedAasx": True,
+                    "hydratedJson": True,
+                    "reparsed": True,
+                },
+                "elementMetrics": {
+                    "modelTypes": {"Property": 2},
+                    "rendererCoverage": {"editable": 2},
+                    "unknownModelTypes": {},
+                    "metadataCoverageRaw": {},
+                },
+                "preservation": {
+                    "modelTypeCountsPreserved": True,
+                    "nestedStructurePreserved": True,
+                    "semanticIdsPreserved": True,
+                    "qualifiersPreserved": True,
+                    "supplementaryFilesPreserved": True,
+                },
+                "failures": [
+                    {
+                        "category": "default_validation_errors",
+                        "stage": "validate",
+                        "severity": "warning",
+                        "message": "default invalid",
+                    }
+                ],
+            },
+            {
+                "name": "Template B",
+                "path": "published/B",
+                "stages": {
+                    "fetched": True,
+                    "parsed": True,
+                    "defaultFormGenerated": True,
+                    "defaultValidationPassed": True,
+                    "requiredFormGenerated": True,
+                    "requiredValidationPassed": False,
+                    "hydratedAasx": False,
+                    "hydratedJson": False,
+                    "reparsed": False,
+                },
+                "elementMetrics": {
+                    "modelTypes": {"FutureElement": 1},
+                    "rendererCoverage": {"unknown": 1},
+                    "unknownModelTypes": {"FutureElement": 1},
+                    "metadataCoverageRaw": {},
+                },
+                "preservation": {
+                    "modelTypeCountsPreserved": False,
+                    "nestedStructurePreserved": True,
+                    "semanticIdsPreserved": False,
+                    "qualifiersPreserved": True,
+                    "supplementaryFilesPreserved": True,
+                },
+                "failures": [
+                    {
+                        "category": "hydration_failure",
+                        "stage": "hydrate-aasx",
+                        "severity": "error",
+                        "message": "hydrate failed",
+                    }
+                ],
+            },
+        ],
+    }
+
+    merge_results(report)
+
+    assert report["pipelineRates"]["fetched"] == {"count": 2, "total": 2, "pct": 100.0}
+    assert report["pipelineRates"]["hydratedAasx"] == {
+        "count": 1,
+        "total": 2,
+        "pct": 50.0,
+    }
+    assert report["contractCoverage"]["requiredValidationPassed"]["count"] == 1
+    assert report["elements"]["rendererCoverage"] == {"editable": 2, "unknown": 1}
+    assert report["elements"]["unknownModelTypes"] == {"FutureElement": 1}
+    assert report["preservation"]["semanticIdsPreserved"]["count"] == 1
+    assert report["failures"][1]["template"] == "Template B"
+    assert report["failures"][1]["path"] == "published/B"
+    assert report["shouldFail"] is True
 
 
 def test_renderer_classification():
@@ -311,3 +442,247 @@ def test_compare_preservation_ignores_list_item_id_short_normalization():
     }
 
     assert compare_preservation(original, reparsed)["nestedStructurePreserved"] is True
+
+
+class FakeFetcher:
+    def __init__(self, payload=b"aasx", error: Exception | None = None):
+        self.payload = payload
+        self.error = error
+
+    async def fetch_template_aasx(self, _template_path):
+        if self.error:
+            raise self.error
+        return self.payload
+
+
+class FakeParser:
+    def __init__(self, schemas=None, error: Exception | None = None):
+        self.schemas = list(schemas or [])
+        self.error = error
+
+    def parse_aasx_to_ui_schema(self, _aasx_bytes):
+        if self.error:
+            raise self.error
+        return self.schemas.pop(0)
+
+
+class FakeHydrator:
+    def __init__(self, error: Exception | None = None):
+        self.error = error
+
+    def hydrate_to_stores(self, _aasx_bytes, _form_data):
+        if self.error:
+            raise self.error
+        return {"store": True}, {"files": True}
+
+    def serialize_stores_to_aasx(self, _store, _files):
+        return b"hydrated"
+
+    def serialize_stores_to_json(self, _store):
+        return "{}"
+
+
+class FakeValidationError:
+    def __init__(self, *, field="Field", message="invalid", code="invalid"):
+        self.field = field
+        self.message = message
+        self.code = code
+
+    def model_dump(self):
+        return {
+            "field": self.field,
+            "message": self.message,
+            "code": self.code,
+        }
+
+
+@pytest.mark.asyncio
+async def test_audit_template_classifies_fetch_failure():
+    result = await audit_template(
+        {"path": "published/Template", "name": "Template"},
+        FakeFetcher(error=RuntimeError("offline")),
+        FakeParser(),
+        FakeHydrator(),
+        timeout_seconds=1,
+        max_aasx_bytes=100,
+        max_schema_nodes=100,
+    )
+
+    assert result["failures"][0]["category"] == "fetch_failure"
+    assert result["failures"][0]["stage"] == "fetch"
+
+
+@pytest.mark.asyncio
+async def test_audit_template_classifies_parser_failure():
+    result = await audit_template(
+        {"path": "published/Template", "name": "Template"},
+        FakeFetcher(),
+        FakeParser(error=ValueError("bad aasx")),
+        FakeHydrator(),
+        timeout_seconds=1,
+        max_aasx_bytes=100,
+        max_schema_nodes=100,
+    )
+
+    assert result["stages"]["fetched"] is True
+    assert result["failures"][0]["category"] == "parser_failure"
+    assert result["failures"][0]["stage"] == "parse"
+
+
+@pytest.mark.asyncio
+async def test_audit_template_classifies_size_and_schema_limits():
+    too_large = await audit_template(
+        {"path": "published/Template", "name": "Template"},
+        FakeFetcher(payload=b"x" * 5),
+        FakeParser(),
+        FakeHydrator(),
+        timeout_seconds=1,
+        max_aasx_bytes=4,
+        max_schema_nodes=100,
+    )
+
+    too_many_nodes = await audit_template(
+        {"path": "published/Template", "name": "Template"},
+        FakeFetcher(),
+        FakeParser(schemas=[{"elements": [property_schema("Name")]}]),
+        FakeHydrator(),
+        timeout_seconds=1,
+        max_aasx_bytes=100,
+        max_schema_nodes=0,
+    )
+
+    assert too_large["failures"][0]["category"] == "aasx_too_large"
+    assert too_many_nodes["failures"][0]["category"] == "schema_too_large"
+
+
+@pytest.mark.asyncio
+async def test_audit_template_classifies_required_validation_mismatch(monkeypatch):
+    calls = 0
+
+    def fake_validate_form_data(_schema, _form_data):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            return [FakeValidationError()], []
+        return [], []
+
+    monkeypatch.setattr(
+        "scripts.audit_template_coverage.validate_form_data",
+        fake_validate_form_data,
+    )
+
+    result = await audit_template(
+        {"path": "published/Template", "name": "Template"},
+        FakeFetcher(),
+        FakeParser(
+            schemas=[
+                {"elements": [property_schema("Name")]},
+                {"elements": [property_schema("Name")]},
+            ]
+        ),
+        FakeHydrator(),
+        timeout_seconds=1,
+        max_aasx_bytes=100,
+        max_schema_nodes=100,
+    )
+
+    assert "validation_mismatch" in {
+        failure["category"] for failure in result["failures"]
+    }
+    assert result["stages"]["requiredValidationPassed"] is False
+
+
+@pytest.mark.asyncio
+async def test_audit_template_classifies_metadata_and_preservation_failures():
+    original = {
+        "elements": [
+            {
+                "idShort": "Mystery",
+                "modelType": "FutureElement",
+                "semanticId": None,
+                "semanticLabel": None,
+                "description": None,
+                "qualifiers": [],
+                "cardinality": "[0..1]",
+                "category": None,
+            },
+            property_schema("Broken", value=None),
+        ],
+        "supplementaryFiles": ["file.pdf"],
+    }
+    del original["elements"][1]["valueType"]
+    reparsed = {
+        "elements": [property_schema("Changed", semanticId="urn:changed")],
+        "supplementaryFiles": [],
+    }
+
+    result = await audit_template(
+        {"path": "published/Template", "name": "Template"},
+        FakeFetcher(),
+        FakeParser(schemas=[original, reparsed]),
+        FakeHydrator(),
+        timeout_seconds=1,
+        max_aasx_bytes=100,
+        max_schema_nodes=100,
+    )
+    categories = {failure["category"] for failure in result["failures"]}
+
+    assert "unsupported_model_type" in categories
+    assert "missing_metadata" in categories
+    assert "round_trip_mismatch" in categories
+
+
+@pytest.mark.asyncio
+async def test_audit_template_classifies_hydration_failure():
+    result = await audit_template(
+        {"path": "published/Template", "name": "Template"},
+        FakeFetcher(),
+        FakeParser(schemas=[{"elements": [property_schema("Name")]}]),
+        FakeHydrator(error=RuntimeError("cannot hydrate")),
+        timeout_seconds=1,
+        max_aasx_bytes=100,
+        max_schema_nodes=100,
+    )
+
+    assert result["failures"][-1]["category"] == "hydration_failure"
+    assert result["failures"][-1]["stage"] == "hydrate-aasx"
+
+
+@pytest.mark.asyncio
+async def test_run_audit_uses_scoped_cache_and_disables_local_templates(
+    tmp_path,
+    monkeypatch,
+):
+    captured = {}
+
+    class FakeAuditFetcher:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def list_available_templates(self, statuses, include_local=False):
+            captured["statuses"] = statuses
+            captured["include_local"] = include_local
+            return [], False
+
+    monkeypatch.setattr(
+        "scripts.audit_template_coverage.TemplateFetcherService",
+        FakeAuditFetcher,
+    )
+
+    report = await run_audit(
+        statuses=["published", "deprecated"],
+        template_filters=[],
+        max_templates=None,
+        concurrency=99,
+        cache_dir=tmp_path / "tmp/template-audit/cache/templates",
+        timeout_seconds=1,
+        max_aasx_bytes=100,
+        max_schema_nodes=100,
+    )
+
+    assert captured["cache_dir"] == tmp_path / "tmp/template-audit/cache/templates"
+    assert captured["local_templates_enabled"] is False
+    assert captured["statuses"] == ["published", "deprecated"]
+    assert captured["include_local"] is False
+    assert report["requestedConcurrency"] == 99
+    assert report["concurrency"] == 8

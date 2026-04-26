@@ -198,22 +198,25 @@ class ParserService:
         def submodel_id(submodel: model.Submodel) -> str:
             return str(getattr(submodel, "id_", None) or getattr(submodel, "id", "") or "")
 
-        template_submodels = [
-            submodel
-            for submodel in submodels
-            if "submodeltemplate" in submodel_id(submodel).lower()
-        ]
-        if template_submodels:
-            return sorted(template_submodels, key=submodel_id)[0]
+        def preferred_submodel(candidates: list[model.Submodel]) -> model.Submodel:
+            template_submodels = [
+                submodel
+                for submodel in candidates
+                if "submodeltemplate" in submodel_id(submodel).lower()
+            ]
+            if template_submodels:
+                return sorted(template_submodels, key=submodel_id)[0]
+            return sorted(candidates, key=submodel_id)[0]
 
         referenced_ids = self._aas_submodel_reference_ids(aas)
         if referenced_ids:
-            by_id = {submodel_id(submodel): submodel for submodel in submodels}
-            for ref_id in sorted(referenced_ids):
-                if ref_id in by_id:
-                    return by_id[ref_id]
+            referenced_submodels = [
+                submodel for submodel in submodels if submodel_id(submodel) in referenced_ids
+            ]
+            if referenced_submodels:
+                return preferred_submodel(referenced_submodels)
 
-        return sorted(submodels, key=submodel_id)[0]
+        return preferred_submodel(submodels)
 
     def _aas_submodel_reference_ids(
         self,

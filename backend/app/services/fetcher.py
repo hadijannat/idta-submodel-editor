@@ -38,6 +38,8 @@ class TemplateFetcherService:
         github_token: str | None = None,
         cache_dir: Path | None = None,
         cache_ttl_hours: int = 24,
+        local_templates_enabled: bool | None = None,
+        local_templates_dir: Path | None = None,
     ):
         settings = get_settings()
         self.github_token = github_token or settings.github_token
@@ -48,8 +50,12 @@ class TemplateFetcherService:
         self.github_template_ref = settings.github_template_ref
 
         # Local templates configuration
-        self.local_templates_enabled = settings.local_templates_enabled
-        self.local_templates_dir = settings.local_templates_dir
+        self.local_templates_enabled = (
+            settings.local_templates_enabled
+            if local_templates_enabled is None
+            else local_templates_enabled
+        )
+        self.local_templates_dir = local_templates_dir or settings.local_templates_dir
 
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)

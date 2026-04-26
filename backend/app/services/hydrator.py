@@ -51,6 +51,18 @@ class HydratorService:
         Returns:
             Hydrated AASX file as bytes
         """
+        object_store, file_store = self.hydrate_to_stores(template_aasx_bytes, form_data)
+        return self.serialize_stores_to_aasx(object_store, file_store)
+
+    def hydrate_to_stores(
+        self,
+        template_aasx_bytes: bytes,
+        form_data: dict[str, Any],
+    ) -> tuple[
+        model.DictObjectStore[model.Identifiable],
+        aasx.DictSupplementaryFileContainer,
+    ]:
+        """Hydrate a template once and return the in-memory AAS stores."""
         object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
         file_store = aasx.DictSupplementaryFileContainer()
 
@@ -78,6 +90,14 @@ class HydratorService:
         if settings.semantic_embed_concept_descriptions:
             self._embed_concept_descriptions(object_store, submodel)
 
+        return object_store, file_store
+
+    def serialize_stores_to_aasx(
+        self,
+        object_store: model.DictObjectStore[model.Identifiable],
+        file_store: aasx.DictSupplementaryFileContainer,
+    ) -> bytes:
+        """Serialize hydrated stores to AASX bytes."""
         # Write back to AASX
         output = BytesIO()
         with aasx.AASXWriter(output) as writer:
@@ -101,6 +121,15 @@ class HydratorService:
 
         return output.getvalue()
 
+    def serialize_stores_to_json(
+        self,
+        object_store: model.DictObjectStore[model.Identifiable],
+    ) -> str:
+        """Serialize hydrated stores to JSON."""
+        output = BytesIO()
+        aas_json.write_aas_json_file(output, object_store)
+        return output.getvalue().decode("utf-8")
+
     def hydrate_to_json(
         self,
         template_aasx_bytes: bytes,
@@ -116,32 +145,8 @@ class HydratorService:
         Returns:
             Hydrated submodel as JSON string
         """
-        object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
-        file_store = aasx.DictSupplementaryFileContainer()
-
-        with SafeAASXReader(BytesIO(template_aasx_bytes)) as reader:
-            reader.read_into(object_store, file_store)
-
-        aas_obj = self._find_aas(object_store)
-        submodel = self._find_submodel(object_store, aas_obj)
-        if not submodel:
-            raise ValueError("No Submodel found in template")
-
-        self._apply_metadata(submodel, form_data.get("metadata"))
-        self._apply_pcf_trace(submodel, file_store, form_data.get("metadata"))
-        ensure_activity_list_in_submodel(submodel, form_data)
-
-        elements_data = form_data.get("elements", {})
-        self._hydrate_elements(submodel.submodel_element, elements_data)
-
-        settings = get_settings()
-        if settings.semantic_embed_concept_descriptions:
-            self._embed_concept_descriptions(object_store, submodel)
-
-        # Serialize to JSON
-        output = BytesIO()
-        aas_json.write_aas_json_file(output, object_store)
-        return output.getvalue().decode("utf-8")
+        object_store, _ = self.hydrate_to_stores(template_aasx_bytes, form_data)
+        return self.serialize_stores_to_json(object_store)
 
     def _find_submodel(
         self,
@@ -156,22 +161,25 @@ class HydratorService:
         def submodel_id(submodel: model.Submodel) -> str:
             return str(getattr(submodel, "id_", None) or getattr(submodel, "id", "") or "")
 
-        template_submodels = [
-            submodel
-            for submodel in submodels
-            if "submodeltemplate" in submodel_id(submodel).lower()
-        ]
-        if template_submodels:
-            return sorted(template_submodels, key=submodel_id)[0]
+        def preferred_submodel(candidates: list[model.Submodel]) -> model.Submodel:
+            template_submodels = [
+                submodel
+                for submodel in candidates
+                if "submodeltemplate" in submodel_id(submodel).lower()
+            ]
+            if template_submodels:
+                return sorted(template_submodels, key=submodel_id)[0]
+            return sorted(candidates, key=submodel_id)[0]
 
         referenced_ids = self._aas_submodel_reference_ids(aas_obj)
         if referenced_ids:
-            by_id = {submodel_id(submodel): submodel for submodel in submodels}
-            for ref_id in sorted(referenced_ids):
-                if ref_id in by_id:
-                    return by_id[ref_id]
+            referenced_submodels = [
+                submodel for submodel in submodels if submodel_id(submodel) in referenced_ids
+            ]
+            if referenced_submodels:
+                return preferred_submodel(referenced_submodels)
 
-        return sorted(submodels, key=submodel_id)[0]
+        return preferred_submodel(submodels)
 
     def _find_aas(
         self,
