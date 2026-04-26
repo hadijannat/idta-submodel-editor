@@ -264,11 +264,11 @@ class ParserService:
         elif isinstance(element, model.Entity):
             base_schema.update(self._entity_schema(element, object_store, semantic_index))
 
-        elif isinstance(element, model.RelationshipElement):
-            base_schema.update(self._relationship_schema(element))
-
         elif isinstance(element, model.AnnotatedRelationshipElement):
             base_schema.update(self._annotated_relationship_schema(element, object_store, semantic_index))
+
+        elif isinstance(element, model.RelationshipElement):
+            base_schema.update(self._relationship_schema(element))
 
         elif isinstance(element, model.Operation):
             base_schema.update(self._operation_schema(element, object_store, semantic_index))
@@ -661,6 +661,69 @@ class ParserService:
                 {
                     "value": {},
                     "supportedLanguages": ["en", "de", "fr", "es", "it"],
+                }
+            )
+        elif type_name == "Range":
+            value_type_str = str(value_type or model.datatypes.Double)
+            template.update(
+                {
+                    "valueType": value_type_str,
+                    "min": None,
+                    "max": None,
+                    "inputType": get_input_type(value_type_str),
+                    "step": get_step_attribute(value_type_str),
+                    "unit": None,
+                }
+            )
+        elif type_name == "File":
+            template.update(
+                {
+                    "contentType": "application/octet-stream",
+                    "value": None,
+                }
+            )
+        elif type_name == "Blob":
+            template.update(
+                {
+                    "contentType": "application/octet-stream",
+                    "value": None,
+                    "valueEncoding": None,
+                }
+            )
+        elif type_name == "ReferenceElement":
+            template["value"] = None
+        elif type_name == "Entity":
+            template.update(
+                {
+                    "entityType": str(model.EntityType.CO_MANAGED_ENTITY),
+                    "globalAssetId": None,
+                    "specificAssetIds": [],
+                    "statements": [],
+                }
+            )
+        elif type_name == "AnnotatedRelationshipElement":
+            template.update(
+                {
+                    "first": None,
+                    "second": None,
+                    "annotations": [],
+                }
+            )
+        elif type_name == "RelationshipElement":
+            template.update(
+                {
+                    "first": None,
+                    "second": None,
+                }
+            )
+        elif type_name == "SubmodelElementList":
+            template.update(
+                {
+                    "typeValueListElement": None,
+                    "orderRelevant": True,
+                    "valueTypeListElement": None,
+                    "semanticIdListElement": None,
+                    "items": [],
                 }
             )
 

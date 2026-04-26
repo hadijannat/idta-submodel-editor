@@ -77,7 +77,6 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
   useEffect(() => {
     if (!isOpen || !currentSemanticId) return;
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- tracks async fetch progress for externally provided currentSemanticId.
     setLoadingDetails(true);
     resolveSemantic(currentSemanticId)
       .then((res) => {
@@ -142,7 +141,6 @@ export const SemanticLookupModal: React.FC<SemanticLookupModalProps> = ({
     if (!isOpen || !selected) return;
 
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- tracks async fetch progress for user-selected semantic entries.
     setLoadingDetails(true);
     Promise.all([
       resolveSemantic(selected.canonicalId, selected.provider, language),

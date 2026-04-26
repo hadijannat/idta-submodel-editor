@@ -316,11 +316,11 @@ class HydratorService:
         elif isinstance(element, model.Entity):
             self._hydrate_entity(element, value_data)
 
-        elif isinstance(element, model.RelationshipElement):
-            self._hydrate_relationship(element, value_data)
-
         elif isinstance(element, model.AnnotatedRelationshipElement):
             self._hydrate_annotated_relationship(element, value_data)
+
+        elif isinstance(element, model.RelationshipElement):
+            self._hydrate_relationship(element, value_data)
 
     def _apply_semantic_fields(
         self,
@@ -365,12 +365,17 @@ class HydratorService:
             element, "semantic_id_list_element"
         ):
             list_semantic_id = normalize(value_data.get("semanticIdListElement"))
+            existing = getattr(element, "semantic_id_list_element", None)
             if list_semantic_id is None:
-                element.semantic_id_list_element = None
+                new_reference = None
             else:
-                element.semantic_id_list_element = self._build_reference(
-                    list_semantic_id, getattr(element, "semantic_id_list_element", None)
+                new_reference = self._build_reference(
+                    list_semantic_id, existing
                 )
+            try:
+                element.semantic_id_list_element = new_reference
+            except AttributeError:
+                setattr(element, "_semantic_id_list_element", new_reference)
 
     def _hydrate_property(
         self,
@@ -544,9 +549,12 @@ class HydratorService:
     ) -> None:
         """Hydrate a File element."""
         if "value" in value_data:
-            element.value = value_data["value"]
+            value = value_data["value"]
+            element.value = None if value in (None, "") else str(value)
         if "contentType" in value_data:
-            element.content_type = value_data["contentType"]
+            content_type = value_data["contentType"]
+            if content_type not in (None, ""):
+                element.content_type = str(content_type)
 
     def _hydrate_blob(
         self,

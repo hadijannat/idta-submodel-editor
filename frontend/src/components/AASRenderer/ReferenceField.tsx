@@ -30,8 +30,8 @@ interface ReferenceFieldProps {
 function isValidReference(value: string): boolean {
   if (!value) return true; // Empty is valid (handled by required)
 
-  // IRI pattern (basic URL validation)
-  const iriPattern = /^https?:\/\/.+/i;
+  // URI/IRI pattern aligned with backend validation, including urn:...
+  const uriPattern = /^[a-zA-Z][a-zA-Z0-9+.-]*:\S+$/;
 
   // IRDI pattern (e.g., 0173-1#01-AFZ615#001)
   const irdiPattern = /^\d{4}-\d#\d{2}-[A-Z]{3}\d{3}#\d{3}$/;
@@ -39,7 +39,7 @@ function isValidReference(value: string): boolean {
   // ECLASS IRDI pattern (e.g., 0173-1#02-AAO677#002)
   const eclassPattern = /^\d{4}-\d#\d{2}-[A-Z]{3}\d{3}#\d{3}$/;
 
-  return iriPattern.test(value) || irdiPattern.test(value) || eclassPattern.test(value);
+  return uriPattern.test(value) || irdiPattern.test(value) || eclassPattern.test(value);
 }
 
 /**
@@ -90,7 +90,7 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
           required: required ? `${label} is required` : false,
           validate: (value) => {
             if (value && !isValidReference(value)) {
-              return 'Please enter a valid IRI (URL) or IRDI';
+              return 'Please enter a valid URI/IRI or IRDI';
             }
             return true;
           },
@@ -114,7 +114,7 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
       />
 
       <p className="aas-help-text">
-        Enter an IRI (URL) or IRDI (e.g., ECLASS identifier) to reference another element.
+        Enter a URI/IRI or IRDI (e.g., ECLASS identifier) to reference another element.
       </p>
 
       {showSemantic && (

@@ -67,3 +67,73 @@ def test_hydrator_keeps_utf8_blob_behavior():
     hydrator._hydrate_blob(blob, {"value": "hello"})
 
     assert blob.value == b"hello"
+
+
+def test_hydrator_clears_blank_file_value_without_invalid_path():
+    hydrator = HydratorService()
+    file_element = model.File(
+        id_short="file",
+        content_type="application/pdf",
+        value="existing.pdf",
+    )
+
+    hydrator._hydrate_file(file_element, {"value": "", "contentType": ""})
+
+    assert file_element.value is None
+    assert file_element.content_type == "application/pdf"
+
+
+def test_hydrator_updates_annotated_relationship_annotations():
+    hydrator = HydratorService()
+    annotation = model.Property(
+        id_short="annotation",
+        value_type=model.datatypes.String,
+        value="before",
+    )
+    relationship = model.AnnotatedRelationshipElement(
+        id_short="rel",
+        first=model.ExternalReference(
+            key=(model.Key(model.KeyTypes.GLOBAL_REFERENCE, "urn:first"),)
+        ),
+        second=model.ExternalReference(
+            key=(model.Key(model.KeyTypes.GLOBAL_REFERENCE, "urn:second"),)
+        ),
+        annotation=(annotation,),
+    )
+
+    hydrator._hydrate_single_element(
+        relationship,
+        {
+            "first": "urn:first-updated",
+            "second": "urn:second-updated",
+            "annotations": [{"value": "after"}],
+        },
+    )
+
+    assert relationship.first.key[-1].value == "urn:first-updated"
+    assert relationship.second.key[-1].value == "urn:second-updated"
+    assert list(relationship.annotation)[0].value == "after"
+
+
+def test_hydrator_updates_readonly_list_semantic_id_field():
+    hydrator = HydratorService()
+    list_element = model.SubmodelElementList(
+        id_short="list",
+        type_value_list_element=model.Property,
+        value_type_list_element=model.datatypes.String,
+        value=(),
+    )
+
+    hydrator._apply_semantic_fields(
+        list_element,
+        {"semanticIdListElement": "urn:list-semantic"},
+    )
+
+    assert list_element.semantic_id_list_element.key[-1].value == "urn:list-semantic"
+
+    hydrator._apply_semantic_fields(
+        list_element,
+        {"semanticIdListElement": None},
+    )
+
+    assert list_element.semantic_id_list_element is None

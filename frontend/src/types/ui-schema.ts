@@ -85,6 +85,7 @@ export interface UIElementSchema {
 
   // File-specific
   contentType?: string;
+  valueEncoding?: string | null;
 
   // Range-specific
   min?: unknown;
