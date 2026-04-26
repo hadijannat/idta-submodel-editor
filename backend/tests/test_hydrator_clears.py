@@ -1,5 +1,6 @@
 import base64
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 from basyx.aas import model
@@ -182,6 +183,50 @@ def test_hydrator_updates_annotated_relationship_annotations():
     assert relationship.first.key[-1].value == "urn:first-updated"
     assert relationship.second.key[-1].value == "urn:second-updated"
     assert list(relationship.annotation)[0].value == "after"
+
+
+@pytest.mark.parametrize(
+    "existing,submitted,expected,description",
+    [
+        # None handling -- empty string is treated as cleared (matches None)
+        (None, None, True, "both None are equivalent"),
+        (None, "", True, "None matches empty submitted string"),
+        (None, "value", False, "None does not match a non-empty submission"),
+        (1, None, False, "non-None existing never equivalent to None submission"),
+        # Decimal -- str(Decimal('1.00')) preserves trailing zeros
+        (Decimal("1.00"), "1.00", True, "decimal exact string match"),
+        (Decimal("1.00"), "1.0", False, "decimal differing precision triggers re-coercion"),
+        (Decimal("1.00"), 1.0, False, "decimal vs float literal triggers re-coercion"),
+        # Float NaN -- str(nan) == 'nan', so NaN compares equal to itself by string
+        (float("nan"), float("nan"), True, "NaN compares equivalent to NaN via string"),
+        (float("nan"), "nan", True, "NaN string matches submitted 'nan'"),
+        (float("inf"), "inf", True, "Infinity round-trips via string"),
+        # Boolean -- str(True) == 'True' (capitalized) but JSON sends 'true'
+        (True, True, True, "bool identity is equivalent"),
+        (True, "true", False, "bool vs lowercase 'true' string is NOT equivalent"),
+        (True, "True", True, "bool only equivalent to capitalized string form"),
+        (False, "False", True, "False matches capitalized 'False'"),
+        # Duration -- timedelta str format happens to match itself
+        (timedelta(seconds=10), timedelta(seconds=10), True, "timedelta self-equivalent"),
+        (timedelta(seconds=10), "0:00:10", True, "timedelta str round-trips"),
+    ],
+)
+def test_values_equivalent_for_hydration_handles_non_date_types(
+    existing, submitted, expected, description
+):
+    """Pin the equivalence semantics for Decimal, NaN/Infinity, Boolean, and Duration.
+
+    The helper short-circuits hydration when JSON form data already represents the
+    current AAS value. The fallback ``str(existing) == str(submitted)`` comparison
+    can produce surprising results (e.g. JSON 'true' is NOT equivalent to Python
+    True because str(True) == 'True'). These cases are not bugs -- a non-equivalent
+    result merely re-runs ``_coerce_value``, which yields the same Python object --
+    but the behavior should be locked in to catch silent regressions.
+    """
+    hydrator = HydratorService()
+    assert (
+        hydrator._values_equivalent_for_hydration(existing, submitted) is expected
+    ), description
 
 
 def test_hydrator_updates_readonly_list_semantic_id_field():

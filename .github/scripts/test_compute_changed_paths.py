@@ -160,6 +160,26 @@ class ComputeChangedPathsTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.module.determine_changed_files("schedule", "hadijannat/idta-submodel-editor", {}, None)
 
+    def test_extract_filenames_includes_previous_filename_for_renames(self) -> None:
+        """Cross-directory renames must trigger CI for both source and destination."""
+        payload = [
+            {
+                "filename": "frontend/src/App.tsx",
+                "previous_filename": "backend/app/App.py",
+                "status": "renamed",
+            }
+        ]
+        self.assertEqual(
+            sorted(self.module._extract_filenames(payload)),
+            ["backend/app/App.py", "frontend/src/App.tsx"],
+        )
+
+        outputs = self.module.classify_changed_files(
+            self.module._extract_filenames(payload)
+        )
+        self.assertTrue(outputs["backend"], "rename source must flip backend flag")
+        self.assertTrue(outputs["frontend"], "rename destination must flip frontend flag")
+
 
 if __name__ == "__main__":
     unittest.main()

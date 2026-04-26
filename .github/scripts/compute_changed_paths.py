@@ -59,6 +59,33 @@ def warn_if_unauthenticated(token: str | None) -> None:
         )
 
 
+def _extract_filenames(items: Any) -> list[str]:
+    """Extract `filename` (plus `previous_filename` for renames) from each item.
+
+    Defensive against unexpected upstream payload shapes (missing keys,
+    non-dict items). Avoids crashing the changes-detection job on partial or
+    drifted GitHub API responses.
+
+    Renames return both new and old paths so downstream classification triggers
+    CI for both source and destination directories — otherwise a cross-directory
+    rename would only flag the destination, hiding regressions in code that
+    still references the old location.
+    """
+    if not isinstance(items, list):
+        return []
+    out: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("filename")
+        if isinstance(name, str) and name:
+            out.append(name)
+        previous = item.get("previous_filename")
+        if isinstance(previous, str) and previous:
+            out.append(previous)
+    return out
+
+
 def collect_pull_request_files(
     repository: str,
     pull_request_number: int,
@@ -77,7 +104,7 @@ def collect_pull_request_files(
         if not payload:
             break
 
-        changed_files.extend(item["filename"] for item in payload)
+        changed_files.extend(_extract_filenames(payload))
         if len(payload) < 100:
             break
         page += 1
@@ -97,7 +124,7 @@ def collect_push_files(
     if before and before != ZERO_SHA:
         compare_url = f"https://api.github.com/repos/{repository}/compare/{before}...{after}"
         compare_payload = fetcher(compare_url, token)
-        return [item["filename"] for item in compare_payload.get("files", [])]
+        return _extract_filenames(compare_payload.get("files", []))
 
     changed_files: set[str] = set()
     for commit in payload.get("commits", []):
@@ -110,12 +137,21 @@ def collect_push_files(
     if after:
         commit_url = f"https://api.github.com/repos/{repository}/commits/{after}"
         commit_payload = fetcher(commit_url, token)
-        return sorted(item["filename"] for item in commit_payload.get("files", []))
+        return sorted(_extract_filenames(commit_payload.get("files", [])))
 
     return []
 
 
 def classify_changed_files(changed_files: Iterable[str]) -> dict[str, bool]:
+    """Map changed file paths to job-trigger flags.
+
+    Replaces the prior `dorny/paths-filter` configuration. Trigger semantics
+    differ in two ways from the old filter:
+      - `frontend_lockfile` now fires on `package.json` as well as
+        `package-lock.json` (lockfile audit also gates on direct manifest edits).
+      - `workflows` now fires on `.github/scripts/**` so changes to workflow
+        helper scripts are linted/tested alongside YAML edits.
+    """
     outputs = {
         "backend": False,
         "frontend": False,
