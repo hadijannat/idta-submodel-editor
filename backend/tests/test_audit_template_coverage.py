@@ -216,6 +216,21 @@ def test_default_and_required_form_data_match_supported_shapes():
     assert required["elements"]["List"] == {"items": [{"value": "Example"}]}
 
 
+def test_required_form_data_generates_valid_gyear_sample():
+    schema = {
+        "elements": [
+            property_schema(
+                "FinancialYear",
+                valueType="<class 'basyx.aas.model.datatypes.GYear'>",
+            )
+        ],
+    }
+
+    required = generate_required_form_data(schema)
+
+    assert required["elements"]["FinancialYear"] == {"value": "2024"}
+
+
 def test_build_required_element_returns_none_for_optional_elements():
     optional = property_schema("Optional", cardinality="[0..1]")
 

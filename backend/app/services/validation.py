@@ -315,6 +315,8 @@ def _value_matches_type(value: Any, value_type: str | None) -> bool:
             if isinstance(normalized_value, bool):
                 return True
             return str(normalized_value).lower() in ("true", "false", "1", "0", "yes", "no")
+        if "gyear" in type_str:
+            return bool(re.match(r"^\d{4}$", str(normalized_value)))
         if "datetime" in type_str or "date" in type_str:
             from datetime import date, datetime
 
@@ -322,6 +324,11 @@ def _value_matches_type(value: Any, value_type: str | None) -> bool:
                 datetime.fromisoformat(str(normalized_value))
             else:
                 date.fromisoformat(str(normalized_value))
+            return True
+        if "time" in type_str:
+            from datetime import time
+
+            time.fromisoformat(str(normalized_value))
             return True
     except Exception:
         return False

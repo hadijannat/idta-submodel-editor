@@ -390,6 +390,7 @@ class HydratorService:
             if isinstance(value, str):
                 if value.strip() == "":
                     return None
+                # Keep non-empty whitespace intact for parse -> form -> hydrate round trips.
                 return value
             return str(value)
 
@@ -429,6 +430,7 @@ class HydratorService:
             try:
                 element.semantic_id_list_element = new_reference
             except AttributeError:
+                # BaSyx exposes this field as read-only in current releases.
                 setattr(element, "_semantic_id_list_element", new_reference)
 
     def _hydrate_property(
@@ -444,11 +446,9 @@ class HydratorService:
             try:
                 element.value = self._coerce_value(submitted_value, element.value_type)
             except (TypeError, ValueError) as exc:
-                logger.warning(
-                    "Skipping invalid value for property %s: %s",
-                    element.id_short,
-                    exc,
-                )
+                raise ValueError(
+                    f"Invalid value for property {element.id_short}: {submitted_value!r}"
+                ) from exc
 
     def _values_equivalent_for_hydration(self, existing: Any, submitted: Any) -> bool:
         """Return true when JSON-shaped form data represents the current value."""
@@ -748,41 +748,46 @@ class HydratorService:
 
         type_str = str(value_type).lower() if value_type else "xs:string"
 
-        try:
-            if "int" in type_str or "integer" in type_str:
-                return int(float(value))  # Handle "123.0" -> 123
-            elif any(t in type_str for t in ["float", "double", "decimal"]):
-                return float(value)
-            elif "bool" in type_str:
-                if isinstance(value, bool):
-                    return value
-                return str(value).lower() in ("true", "1", "yes")
-            elif "datetime" in type_str:
-                from datetime import datetime
+        if "int" in type_str or "integer" in type_str:
+            number = float(value)
+            if not number.is_integer():
+                raise ValueError(f"{value!r} is not an integer")
+            return int(number)
+        if any(t in type_str for t in ["float", "double", "decimal"]):
+            return float(value)
+        if "bool" in type_str:
+            if isinstance(value, bool):
+                return value
+            normalized = str(value).strip().lower()
+            if normalized in ("true", "1", "yes"):
+                return True
+            if normalized in ("false", "0", "no"):
+                return False
+            raise ValueError(f"{value!r} is not a boolean")
+        if "datetime" in type_str:
+            from datetime import datetime
 
-                if isinstance(value, datetime):
-                    return value
-                return datetime.fromisoformat(str(value))
-            elif type_str.endswith("date") or "date" in type_str:
-                from datetime import date
+            if isinstance(value, datetime):
+                return value
+            return datetime.fromisoformat(str(value))
+        if type_str.endswith("date") or "date" in type_str:
+            from datetime import date
 
-                if isinstance(value, date):
-                    return value
-                return date.fromisoformat(str(value))
-            elif "time" in type_str:
-                from datetime import time
+            if isinstance(value, date):
+                return value
+            return date.fromisoformat(str(value))
+        if "time" in type_str:
+            from datetime import time
 
-                if isinstance(value, time):
-                    return value
-                return time.fromisoformat(str(value))
-            elif "gyear" in type_str:
-                if isinstance(value, model.datatypes.GYear):
-                    return value
-                return model.datatypes.GYear(int(str(value)))
-            else:
-                return str(value)
-        except (ValueError, TypeError):
-            return str(value)
+            if isinstance(value, time):
+                return value
+            return time.fromisoformat(str(value))
+        if "gyear" in type_str:
+            if isinstance(value, model.datatypes.GYear):
+                return value
+            return model.datatypes.GYear(int(str(value)))
+
+        return str(value)
 
     def _external_reference(self, value: str) -> model.ExternalReference:
         """Create an ExternalReference from a string value."""

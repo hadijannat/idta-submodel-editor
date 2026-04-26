@@ -296,3 +296,41 @@ def test_property_date_type_mismatch_is_reported():
     assert len(errors) == 1
     assert errors[0].field == "ManufacturedOn"
     assert errors[0].code == "type_mismatch"
+
+
+def test_property_time_type_mismatch_is_reported():
+    schema = _schema(
+        [
+            {
+                "idShort": "MeasuredAt",
+                "modelType": "Property",
+                "cardinality": "[1]",
+                "valueType": "xs:time",
+            }
+        ]
+    )
+    form_data = {"elements": {"MeasuredAt": {"value": "25:00:00"}}}
+    errors, _ = validate_form_data(schema, form_data)
+
+    assert len(errors) == 1
+    assert errors[0].field == "MeasuredAt"
+    assert errors[0].code == "type_mismatch"
+
+
+def test_property_gyear_type_mismatch_is_reported():
+    schema = _schema(
+        [
+            {
+                "idShort": "ProductionYear",
+                "modelType": "Property",
+                "cardinality": "[1]",
+                "valueType": "xs:gYear",
+            }
+        ]
+    )
+    form_data = {"elements": {"ProductionYear": {"value": "not-a-year"}}}
+    errors, _ = validate_form_data(schema, form_data)
+
+    assert len(errors) == 1
+    assert errors[0].field == "ProductionYear"
+    assert errors[0].code == "type_mismatch"

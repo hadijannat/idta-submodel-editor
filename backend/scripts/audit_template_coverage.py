@@ -578,6 +578,8 @@ def sample_value(value_type: str | None, *, high: bool = False) -> Any:
         return "2024-01-02" if high else "2024-01-01"
     if "time" in value_type_lower:
         return "00:00:01" if high else "00:00:00"
+    if "gyear" in value_type_lower:
+        return "2025" if high else "2024"
     if "anyuri" in value_type_lower or "uri" in value_type_lower:
         return "urn:example:high" if high else "urn:example"
     return "Example B" if high else "Example"

@@ -138,7 +138,7 @@ def test_hydrator_coerces_gyear_property_values():
     assert prop.value.year == 2024
 
 
-def test_hydrator_skips_invalid_property_assignment():
+def test_hydrator_rejects_invalid_property_assignment():
     hydrator = HydratorService()
     prop = model.Property(
         id_short="date",
@@ -146,7 +146,8 @@ def test_hydrator_skips_invalid_property_assignment():
         value=date(2023, 1, 1),
     )
 
-    hydrator._hydrate_property(prop, {"value": "2023"})
+    with pytest.raises(ValueError, match="Invalid value for property date"):
+        hydrator._hydrate_property(prop, {"value": "not-a-date"})
 
     assert prop.value == date(2023, 1, 1)
 
