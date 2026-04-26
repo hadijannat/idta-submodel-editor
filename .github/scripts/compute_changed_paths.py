@@ -4,21 +4,86 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 ZERO_SHA = "0" * 40
+RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+DEFAULT_FETCH_ATTEMPTS = 2
 
 
-def fetch_json(url: str, token: str | None) -> Any:
+def _is_retryable_fetch_error(exc: BaseException) -> bool:
+    if isinstance(exc, HTTPError):
+        return exc.code in RETRYABLE_HTTP_STATUS_CODES
+    return isinstance(exc, (TimeoutError, URLError))
+
+
+def fetch_json(
+    url: str,
+    token: str | None,
+    *,
+    attempts: int = DEFAULT_FETCH_ATTEMPTS,
+    backoff_seconds: float = 1.0,
+) -> Any:
     headers = {"Accept": "application/vnd.github+json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(url, headers=headers)
-    with urlopen(request) as response:  # noqa: S310 - GitHub API endpoint is fixed by the workflow
-        return json.load(response)
+
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            with urlopen(request, timeout=10) as response:  # noqa: S310 - GitHub API endpoint is fixed by the workflow
+                return json.load(response)
+        except Exception as exc:
+            if attempt >= max(1, attempts) or not _is_retryable_fetch_error(exc):
+                raise
+            print(
+                f"warning: GitHub API request failed on attempt {attempt}; retrying: {exc}",
+                file=sys.stderr,
+            )
+            time.sleep(backoff_seconds * attempt)
+
+    raise RuntimeError("unreachable")
+
+
+def warn_if_unauthenticated(token: str | None) -> None:
+    if not token:
+        print(
+            "warning: GITHUB_TOKEN is unset; GitHub API requests are unauthenticated "
+            "and may be rate-limited.",
+            file=sys.stderr,
+        )
+
+
+def _extract_filenames(items: Any) -> list[str]:
+    """Extract `filename` (plus `previous_filename` for renames) from each item.
+
+    Defensive against unexpected upstream payload shapes (missing keys,
+    non-dict items). Avoids crashing the changes-detection job on partial or
+    drifted GitHub API responses.
+
+    Renames return both new and old paths so downstream classification triggers
+    CI for both source and destination directories — otherwise a cross-directory
+    rename would only flag the destination, hiding regressions in code that
+    still references the old location.
+    """
+    if not isinstance(items, list):
+        return []
+    out: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("filename")
+        if isinstance(name, str) and name:
+            out.append(name)
+        previous = item.get("previous_filename")
+        if isinstance(previous, str) and previous:
+            out.append(previous)
+    return out
 
 
 def collect_pull_request_files(
@@ -39,7 +104,7 @@ def collect_pull_request_files(
         if not payload:
             break
 
-        changed_files.extend(item["filename"] for item in payload)
+        changed_files.extend(_extract_filenames(payload))
         if len(payload) < 100:
             break
         page += 1
@@ -59,7 +124,7 @@ def collect_push_files(
     if before and before != ZERO_SHA:
         compare_url = f"https://api.github.com/repos/{repository}/compare/{before}...{after}"
         compare_payload = fetcher(compare_url, token)
-        return [item["filename"] for item in compare_payload.get("files", [])]
+        return _extract_filenames(compare_payload.get("files", []))
 
     changed_files: set[str] = set()
     for commit in payload.get("commits", []):
@@ -72,12 +137,21 @@ def collect_push_files(
     if after:
         commit_url = f"https://api.github.com/repos/{repository}/commits/{after}"
         commit_payload = fetcher(commit_url, token)
-        return sorted(item["filename"] for item in commit_payload.get("files", []))
+        return sorted(_extract_filenames(commit_payload.get("files", [])))
 
     return []
 
 
 def classify_changed_files(changed_files: Iterable[str]) -> dict[str, bool]:
+    """Map changed file paths to job-trigger flags.
+
+    Replaces the prior `dorny/paths-filter` configuration. Trigger semantics
+    differ in two ways from the old filter:
+      - `frontend_lockfile` now fires on `package.json` as well as
+        `package-lock.json` (lockfile audit also gates on direct manifest edits).
+      - `workflows` now fires on `.github/scripts/**` so changes to workflow
+        helper scripts are linted/tested alongside YAML edits.
+    """
     outputs = {
         "backend": False,
         "frontend": False,
@@ -144,6 +218,7 @@ def main() -> int:
     if not event_name or not repository or not event_path:
         raise RuntimeError("GITHUB_EVENT_NAME, GITHUB_REPOSITORY, and GITHUB_EVENT_PATH are required.")
 
+    warn_if_unauthenticated(token)
     payload = json.loads(Path(event_path).read_text(encoding="utf-8"))
     changed_files = determine_changed_files(event_name, repository, payload, token)
 

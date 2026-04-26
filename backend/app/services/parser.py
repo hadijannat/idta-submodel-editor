@@ -65,16 +65,16 @@ class ParserService:
         with SafeAASXReader(BytesIO(aasx_bytes)) as reader:
             reader.read_into(object_store, file_store)
 
-        # Find the submodel
-        submodel = self._find_submodel(object_store)
+        # Find the AAS and submodel
+        aas = self._find_aas(object_store)
+        submodel = self._find_submodel(object_store, aas)
         if not submodel:
             raise ValueError("No Submodel found in AASX file")
 
         submodel_id = getattr(submodel, "id_", None) or getattr(submodel, "id", None)
         logger.info(f"Parsing submodel: {submodel.id_short} ({submodel_id})")
 
-        # Find and extract AAS metadata for PDF export
-        aas = self._find_aas(object_store)
+        # Extract AAS metadata for PDF export
         aas_metadata = self._extract_aas_metadata(aas) if aas else None
 
         # Build semantic index once for O(1) ConceptDescription lookups
@@ -186,13 +186,49 @@ class ParserService:
         return result
 
     def _find_submodel(
-        self, object_store: model.DictObjectStore
+        self,
+        object_store: model.DictObjectStore,
+        aas: model.AssetAdministrationShell | None = None,
     ) -> model.Submodel | None:
-        """Find the first Submodel in the object store."""
-        for obj in object_store:
-            if isinstance(obj, model.Submodel):
-                return obj
-        return None
+        """Find the primary template Submodel deterministically."""
+        submodels = [obj for obj in object_store if isinstance(obj, model.Submodel)]
+        if not submodels:
+            return None
+
+        def submodel_id(submodel: model.Submodel) -> str:
+            return str(getattr(submodel, "id_", None) or getattr(submodel, "id", "") or "")
+
+        def preferred_submodel(candidates: list[model.Submodel]) -> model.Submodel:
+            template_submodels = [
+                submodel
+                for submodel in candidates
+                if "submodeltemplate" in submodel_id(submodel).lower()
+            ]
+            if template_submodels:
+                return sorted(template_submodels, key=submodel_id)[0]
+            return sorted(candidates, key=submodel_id)[0]
+
+        referenced_ids = self._aas_submodel_reference_ids(aas)
+        if referenced_ids:
+            referenced_submodels = [
+                submodel for submodel in submodels if submodel_id(submodel) in referenced_ids
+            ]
+            if referenced_submodels:
+                return preferred_submodel(referenced_submodels)
+
+        return preferred_submodel(submodels)
+
+    def _aas_submodel_reference_ids(
+        self,
+        aas: model.AssetAdministrationShell | None,
+    ) -> set[str]:
+        if aas is None:
+            return set()
+        result = set()
+        for ref in aas.submodel or []:
+            if getattr(ref, "key", None):
+                result.add(ref.key[-1].value)
+        return result
 
     def _element_to_schema(
         self,
@@ -264,11 +300,11 @@ class ParserService:
         elif isinstance(element, model.Entity):
             base_schema.update(self._entity_schema(element, object_store, semantic_index))
 
-        elif isinstance(element, model.RelationshipElement):
-            base_schema.update(self._relationship_schema(element))
-
         elif isinstance(element, model.AnnotatedRelationshipElement):
             base_schema.update(self._annotated_relationship_schema(element, object_store, semantic_index))
+
+        elif isinstance(element, model.RelationshipElement):
+            base_schema.update(self._relationship_schema(element))
 
         elif isinstance(element, model.Operation):
             base_schema.update(self._operation_schema(element, object_store, semantic_index))
@@ -643,6 +679,7 @@ class ParserService:
             "description": None,
             "qualifiers": [],
             "cardinality": "[1]",
+            "category": None,
         }
 
         if type_name == "Property" and value_type:
@@ -652,6 +689,10 @@ class ParserService:
                     "valueType": value_type_str,
                     "value": None,
                     "inputType": get_input_type(value_type_str),
+                    "step": get_step_attribute(value_type_str),
+                    "constraints": get_range_constraints(value_type_str),
+                    "unit": None,
+                    "valueId": None,
                 }
             )
         elif type_name == "SubmodelElementCollection":
@@ -661,6 +702,69 @@ class ParserService:
                 {
                     "value": {},
                     "supportedLanguages": ["en", "de", "fr", "es", "it"],
+                }
+            )
+        elif type_name == "Range":
+            value_type_str = str(value_type or model.datatypes.Double)
+            template.update(
+                {
+                    "valueType": value_type_str,
+                    "min": None,
+                    "max": None,
+                    "inputType": get_input_type(value_type_str),
+                    "step": get_step_attribute(value_type_str),
+                    "unit": None,
+                }
+            )
+        elif type_name == "File":
+            template.update(
+                {
+                    "contentType": "application/octet-stream",
+                    "value": None,
+                }
+            )
+        elif type_name == "Blob":
+            template.update(
+                {
+                    "contentType": "application/octet-stream",
+                    "value": None,
+                    "valueEncoding": None,
+                }
+            )
+        elif type_name == "ReferenceElement":
+            template["value"] = None
+        elif type_name == "Entity":
+            template.update(
+                {
+                    "entityType": str(model.EntityType.CO_MANAGED_ENTITY),
+                    "globalAssetId": None,
+                    "specificAssetIds": [],
+                    "statements": [],
+                }
+            )
+        elif type_name == "AnnotatedRelationshipElement":
+            template.update(
+                {
+                    "first": None,
+                    "second": None,
+                    "annotations": [],
+                }
+            )
+        elif type_name == "RelationshipElement":
+            template.update(
+                {
+                    "first": None,
+                    "second": None,
+                }
+            )
+        elif type_name == "SubmodelElementList":
+            template.update(
+                {
+                    "typeValueListElement": None,
+                    "orderRelevant": True,
+                    "valueTypeListElement": None,
+                    "semanticIdListElement": None,
+                    "items": [],
                 }
             )
 

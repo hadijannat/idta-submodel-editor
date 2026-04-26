@@ -26,6 +26,8 @@ venv/
 .hypothesis/
 
 # Test artifacts
+.coverage
+backend/.coverage
 coverage/
 frontend/coverage/
 test-results/
@@ -35,6 +37,8 @@ frontend/test-results/
 .cache/
 cache/
 tmp/
+.worktrees/
+/package-lock.json
 
 # Env files
 .env

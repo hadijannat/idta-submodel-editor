@@ -191,6 +191,12 @@ async def check_conformance_for_form(
         return _to_response(request.format_name, content)
     except APIError:
         raise
+    except ValueError as exc:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(exc),
+            detail={"template_name": request.template_name},
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to run conformance check for template payload")
         raise APIError(

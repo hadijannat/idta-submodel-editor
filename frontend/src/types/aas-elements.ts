@@ -30,6 +30,7 @@ export interface ElementFormData {
 
   // For File
   contentType?: string;
+  valueEncoding?: string;
 
   // For Relationship
   first?: string;

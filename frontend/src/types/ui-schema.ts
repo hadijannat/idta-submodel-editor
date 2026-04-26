@@ -9,6 +9,7 @@
  * Supported SubmodelElement types.
  */
 export type ElementModelType =
+  | 'SubmodelElement'
   | 'Property'
   | 'SubmodelElementCollection'
   | 'SubmodelElementList'
@@ -85,6 +86,7 @@ export interface UIElementSchema {
 
   // File-specific
   contentType?: string;
+  valueEncoding?: string | null;
 
   // Range-specific
   min?: unknown;

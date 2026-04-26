@@ -63,14 +63,56 @@ function createDefaultItem(template: UIElementSchema | null): ElementFormData {
       return withSemanticDefaults({ elements }, template);
     }
 
+    case 'SubmodelElementList':
+      return withSemanticDefaults({
+        items: (template.items || []).map((item) => createDefaultItem(item)),
+        semanticIdListElement: template.semanticIdListElement ?? null,
+      }, template);
+
     case 'Range':
       return withSemanticDefaults({ min: '', max: '' }, template);
 
     case 'File':
-      return withSemanticDefaults({ value: '', contentType: '' }, template);
+      return withSemanticDefaults({
+        value: template.value ?? '',
+        contentType: template.contentType ?? '',
+      }, template);
+
+    case 'Blob':
+      return withSemanticDefaults({
+        value: template.value ?? '',
+        contentType: template.contentType ?? 'application/octet-stream',
+        valueEncoding: template.valueEncoding ?? 'utf-8',
+      }, template);
 
     case 'ReferenceElement':
       return withSemanticDefaults({ value: '' }, template);
+
+    case 'Entity': {
+      const statements: Record<string, ElementFormData> = {};
+      for (const statement of template.statements || []) {
+        statements[statement.idShort] = createDefaultItem(statement);
+      }
+      return withSemanticDefaults({
+        globalAssetId: template.globalAssetId ?? '',
+        statements,
+      }, template);
+    }
+
+    case 'RelationshipElement':
+      return withSemanticDefaults({
+        first: template.first ?? '',
+        second: template.second ?? '',
+      }, template);
+
+    case 'AnnotatedRelationshipElement':
+      return withSemanticDefaults({
+        first: template.first ?? '',
+        second: template.second ?? '',
+        annotations: (template.annotations || []).map((annotation) =>
+          createDefaultItem(annotation)
+        ),
+      }, template);
 
     default:
       return withSemanticDefaults({ value: '' }, template);

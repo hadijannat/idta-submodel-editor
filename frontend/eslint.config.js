@@ -10,7 +10,7 @@ export default [
     ignores: ['coverage/**', 'dist/**', 'playwright-report/**'],
   },
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.{js,mjs,cjs,ts,tsx}'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
