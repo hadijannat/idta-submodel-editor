@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from scripts.audit_template_coverage import (
     _empty_coverage_counter,
