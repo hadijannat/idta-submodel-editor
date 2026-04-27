@@ -284,26 +284,42 @@ class TableExtractor:
 
     def get_table_as_text(self, table: ExtractedTable) -> str:
         """Convert an extracted table to a text representation."""
-        if not table.cells:
+        rows = self.get_table_rows(table)
+        if not rows:
             return ""
 
-        # Build rows
-        rows: dict[int, dict[int, str]] = {}
+        lines = [" | ".join(row).rstrip() for row in rows]
+        return "\n".join(lines).strip()
+
+    def get_table_rows(self, table: ExtractedTable) -> list[list[str]]:
+        """Return table cells as a dense row/column matrix."""
+        if not table.cells or table.rows <= 0 or table.cols <= 0:
+            return []
+
+        rows = [["" for _ in range(table.cols)] for _ in range(table.rows)]
         for cell in table.cells:
-            if cell.row not in rows:
-                rows[cell.row] = {}
-            rows[cell.row][cell.col] = cell.text
+            if 0 <= cell.row < table.rows and 0 <= cell.col < table.cols:
+                rows[cell.row][cell.col] = cell.text
 
-        # Format as text
-        lines: list[str] = []
-        for row_idx in sorted(rows.keys()):
-            row_cells = rows[row_idx]
-            row_text = " | ".join(
-                row_cells.get(col_idx, "") for col_idx in range(table.cols)
-            )
-            lines.append(row_text)
+        return rows
 
-        return "\n".join(lines)
+    def table_to_snippets(
+        self,
+        table: ExtractedTable,
+        max_rows: int = 15,
+    ) -> list[str]:
+        """Convert a table into text snippets suitable for retrieval/LLM prompts."""
+        rows = self.get_table_rows(table)
+        if not rows:
+            return []
+
+        snippet_rows = rows[:max_rows]
+        lines = [" | ".join(row).rstrip() for row in snippet_rows]
+        text = "\n".join(line for line in lines if line.strip()).strip()
+        if not text:
+            return []
+
+        return [text]
 
     def search_table_for_value(
         self,
