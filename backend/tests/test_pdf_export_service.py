@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import types
+from importlib.metadata import version as package_version
+from pathlib import Path
 import sys
+import types
 
 from app.services.hydrator import PDFExportService
 
@@ -87,3 +89,27 @@ def test_generate_pdf_keeps_constructor_when_pydyf_has_args(monkeypatch) -> None
 
     assert result == b"%PDF-FAKE"
     assert fake_weasy_pdf.pydyf.PDF is ArgPDF
+
+
+def test_generate_pdf_with_real_pydyf_012_contract() -> None:
+    """Exercise the installed WeasyPrint/pydyf integration, not just fakes."""
+
+    from packaging.version import Version
+    from weasyprint import pdf as weasy_pdf
+
+    pydyf_version = Version(package_version("pydyf"))
+    assert Version("0.12.1") <= pydyf_version < Version("0.13")
+
+    original_pdf_class = weasy_pdf.pydyf.PDF
+    try:
+        template_dir = Path(__file__).resolve().parents[1] / "app" / "templates"
+        pdf_bytes = PDFExportService(template_dir=str(template_dir)).generate_pdf(
+            {"elements": []},
+            "pdf_report.html",
+        )
+    finally:
+        weasy_pdf.pydyf.PDF = original_pdf_class
+
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert len(pdf_bytes) > 1000
+    assert b"%%EOF" in pdf_bytes[-128:]
