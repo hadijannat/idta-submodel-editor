@@ -5,7 +5,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-from app.schemas.magic_import import BBox, PDFIndex, PDFIndexInfo, PDFWord
+from app.schemas.magic_import import (
+    BBox,
+    ExtractedTable,
+    PDFIndex,
+    PDFIndexInfo,
+    PDFWord,
+)
+from app.services.magic_import.table_extractor import TableExtractionResult
 
 
 class TestPDFIndexer:
@@ -54,6 +61,80 @@ class TestPDFIndexer:
             assert len(index.words) == 2
             assert index.words[0].text == "Hello"
             assert index.words[1].text == "World"
+
+    @patch("app.services.magic_import.pdf_indexer.get_settings")
+    def test_index_pdf_propagates_extracted_tables(self, mock_settings):
+        """Test table extraction results are copied into the PDF index."""
+        mock_settings.return_value = MagicMock()
+
+        mock_page = MagicMock()
+        mock_page.rect.width = 612
+        mock_page.rect.height = 792
+        mock_page.get_text.return_value = []
+
+        mock_doc = MagicMock()
+        mock_doc.__len__ = MagicMock(return_value=1)
+        mock_doc.__getitem__ = MagicMock(return_value=mock_page)
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        table = ExtractedTable(
+            table_id="table-1",
+            page=0,
+            bbox=BBox(x0=0.1, y0=0.1, x1=0.9, y1=0.4),
+            rows=2,
+            cols=2,
+            cells=[],
+            headers=["Field", "Value"],
+            accuracy=0.9,
+            method="LATTICE",
+        )
+
+        with (
+            patch.dict(sys.modules, {"fitz": mock_fitz}),
+            patch(
+                "app.services.magic_import.pdf_indexer.TableExtractor.extract_tables",
+                return_value=TableExtractionResult.from_tables([table]),
+            ),
+        ):
+            from app.services.magic_import.pdf_indexer import PDFIndexer
+
+            indexer = PDFIndexer()
+            index = indexer.index_pdf(Path("test.pdf"), "test-job-id")
+
+        assert index.tables == [table]
+
+    @patch("app.services.magic_import.pdf_indexer.get_settings")
+    def test_index_pdf_handles_table_extraction_failure(self, mock_settings):
+        """Test table extraction failures leave an otherwise valid index."""
+        mock_settings.return_value = MagicMock()
+
+        mock_page = MagicMock()
+        mock_page.rect.width = 612
+        mock_page.rect.height = 792
+        mock_page.get_text.return_value = []
+
+        mock_doc = MagicMock()
+        mock_doc.__len__ = MagicMock(return_value=1)
+        mock_doc.__getitem__ = MagicMock(return_value=mock_page)
+
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with (
+            patch.dict(sys.modules, {"fitz": mock_fitz}),
+            patch(
+                "app.services.magic_import.pdf_indexer.TableExtractor.extract_tables",
+                side_effect=RuntimeError("pdfplumber failed"),
+            ),
+        ):
+            from app.services.magic_import.pdf_indexer import PDFIndexer
+
+            indexer = PDFIndexer()
+            index = indexer.index_pdf(Path("test.pdf"), "test-job-id")
+
+        assert index.tables == []
 
     def test_bbox_normalization(self):
         """Test that bounding boxes are normalized to 0..1."""

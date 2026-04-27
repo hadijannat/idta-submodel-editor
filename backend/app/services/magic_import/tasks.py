@@ -689,6 +689,10 @@ def _build_unmapped_findings(
     if not tables:
         return []
 
+    from app.services.magic_import.table_extractor import TableExtractor
+
+    table_extractor = TableExtractor()
+
     def tokenize(text: str) -> set[str]:
         return {t for t in re.split(r"[^a-zA-Z0-9]+", (text or "").lower()) if t}
 
@@ -718,17 +722,9 @@ def _build_unmapped_findings(
         return len(match_hint(label)) > 0
 
     for table in tables:
-        if table.table_type == "key_value":
-            for row in table.rows:
-                if len(row) < 2:
-                    continue
-                key = (row[0] or "").strip()
-                value = (row[1] or "").strip()
-                if not key or not value:
-                    continue
-                if is_mapped(key):
-                    continue
-                if value.lower() in extracted_values:
+        if table.cols == 2:
+            for key, value, confidence in table_extractor.get_key_value_pairs(table):
+                if is_mapped(key) or value.lower() in extracted_values:
                     continue
                 signature = (value.lower(), table.page, key.lower())
                 if signature in seen:
@@ -745,19 +741,21 @@ def _build_unmapped_findings(
                             locator_score=0.6,
                         ),
                         suggested_paths=match_hint(key),
-                        confidence=0.6,
+                        confidence=confidence,
                         source="table",
                         context=key,
                     )
                 )
         else:
+            rows = table_extractor.get_table_rows(table)
+            data_rows = rows[1:] if table.headers else rows
             for col_idx, header in enumerate(table.headers):
                 header_text = (header or "").strip()
                 if not header_text:
                     continue
                 if is_mapped(header_text):
                     continue
-                for row in table.rows:
+                for row in data_rows:
                     if col_idx >= len(row):
                         continue
                     value = (row[col_idx] or "").strip()
