@@ -1,6 +1,8 @@
 """Tests for LLM Providers."""
 
 import json
+import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -332,6 +334,75 @@ class TestAnthropicProvider:
 
         assert len(extractions) == 1
         assert extractions[0].path == "SerialNumber"
+
+    @pytest.mark.asyncio
+    @patch("app.services.magic_import.llm.anthropic_provider.get_settings")
+    async def test_extract_structured_calls_anthropic_messages_api(
+        self,
+        mock_settings,
+        monkeypatch,
+        sample_hints,
+        sample_snippets,
+    ):
+        """Ensure Anthropic extraction uses the SDK surface expected by the backend."""
+        mock_settings.return_value = MagicMock(
+            anthropic_api_key="sk-ant-test-key",
+            magic_import_llm_model="claude-3-haiku",
+        )
+
+        mock_response = MagicMock(
+            content=[
+                MagicMock(
+                    text=json.dumps(
+                        {
+                            "extractions": [
+                                {
+                                    "path": "SerialNumber",
+                                    "value": "SN-12345",
+                                    "evidence_quote": "serial number is SN-12345",
+                                    "confidence": 0.92,
+                                }
+                            ]
+                        }
+                    )
+                )
+            ],
+            usage=MagicMock(input_tokens=7, output_tokens=5),
+        )
+        mock_client = MagicMock()
+        mock_client.messages = MagicMock(create=AsyncMock(return_value=mock_response))
+        mock_async_anthropic = MagicMock(return_value=mock_client)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "anthropic",
+            SimpleNamespace(AsyncAnthropic=mock_async_anthropic),
+        )
+
+        from app.services.magic_import.llm.anthropic_provider import (
+            AnthropicProvider,
+        )
+
+        provider = AnthropicProvider()
+        result = await provider.extract_structured(
+            hints=sample_hints,
+            snippets=sample_snippets,
+            max_tokens=123,
+        )
+
+        mock_async_anthropic.assert_called_once_with(api_key="sk-ant-test-key")
+        mock_client.messages.create.assert_awaited_once()
+        call_kwargs = mock_client.messages.create.await_args.kwargs
+        assert call_kwargs["model"] == "claude-3-haiku-20240307"
+        assert call_kwargs["max_tokens"] == 123
+        assert call_kwargs["messages"][0]["role"] == "user"
+        assert "Respond with ONLY a valid JSON object" in call_kwargs["messages"][0]["content"]
+        assert call_kwargs["temperature"] == 0.1
+
+        assert result.tokens_used == 12
+        assert result.prompt_tokens == 7
+        assert result.completion_tokens == 5
+        assert result.extractions[0].path == "SerialNumber"
 
 
 class TestLocalProvider:

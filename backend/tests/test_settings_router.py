@@ -363,6 +363,58 @@ class TestDirectOpenAIValidation:
         assert message == "Invalid API key"
 
 
+class TestDirectAnthropicValidation:
+    """Direct unit tests for Anthropic key validation internals."""
+
+    @pytest.mark.asyncio
+    async def test_validate_anthropic_calls_messages_create(self, monkeypatch):
+        """Ensure validation path still uses AsyncAnthropic.messages.create()."""
+        from app.routers.settings import _validate_anthropic
+
+        mock_client = MagicMock()
+        mock_client.messages = MagicMock(create=AsyncMock(return_value=MagicMock()))
+        mock_async_anthropic = MagicMock(return_value=mock_client)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "anthropic",
+            SimpleNamespace(AsyncAnthropic=mock_async_anthropic),
+        )
+
+        valid, message = await _validate_anthropic("sk-ant-test-key")
+
+        assert valid is True
+        assert "valid" in message.lower()
+        mock_async_anthropic.assert_called_once_with(api_key="sk-ant-test-key")
+        mock_client.messages.create.assert_awaited_once_with(
+            model="claude-3-haiku-20240307",
+            max_tokens=1,
+            messages=[{"role": "user", "content": "Hi"}],
+        )
+
+    @pytest.mark.asyncio
+    async def test_validate_anthropic_maps_authentication_error(self, monkeypatch):
+        """Ensure auth failures map to stable user-facing message."""
+        from app.routers.settings import _validate_anthropic
+
+        mock_client = MagicMock()
+        mock_client.messages = MagicMock(
+            create=AsyncMock(side_effect=Exception("authentication failed"))
+        )
+        mock_async_anthropic = MagicMock(return_value=mock_client)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "anthropic",
+            SimpleNamespace(AsyncAnthropic=mock_async_anthropic),
+        )
+
+        valid, message = await _validate_anthropic("invalid-key")
+
+        assert valid is False
+        assert message == "Invalid API key"
+
+
 class TestUpdateLLMSettings:
     """Tests for PUT /api/settings/llm endpoint."""
 
