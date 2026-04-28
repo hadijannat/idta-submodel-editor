@@ -165,7 +165,10 @@ async def test_initialize_all_skips_failed_dependency():
     manifest = registry.get_tool_manifest()
     failing_entry = next(entry for entry in manifest if entry["id"] == "failing-tool")
     assert failing_entry["initialized"] is False
-    assert failing_entry["disabled_reason"] == "Initialization failed: boom"
+    assert failing_entry["disabled_reason"] == (
+        "Initialization failed. Check backend logs for details."
+    )
+    assert "boom" not in failing_entry["disabled_reason"]
 
 
 def test_manifest_order_is_stable_and_sorted():

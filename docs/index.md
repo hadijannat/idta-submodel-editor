@@ -34,7 +34,7 @@ For quick onboarding and local run commands, start with the repository README:
 ## Operational Notes
 
 - Swagger UI (`/api/docs`) is available when backend `ENV != production`.
-- Mnestix browser is exposed at `http://localhost:3001` when using the `dataspace` profile.
+- Mnestix browser is optional. Start it with `MNESTIX_ENABLED=true docker compose --profile dataspace --profile mnestix up`; it binds to `127.0.0.1:3001` by default.
 - Running the `auth` compose profile adds Keycloak, but authentication is only enforced when OIDC is enabled in backend configuration.
 - Keycloak maps to host port `8081` by default (`KEYCLOAK_HOST_PORT`), so auth profile can run with frontend.
 

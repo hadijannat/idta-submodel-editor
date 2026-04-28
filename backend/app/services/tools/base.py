@@ -246,7 +246,7 @@ class BaseTool(ABC):
         """
         if self.is_enabled():
             if self._initialization_error:
-                return f"Initialization failed: {self._initialization_error}"
+                return "Initialization failed. Check backend logs for details."
             # Enabled tools can still be unusable due to missing dependencies.
             if registry is not None:
                 for dependency in self.metadata.dependencies:

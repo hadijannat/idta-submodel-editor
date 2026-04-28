@@ -33,7 +33,7 @@ Then open `http://localhost:8080`.
 | Backend API | http://localhost:8000 | REST API |
 | Swagger UI | http://localhost:8000/api/docs | Available when `ENV != production` |
 | Health | http://localhost:8000/health | Basic health/liveness indicator |
-| AAS Browser (Mnestix) | http://localhost:3001 | Available with `dataspace` profile |
+| AAS Browser (Mnestix) | http://localhost:3001 | Optional with `dataspace` + `mnestix` profiles |
 
 ## Choose Your Path
 
@@ -47,7 +47,8 @@ Then open `http://localhost:8080`.
 |---|---|---|---|
 | Core | `docker compose up` | Backend, frontend, Redis | Core editing works without external API keys; lightest startup path |
 | Magic Import Worker | `docker compose --profile magic-import up` | `celery-worker` for async/background jobs | Magic Import feature flag is already enabled in base backend config |
-| Dataspace | `docker compose --profile dataspace up` | BaSyx, DTR, Vault, EDC, Postgres, Mnestix | Mnestix is exposed at `http://localhost:3001`; heavy stack, slower first startup |
+| Dataspace | `docker compose --profile dataspace up` | BaSyx, DTR, Vault, EDC, Postgres | Heavy stack, slower first startup |
+| AAS Browser | `MNESTIX_ENABLED=true docker compose --profile dataspace --profile mnestix up` | Mnestix browser | Binds to `127.0.0.1:3001` by default |
 | PLC Bridge | `docker compose --profile plc up` (or `--profile dataspace --profile plc`) | PLC4X bridge + required BaSyx services | Use standalone for local PLC-to-AAS loop, or combine with dataspace for full connector flow |
 | Auth | `OIDC_ENABLED=true OIDC_ISSUER_URL=http://keycloak:8080/realms/idta OIDC_AUDIENCE=idta-editor docker compose --profile auth up backend redis keycloak` | Backend + Redis + Keycloak | Keycloak is mapped to `http://localhost:8081` to avoid frontend port collisions |
 

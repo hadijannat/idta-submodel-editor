@@ -159,6 +159,8 @@ services:
   # ==========================================================================
   # Dataspace Profile Services
   # Start with: docker compose --profile dataspace up
+  # Add the browser with:
+  #   MNESTIX_ENABLED=true docker compose --profile dataspace --profile mnestix up
   # ==========================================================================
 
   # BaSyx AAS Server - Hosts Asset Administration Shell instances
@@ -384,7 +386,7 @@ services:
     image: mnestix/mnestix-browser:2.1.1
     container_name: mnestix
     ports:
-      - "3001:3000"
+      - "${MNESTIX_HOST_BIND:-127.0.0.1}:${MNESTIX_HOST_PORT:-3001}:3000"
     environment:
       - AAS_REPO_API_URL=http://basyx-aas-server:4001
       - REGISTRY_API_URL=http://basyx-registry:4002
@@ -406,7 +408,7 @@ services:
     networks:
       - idta-network
     profiles:
-      - dataspace
+      - mnestix
 
   # ==========================================================================
   # PLC4X Bridge - Industrial PLC to BaSyx AAS Bridge

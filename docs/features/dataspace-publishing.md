@@ -307,10 +307,16 @@ Published submodels can be explored using the embedded Mnestix AAS Browser:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MNESTIX_ENABLED` | Enable AAS Browser | true |
-| `MNESTIX_URL` | Mnestix instance URL | http://mnestix:3000 |
+| `MNESTIX_ENABLED` | Enable AAS Browser in the app UI | false |
+| `MNESTIX_URL` | Browser-accessible Mnestix instance URL | http://localhost:3001 |
 
-Access at http://localhost:3000 when running with the dataspace profile.
+Start the browser explicitly when needed:
+
+```bash
+MNESTIX_ENABLED=true docker compose --profile dataspace --profile mnestix up -d
+```
+
+Access at http://localhost:3001 on the host by default.
 
 ---
 

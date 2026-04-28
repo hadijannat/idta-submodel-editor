@@ -130,14 +130,16 @@ Security/operations note:
 | `CATENA_X_BPN` | Business Partner Number | unset |
 | `PLC4X_BRIDGE_ENABLED` | Enable PLC4X bridge integration | `false` |
 | `PLC4X_BRIDGE_URL` | PLC4X bridge URL | unset |
-| `MNESTIX_ENABLED` | Enable Mnestix browser integration | `true` |
-| `MNESTIX_URL` | Mnestix base URL | `http://mnestix:3000` |
+| `MNESTIX_ENABLED` | Enable Mnestix browser integration in the app UI | `false` |
+| `MNESTIX_URL` | Browser-accessible Mnestix base URL | `http://mnestix:3000` |
+| `MNESTIX_HOST_BIND` | Host interface used by the optional Mnestix compose profile | `127.0.0.1` |
+| `MNESTIX_HOST_PORT` | Host port used by the optional Mnestix compose profile | `3001` |
 
 ### Feature Flags for Additional Tools
 
 | Variable | Description | Default |
 |---|---|---|
-| `DPP_ENABLED` | Enable DPP builder | `true` |
+| `DPP_ENABLED` | Enable DPP builder | `false` |
 | `SAMM_ENABLED` | Enable SAMM converter | `true` |
 | `SAMM_DEFAULT_NAMESPACE` | Default SAMM namespace | `org.idta.generated` |
 | `OPCUA_BRIDGE_ENABLED` | Enable OPC UA bridge tooling | `true` |
@@ -157,7 +159,8 @@ Security/operations note:
 
 - `docker compose up` starts backend, frontend, and Redis.
 - `--profile magic-import` adds a Celery worker.
-- `--profile dataspace` adds dataspace infrastructure and Mnestix (`localhost:3001`).
+- `--profile dataspace` adds dataspace infrastructure.
+- `--profile dataspace --profile mnestix` additionally starts Mnestix on `127.0.0.1:3001`; set `MNESTIX_ENABLED=true` to expose the AAS Browser in the app UI.
 - `--profile plc` adds PLC4X bridge plus required BaSyx services.
 - `--profile auth` adds Keycloak, but auth is only enforced when OIDC backend settings are enabled.
 - Auth profile can run alongside frontend; Keycloak maps to host `8081` by default.
