@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { toolRegistry } from '../index';
+import { getToolLaunchBlocker, toolRegistry } from '../index';
 
 describe('toolRegistry static initialization', () => {
   afterEach(() => {
@@ -36,6 +36,43 @@ describe('toolRegistry static initialization', () => {
     expect(tool?.metadata.wizardStep).toBe(8);
     expect(tool?.metadata.featureFlag).toBe('dpp_enabled');
     expect(toolRegistry.hasComponent('dpp-builder')).toBe(true);
+  });
+
+  it('blocks launch for enabled tools that failed initialization', async () => {
+    const manifest = [
+      {
+        id: 'dataspace-connector',
+        name: 'Dataspace Connector',
+        description: 'Publish submodels to Manufacturing-X/Catena-X dataspaces',
+        version: '1.0.0',
+        category: 'integration',
+        wizard_step: 7,
+        feature_flag: 'dataspace_enabled',
+        requires_auth: false,
+        dependencies: [],
+        enabled: true,
+        initialized: false,
+        disabled_reason: 'Initialization failed: boom',
+        ui_entry: 'wizard',
+        frontend_component: 'dataspace-connector',
+        standalone: true,
+      },
+    ];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => manifest,
+      })
+    );
+
+    await toolRegistry.loadServerManifest(true);
+    const tool = toolRegistry.getTool('dataspace-connector');
+
+    expect(getToolLaunchBlocker(tool)).toBe('Initialization failed: boom');
   });
 
   it('merges server manifest and keeps wizard order', async () => {

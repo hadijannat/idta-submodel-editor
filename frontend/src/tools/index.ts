@@ -56,6 +56,52 @@ const TOOL_COMPONENTS: Record<string, LazyExoticComponent<ToolComponent>> = {
   ),
 };
 
+const HARDCODED_WIZARD_TOOLS = new Set(['export-panel']);
+
+export function getToolFrontendComponentId(metadata: ToolMetadata): string | null {
+  return metadata.frontendComponent ?? metadata.id;
+}
+
+export function hasLaunchableFrontendComponent(metadata: ToolMetadata): boolean {
+  if (HARDCODED_WIZARD_TOOLS.has(metadata.id)) {
+    return true;
+  }
+  const frontendComponent = getToolFrontendComponentId(metadata);
+  return !!frontendComponent && TOOL_COMPONENTS[frontendComponent] !== undefined;
+}
+
+export function getToolLaunchBlocker(
+  tool: ToolRegistryEntry | null | undefined
+): string | null {
+  if (!tool) {
+    return 'Tool is not available.';
+  }
+
+  const { metadata } = tool;
+  const uiEntry = metadata.uiEntry ?? (metadata.wizardStep === null ? 'utility' : 'wizard');
+  const standalone = metadata.standalone ?? (uiEntry === 'wizard' || uiEntry === 'utility');
+  if (uiEntry !== 'wizard' && uiEntry !== 'utility') {
+    return `${metadata.name} is not a standalone UI tool.`;
+  }
+  if (standalone === false) {
+    return `${metadata.name} is not available as a standalone panel.`;
+  }
+  if (!metadata.enabled) {
+    return metadata.disabledReason ?? `${metadata.name} is disabled.`;
+  }
+  if (!metadata.initialized) {
+    return metadata.disabledReason ?? `${metadata.name} is not initialized.`;
+  }
+  if (!hasLaunchableFrontendComponent(metadata)) {
+    return `No UI component is registered for ${metadata.name}.`;
+  }
+  return null;
+}
+
+export function isLaunchableTool(tool: ToolRegistryEntry | null | undefined): boolean {
+  return getToolLaunchBlocker(tool) === null;
+}
+
 const createPlaceholderComponent = (
   toolId: string,
   toolName: string
@@ -231,12 +277,11 @@ class ToolRegistryImpl {
    */
   getUtilityTools(): ToolRegistryEntry[] {
     return this.getAllTools().filter((t) => {
-      const frontendComponent = t.metadata.frontendComponent ?? t.metadata.id;
       return (
         t.metadata.wizardStep === null &&
         t.metadata.uiEntry === 'utility' &&
         t.metadata.standalone !== false &&
-        this.hasComponent(frontendComponent)
+        hasLaunchableFrontendComponent(t.metadata)
       );
     });
   }

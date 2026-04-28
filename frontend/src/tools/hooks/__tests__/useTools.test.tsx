@@ -59,8 +59,9 @@ describe('useTools wizard step integration', () => {
         feature_flag: 'dataspace_enabled',
         requires_auth: false,
         dependencies: [],
-        enabled: false,
+        enabled: true,
         initialized: false,
+        disabled_reason: 'Initialization failed: boom',
       },
       {
         id: 'dpp-builder',
@@ -105,6 +106,7 @@ describe('useTools wizard step integration', () => {
 
     const dataspaceStep = result.current.wizardSteps.find((step) => step.id === 7);
     expect(dataspaceStep?.enabled).toBe(false);
+    expect(dataspaceStep?.disabledReason).toBe('Initialization failed: boom');
   });
 
   it('keeps static fallback steps when manifest loading fails', async () => {

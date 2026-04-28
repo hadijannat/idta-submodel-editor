@@ -20,7 +20,7 @@ import { getTemplateVersions, getPublicSettings, type PublicSettings } from './s
 import { updateFeatureFlags } from './services/settingsApi';
 import { computeCompletion } from './utils/completion';
 import { useTools } from './tools/hooks/useTools';
-import { toolRegistry } from './tools';
+import { getToolLaunchBlocker, toolRegistry } from './tools';
 import type { ToolComponentProps } from './tools/types';
 import './App.css';
 
@@ -303,17 +303,14 @@ function App() {
       );
     }
 
-    if (!tool.metadata.enabled) {
+    const launchBlocker = getToolLaunchBlocker(tool);
+    if (launchBlocker) {
       return (
         <div className="wizard-panel">
           <div className="app-welcome">
-            <h2>{tool.metadata.name} is disabled</h2>
+            <h2>{tool.metadata.name} is unavailable</h2>
             <p>{tool.metadata.description}</p>
-            {tool.metadata.disabledReason && (
-              <p className="wizard-step-disabled-reason">
-                {tool.metadata.disabledReason}
-              </p>
-            )}
+            <p className="wizard-step-disabled-reason">{launchBlocker}</p>
           </div>
           <div className="wizard-actions">
             <button
@@ -814,7 +811,7 @@ function App() {
                       )}
                       {step.toolId && !step.enabled && (
                         <span className="wizard-step-meta wizard-step-disabled">
-                          (disabled)
+                          {step.disabledReason ?? '(disabled)'}
                         </span>
                       )}
                     </span>
@@ -892,15 +889,7 @@ function App() {
               <h4>Utility Tools</h4>
               <div className="utility-tool-list">
                 {visibleUtilityTools.map((tool) => {
-                  const frontendComponent = tool.metadata.frontendComponent ?? tool.metadata.id;
-                  const missingComponent = !toolRegistry.hasComponent(frontendComponent);
-                  const disabledReason = !tool.metadata.enabled
-                    ? tool.metadata.disabledReason ?? `${tool.metadata.name} is disabled.`
-                    : !tool.metadata.initialized
-                      ? tool.metadata.disabledReason ?? `${tool.metadata.name} is not initialized.`
-                      : missingComponent
-                        ? `No UI component is registered for ${tool.metadata.name}.`
-                        : null;
+                  const disabledReason = getToolLaunchBlocker(tool);
                   return (
                     <button
                       key={tool.metadata.id}

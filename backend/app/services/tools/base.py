@@ -145,6 +145,7 @@ class BaseTool(ABC):
         """
         self._context = context
         self._initialized = False
+        self._initialization_error: str | None = None
 
     @property
     def context(self) -> "ToolContext":
@@ -156,6 +157,15 @@ class BaseTool(ABC):
         """Check if the tool has been initialized."""
         return self._initialized
 
+    @property
+    def initialization_error(self) -> str | None:
+        """Return the most recent initialization failure, if any."""
+        return self._initialization_error
+
+    def set_initialization_error(self, message: str | None) -> None:
+        """Record or clear an initialization failure for manifest diagnostics."""
+        self._initialization_error = message
+
     async def initialize(self) -> None:
         """
         Initialize the tool.
@@ -165,6 +175,7 @@ class BaseTool(ABC):
 
         Override this method to add custom initialization logic.
         """
+        self._initialization_error = None
         self._initialized = True
 
     async def shutdown(self) -> None:
@@ -234,6 +245,8 @@ class BaseTool(ABC):
             A short disabled reason when unavailable, otherwise None.
         """
         if self.is_enabled():
+            if self._initialization_error:
+                return f"Initialization failed: {self._initialization_error}"
             # Enabled tools can still be unusable due to missing dependencies.
             if registry is not None:
                 for dependency in self.metadata.dependencies:

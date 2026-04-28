@@ -4,6 +4,7 @@ import pytest
 
 from app.config import Settings
 from app.schemas.semantic import SemanticProviderInfo
+from app.services.tools.builtin.dataspace_tool import DataspaceConnectorTool
 from app.services.tools.builtin.pcf_tool import PCFTool
 from app.services.tools.builtin.semantic_tool import SemanticTool
 from app.services.tools.builtin.template_ops_tool import TemplateOpsTool
@@ -26,6 +27,17 @@ def context() -> ToolContext:
     return ToolContext(Settings())
 
 
+@pytest.fixture
+def dataspace_context(tmp_path) -> ToolContext:
+    return ToolContext(
+        Settings(
+            dataspace_enabled=True,
+            cache_dir=tmp_path / "cache",
+            settings_storage_dir=tmp_path / "settings",
+        )
+    )
+
+
 @pytest.mark.asyncio
 async def test_semantic_tool_health_uses_provider_status(context: ToolContext):
     tool = SemanticTool(context)
@@ -33,6 +45,20 @@ async def test_semantic_tool_health_uses_provider_status(context: ToolContext):
 
     healthy, message = await tool.health_check()
 
+    assert healthy is True
+    assert message is None
+
+
+@pytest.mark.asyncio
+async def test_dataspace_tool_initializes_connection_manager(
+    dataspace_context: ToolContext,
+):
+    tool = DataspaceConnectorTool(dataspace_context)
+
+    await tool.initialize()
+
+    assert tool.is_initialized is True
+    healthy, message = await tool.health_check()
     assert healthy is True
     assert message is None
 
