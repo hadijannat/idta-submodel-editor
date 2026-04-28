@@ -310,12 +310,14 @@ class ToolRegistry:
                 # Initialize the tool
                 try:
                     await tool.initialize()
+                    tool.set_initialization_error(None)
                     initialized.add(tool_id)
                     self._initialization_order.append(tool_id)
                     results[tool_id] = True
                     logger.info("Initialized tool: %s", tool_id)
                 except Exception as e:
                     results[tool_id] = False
+                    tool.set_initialization_error(str(e))
                     logger.error("Failed to initialize tool %s: %s", tool_id, e)
 
                 pending.remove(tool_id)

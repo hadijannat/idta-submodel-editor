@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 
 ToolCategory = Literal["core", "import", "export", "integration", "analytics"]
+ToolUiEntry = Literal["wizard", "utility", "field_action", "api_only"]
 
 
 @dataclass
@@ -36,6 +37,10 @@ class ToolMetadata:
         feature_flag: Config key that enables/disables this tool
         requires_auth: Whether authentication is required to use this tool
         dependencies: List of other tool IDs that must be available
+        ui_entry: Where this tool should appear in the frontend
+        frontend_component: Registered frontend component ID, if launchable
+        standalone: Whether the tool can be opened without field-specific context
+        requires_template: Whether the tool needs a selected template/schema
     """
 
     id: str
@@ -47,6 +52,35 @@ class ToolMetadata:
     feature_flag: str | None = None
     requires_auth: bool = False
     dependencies: list[str] = field(default_factory=list)
+    ui_entry: ToolUiEntry | None = None
+    frontend_component: str | None = None
+    standalone: bool | None = None
+    requires_template: bool = False
+
+    @property
+    def resolved_ui_entry(self) -> ToolUiEntry:
+        """Return explicit UI placement, or infer a conservative default."""
+        if self.ui_entry is not None:
+            return self.ui_entry
+        if self.wizard_step is not None:
+            return "wizard"
+        return "utility"
+
+    @property
+    def resolved_standalone(self) -> bool:
+        """Return whether this tool is launchable as an independent panel."""
+        if self.standalone is not None:
+            return self.standalone
+        return self.resolved_ui_entry in {"wizard", "utility"}
+
+    @property
+    def resolved_frontend_component(self) -> str | None:
+        """Return the frontend component ID expected by the tool registry."""
+        if self.frontend_component is not None:
+            return self.frontend_component
+        if self.resolved_ui_entry in {"wizard", "utility"}:
+            return self.id
+        return None
 
     def to_dict(self) -> dict:
         """Convert metadata to a dictionary for API responses."""
@@ -60,6 +94,10 @@ class ToolMetadata:
             "feature_flag": self.feature_flag,
             "requires_auth": self.requires_auth,
             "dependencies": self.dependencies,
+            "ui_entry": self.resolved_ui_entry,
+            "frontend_component": self.resolved_frontend_component,
+            "standalone": self.resolved_standalone,
+            "requires_template": self.requires_template,
         }
 
 
@@ -107,6 +145,7 @@ class BaseTool(ABC):
         """
         self._context = context
         self._initialized = False
+        self._initialization_error: str | None = None
 
     @property
     def context(self) -> "ToolContext":
@@ -118,6 +157,15 @@ class BaseTool(ABC):
         """Check if the tool has been initialized."""
         return self._initialized
 
+    @property
+    def initialization_error(self) -> str | None:
+        """Return the most recent initialization failure, if any."""
+        return self._initialization_error
+
+    def set_initialization_error(self, message: str | None) -> None:
+        """Record or clear an initialization failure for manifest diagnostics."""
+        self._initialization_error = message
+
     async def initialize(self) -> None:
         """
         Initialize the tool.
@@ -127,6 +175,7 @@ class BaseTool(ABC):
 
         Override this method to add custom initialization logic.
         """
+        self._initialization_error = None
         self._initialized = True
 
     async def shutdown(self) -> None:
@@ -196,6 +245,8 @@ class BaseTool(ABC):
             A short disabled reason when unavailable, otherwise None.
         """
         if self.is_enabled():
+            if self._initialization_error:
+                return "Initialization failed. Check backend logs for details."
             # Enabled tools can still be unusable due to missing dependencies.
             if registry is not None:
                 for dependency in self.metadata.dependencies:

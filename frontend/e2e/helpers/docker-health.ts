@@ -10,6 +10,8 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 const VAULT_HOST_PORT = process.env.VAULT_HOST_PORT || '8200';
+const DEFAULT_API_URL = 'http://localhost:8000';
+const DEFAULT_DEMO_BASE_URL = 'http://localhost:8080';
 
 // ============================================================================
 // Types
@@ -42,20 +44,29 @@ export interface HealthCheckOptions {
 // Service Definitions
 // ============================================================================
 
-const CORE_SERVICES = {
-  backend: {
-    name: 'Backend API',
-    url: 'http://localhost:8000/health',
-    container: 'backend',
-  },
-  frontend: {
-    name: 'Frontend',
-    // Use Vite client endpoint instead of root HTML so tests only start after
-    // the dev server is fully ready to serve transformed modules.
-    url: 'http://localhost:8080/@vite/client',
-    container: 'frontend',
-  },
-};
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
+
+function getCoreServices() {
+  const apiUrl = process.env.VITE_API_URL || DEFAULT_API_URL;
+  const demoBaseUrl = process.env.DEMO_BASE_URL || DEFAULT_DEMO_BASE_URL;
+
+  return {
+    backend: {
+      name: 'Backend API',
+      url: joinUrl(apiUrl, '/health'),
+      container: 'backend',
+    },
+    frontend: {
+      name: 'Frontend',
+      // Use Vite client endpoint instead of root HTML so tests only start after
+      // the dev server is fully ready to serve transformed modules.
+      url: joinUrl(demoBaseUrl, '/@vite/client'),
+      container: 'frontend',
+    },
+  };
+}
 
 const DATASPACE_SERVICES = {
   basyx_aas_server: {
@@ -282,7 +293,7 @@ export async function checkCoreServices(
   options: HealthCheckOptions = {}
 ): Promise<ServiceHealth[]> {
   const results = await Promise.all(
-    Object.values(CORE_SERVICES).map((service) => checkService(service, options))
+    Object.values(getCoreServices()).map((service) => checkService(service, options))
   );
   return results;
 }

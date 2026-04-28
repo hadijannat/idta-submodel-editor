@@ -52,8 +52,7 @@ class DataspaceConnectorTool(BaseTool):
 
         from app.services.dataspace.connection_manager import ConnectionManager
 
-        cache_dir = self._context.get_cache_dir("dataspace")
-        self._connection_manager = ConnectionManager(cache_dir=cache_dir)
+        self._connection_manager = ConnectionManager()
 
         await super().initialize()
         logger.info("Dataspace Connector tool initialized")

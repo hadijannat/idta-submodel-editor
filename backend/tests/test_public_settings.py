@@ -43,6 +43,39 @@ def test_public_settings_reflect_effective_dataspace_flag():
                 assert effective_public.json()["dataspace_enabled"] is True
 
 
+def test_settings_defaults_keep_prototype_tools_disabled(monkeypatch):
+    monkeypatch.delenv("DPP_ENABLED", raising=False)
+    monkeypatch.delenv("MNESTIX_ENABLED", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.dpp_enabled is False
+    assert settings.mnestix_enabled is False
+
+
+def test_public_settings_default_response_hides_disabled_integrations(monkeypatch):
+    monkeypatch.delenv("DPP_ENABLED", raising=False)
+    monkeypatch.delenv("MNESTIX_ENABLED", raising=False)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        settings = Settings(_env_file=None, settings_storage_dir=Path(tmp_dir))
+
+        with (
+            patch("app.main.get_settings", return_value=settings),
+            patch("app.services.settings_service.get_settings", return_value=settings),
+            patch("app.routers.settings.get_settings", return_value=settings),
+        ):
+            app = create_application()
+            with TestClient(app) as client:
+                response = client.get("/api/settings")
+                assert response.status_code == 200
+                payload = response.json()
+                assert payload["dpp_enabled"] is False
+                assert payload["mnestix_enabled"] is False
+                assert payload["mnestix_url"] is None
+                assert payload["basyx_registry_url"] is None
+
+
 def test_public_settings_falls_back_to_env_flag_when_storage_lookup_fails():
     settings = Settings(
         dataspace_enabled=True,

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { toolRegistry } from '../index';
+import { getToolLaunchBlocker, toolRegistry } from '../index';
 import type { ToolMetadata, ToolRegistryEntry } from '../types';
 import { getDefaultWizardSteps } from '../manifest';
 
@@ -49,6 +49,7 @@ export interface WizardStep {
   toolId: string | null;
   tool: ToolRegistryEntry | null;
   enabled: boolean;
+  disabledReason: string | null;
 }
 
 const TOOL_STEP_LABEL_OVERRIDES: Record<
@@ -185,7 +186,9 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
       .sort((a, b) => a.id - b.id)
       .map((step) => {
         const tool = step.toolId ? toolRegistry.getTool(step.toolId) ?? null : null;
-        const enabled = step.toolId === null || (tool?.metadata.enabled ?? false);
+        const disabledReason =
+          step.toolId === null ? null : getToolLaunchBlocker(tool);
+        const enabled = step.toolId === null || disabledReason === null;
 
         return {
           id: step.id,
@@ -194,6 +197,7 @@ export function useTools(options: UseToolsOptions = {}): UseToolsReturn {
           toolId: step.toolId,
           tool,
           enabled,
+          disabledReason,
         };
       });
   }, [version]);

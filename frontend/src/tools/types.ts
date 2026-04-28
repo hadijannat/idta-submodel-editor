@@ -14,6 +14,7 @@ import type { ComponentType } from 'react';
  * Tool category for grouping in the UI.
  */
 export type ToolCategory = 'core' | 'import' | 'export' | 'integration' | 'analytics';
+export type ToolUiEntry = 'wizard' | 'utility' | 'field_action' | 'api_only';
 
 /**
  * Tool metadata from the backend API.
@@ -45,6 +46,14 @@ export interface ToolMetadata {
   schemaVersion?: string | null;
   /** Why the tool is unavailable/disabled */
   disabledReason?: string | null;
+  /** Where the frontend should expose this tool */
+  uiEntry?: ToolUiEntry;
+  /** Registered frontend component ID, if the tool is launchable */
+  frontendComponent?: string | null;
+  /** Whether the tool can be opened without field-specific context */
+  standalone?: boolean;
+  /** Whether a selected template/schema is required */
+  requiresTemplate?: boolean;
 }
 
 /**
@@ -141,12 +150,17 @@ export interface ToolManifestEntry {
   initialized: boolean;
   schema_version?: string | null;
   disabled_reason?: string | null;
+  ui_entry?: ToolUiEntry;
+  frontend_component?: string | null;
+  standalone?: boolean;
+  requires_template?: boolean;
 }
 
 /**
  * Convert backend manifest entry to frontend ToolMetadata.
  */
 export function toToolMetadata(entry: ToolManifestEntry): ToolMetadata {
+  const uiEntry = entry.ui_entry ?? (entry.wizard_step === null ? 'utility' : 'wizard');
   return {
     id: entry.id,
     name: entry.name,
@@ -161,5 +175,9 @@ export function toToolMetadata(entry: ToolManifestEntry): ToolMetadata {
     initialized: entry.initialized,
     schemaVersion: entry.schema_version ?? null,
     disabledReason: entry.disabled_reason ?? null,
+    uiEntry,
+    frontendComponent: entry.frontend_component ?? null,
+    standalone: entry.standalone ?? (uiEntry === 'wizard' || uiEntry === 'utility'),
+    requiresTemplate: entry.requires_template ?? false,
   };
 }

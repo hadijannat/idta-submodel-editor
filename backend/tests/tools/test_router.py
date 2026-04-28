@@ -175,6 +175,10 @@ class TestToolsListEndpoint:
         assert "description" in tool
         assert "category" in tool
         assert "enabled" in tool
+        assert "ui_entry" in tool
+        assert "frontend_component" in tool
+        assert "standalone" in tool
+        assert "requires_template" in tool
 
     def test_list_tools_enabled_only_filters_disabled_tools(self, test_client):
         response = test_client.get("/api/tools?enabled_only=true")
@@ -221,6 +225,10 @@ class TestToolsManifestEndpoint:
         assert "initialized" in tool
         assert "schema_version" in tool
         assert "disabled_reason" in tool
+        assert "ui_entry" in tool
+        assert "frontend_component" in tool
+        assert "standalone" in tool
+        assert "requires_template" in tool
 
     def test_manifest_is_sorted_stably(self, test_client):
         response = test_client.get("/api/tools/manifest")
@@ -228,6 +236,24 @@ class TestToolsManifestEndpoint:
 
         ids = [item["id"] for item in response.json()]
         assert ids == ["alpha-tool", "test-tool", "late-tool", "disabled-integration"]
+
+    def test_manifest_sanitizes_initialization_failure(
+        self,
+        test_client,
+        mock_registry,
+    ):
+        tool = mock_registry.get("test-tool")
+        assert tool is not None
+        tool.set_initialization_error("/tmp/cache/token failed")
+
+        response = test_client.get("/api/tools/manifest")
+        assert response.status_code == 200
+
+        entry = next(item for item in response.json() if item["id"] == "test-tool")
+        assert entry["disabled_reason"] == (
+            "Initialization failed. Check backend logs for details."
+        )
+        assert "/tmp/cache/token" not in entry["disabled_reason"]
 
 
 class TestToolDetailEndpoint:

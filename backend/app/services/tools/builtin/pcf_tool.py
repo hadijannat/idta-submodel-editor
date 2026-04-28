@@ -38,6 +38,10 @@ class PCFTool(BaseTool):
         feature_flag=None,  # Always enabled
         requires_auth=False,
         dependencies=[],
+        ui_entry="utility",
+        frontend_component="pcf-tools",
+        standalone=True,
+        requires_template=True,
     )
 
     async def initialize(self) -> None:
@@ -55,10 +59,10 @@ class PCFTool(BaseTool):
         """Check if the PCF tool is healthy."""
         try:
             # Verify emission factors database is loadable
-            from app.services.pcf.emission_factors import get_emission_factors
+            from app.services.pcf.emission_factors import get_emission_factors_metadata
 
-            factors = get_emission_factors()
-            if not factors:
+            metadata = get_emission_factors_metadata()
+            if metadata.get("count", 0) <= 0:
                 return (False, "Emission factors database is empty")
             return (True, None)
         except Exception as e:
@@ -73,10 +77,10 @@ class PCFTool(BaseTool):
     def get_capabilities(self) -> dict:
         """Get PCF capabilities."""
         try:
-            from app.services.pcf.emission_factors import get_emission_factors
+            from app.services.pcf.emission_factors import get_emission_factors_metadata
 
-            factors = get_emission_factors()
-            factor_count = len(factors) if factors else 0
+            metadata = get_emission_factors_metadata()
+            factor_count = int(metadata.get("count", 0))
         except Exception:
             factor_count = 0
 

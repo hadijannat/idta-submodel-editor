@@ -27,8 +27,8 @@ venv/
 
 # Test artifacts
 .coverage
-backend/.coverage
 coverage/
+backend/.coverage
 frontend/coverage/
 test-results/
 frontend/test-results/
@@ -37,8 +37,6 @@ frontend/test-results/
 .cache/
 cache/
 tmp/
-.worktrees/
-/package-lock.json
 
 # Env files
 .env
@@ -48,10 +46,20 @@ tmp/
 # OS / IDE
 .DS_Store
 Thumbs.db
+.claude/
+.worktrees/
 .idea/
 .vscode/
 AGENTS.md
 CLAUDE.md
+
+# Local research and unpublished paper artifacts
+/docs/research/
+/backend/scripts/experiment_c_conformance.py
+/backend/scripts/experiment_d_migration.py
+
+# Accidental root npm lockfile; frontend owns the Node workspace lockfile.
+/package-lock.json
 
 # Example datasheets (local only)
 examples/

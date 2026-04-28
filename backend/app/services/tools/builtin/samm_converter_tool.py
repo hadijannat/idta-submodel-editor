@@ -41,6 +41,9 @@ class SAMMConverterTool(BaseTool):
         feature_flag="samm_enabled",
         requires_auth=False,
         dependencies=[],
+        ui_entry="api_only",
+        frontend_component=None,
+        standalone=False,
     )
 
     def __init__(self, context):

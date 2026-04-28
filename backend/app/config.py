@@ -177,13 +177,13 @@ class Settings(BaseSettings):
     plc4x_bridge_enabled: bool = False
 
     # Mnestix (AAS viewer/browser)
-    mnestix_enabled: bool = True
+    mnestix_enabled: bool = False
     mnestix_url: str = "http://mnestix:3000"
 
     # =========================================================================
     # DPP (Digital Product Passport) Builder
     # =========================================================================
-    dpp_enabled: bool = True
+    dpp_enabled: bool = False
 
     # =========================================================================
     # SAMM (Semantic Aspect Meta Model) Converter

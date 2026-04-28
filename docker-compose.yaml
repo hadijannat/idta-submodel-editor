@@ -52,7 +52,7 @@ services:
       - VAULT_URL=${VAULT_URL:-http://vault:8200}
       - VAULT_TOKEN=${VAULT_TOKEN:-}
       # Mnestix (browser-accessible URL for AAS Browser iframe)
-      - MNESTIX_ENABLED=${MNESTIX_ENABLED:-true}
+      - MNESTIX_ENABLED=${MNESTIX_ENABLED:-false}
       - MNESTIX_URL=${MNESTIX_URL:-http://localhost:3001}
     volumes:
       - ./backend/app:/app/app
@@ -127,8 +127,8 @@ services:
   # Redis for caching (optional)
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -159,6 +159,8 @@ services:
   # ==========================================================================
   # Dataspace Profile Services
   # Start with: docker compose --profile dataspace up
+  # Add the browser with:
+  #   MNESTIX_ENABLED=true docker compose --profile dataspace --profile mnestix up
   # ==========================================================================
 
   # BaSyx AAS Server - Hosts Asset Administration Shell instances
@@ -384,7 +386,7 @@ services:
     image: mnestix/mnestix-browser:2.1.1
     container_name: mnestix
     ports:
-      - "3001:3000"
+      - "${MNESTIX_HOST_BIND:-127.0.0.1}:${MNESTIX_HOST_PORT:-3001}:3000"
     environment:
       - AAS_REPO_API_URL=http://basyx-aas-server:4001
       - REGISTRY_API_URL=http://basyx-registry:4002
@@ -406,7 +408,7 @@ services:
     networks:
       - idta-network
     profiles:
-      - dataspace
+      - mnestix
 
   # ==========================================================================
   # PLC4X Bridge - Industrial PLC to BaSyx AAS Bridge

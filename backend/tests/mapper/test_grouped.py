@@ -26,7 +26,7 @@ async def test_grouped_mode_builds_list_items(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "0123456789abcdef0123456789abcdef")
     get_settings.cache_clear()
 
-    csv_path = Path("backend/tests/fixtures/mapper/grouped.csv")
+    csv_path = Path(__file__).resolve().parents[1] / "fixtures/mapper/grouped.csv"
     data = csv_path.read_bytes()
     file = UploadFile(filename="grouped.csv", file=io.BytesIO(data))
 

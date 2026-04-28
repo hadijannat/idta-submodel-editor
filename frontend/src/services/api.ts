@@ -558,6 +558,10 @@ export interface ToolMetadataResponse {
   initialized: boolean;
   schema_version?: string | null;
   disabled_reason?: string | null;
+  ui_entry?: 'wizard' | 'utility' | 'field_action' | 'api_only';
+  frontend_component?: string | null;
+  standalone?: boolean;
+  requires_template?: boolean;
 }
 
 /**

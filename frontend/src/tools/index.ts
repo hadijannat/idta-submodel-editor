@@ -44,12 +44,63 @@ const TOOL_COMPONENTS: Record<string, LazyExoticComponent<ToolComponent>> = {
       default: m.DppBuilderPanel as ToolComponent,
     }))
   ),
+  'pcf-tools': lazy(() =>
+    import('../components/PCFPanel/PCFToolWrapper').then((m) => ({
+      default: m.default as ToolComponent,
+    }))
+  ),
   'template-ops': lazy(() =>
     import('../components/TemplateOps/index.tsx').then((m) => ({
       default: m.TemplateOpsToolWrapper as ToolComponent,
     }))
   ),
 };
+
+const HARDCODED_WIZARD_TOOLS = new Set(['export-panel']);
+
+export function getToolFrontendComponentId(metadata: ToolMetadata): string | null {
+  return metadata.frontendComponent ?? metadata.id;
+}
+
+export function hasLaunchableFrontendComponent(metadata: ToolMetadata): boolean {
+  if (HARDCODED_WIZARD_TOOLS.has(metadata.id)) {
+    return true;
+  }
+  const frontendComponent = getToolFrontendComponentId(metadata);
+  return !!frontendComponent && TOOL_COMPONENTS[frontendComponent] !== undefined;
+}
+
+export function getToolLaunchBlocker(
+  tool: ToolRegistryEntry | null | undefined
+): string | null {
+  if (!tool) {
+    return 'Tool is not available.';
+  }
+
+  const { metadata } = tool;
+  const uiEntry = metadata.uiEntry ?? (metadata.wizardStep === null ? 'utility' : 'wizard');
+  const standalone = metadata.standalone ?? (uiEntry === 'wizard' || uiEntry === 'utility');
+  if (uiEntry !== 'wizard' && uiEntry !== 'utility') {
+    return `${metadata.name} is not a standalone UI tool.`;
+  }
+  if (standalone === false) {
+    return `${metadata.name} is not available as a standalone panel.`;
+  }
+  if (!metadata.enabled) {
+    return metadata.disabledReason ?? `${metadata.name} is disabled.`;
+  }
+  if (!metadata.initialized) {
+    return metadata.disabledReason ?? `${metadata.name} is not initialized.`;
+  }
+  if (!hasLaunchableFrontendComponent(metadata)) {
+    return `No UI component is registered for ${metadata.name}.`;
+  }
+  return null;
+}
+
+export function isLaunchableTool(tool: ToolRegistryEntry | null | undefined): boolean {
+  return getToolLaunchBlocker(tool) === null;
+}
 
 const createPlaceholderComponent = (
   toolId: string,
@@ -77,6 +128,7 @@ const createPlaceholderComponent = (
  * Convert backend response to frontend ToolMetadata.
  */
 function responseToMetadata(response: ToolMetadataResponse): ToolMetadata {
+  const uiEntry = response.ui_entry ?? (response.wizard_step === null ? 'utility' : 'wizard');
   return {
     id: response.id,
     name: response.name,
@@ -91,6 +143,10 @@ function responseToMetadata(response: ToolMetadataResponse): ToolMetadata {
     initialized: response.initialized,
     schemaVersion: response.schema_version ?? null,
     disabledReason: response.disabled_reason ?? null,
+    uiEntry,
+    frontendComponent: response.frontend_component ?? null,
+    standalone: response.standalone ?? (uiEntry === 'wizard' || uiEntry === 'utility'),
+    requiresTemplate: response.requires_template ?? false,
   };
 }
 
@@ -220,7 +276,14 @@ class ToolRegistryImpl {
    * Get utility tools (no wizard step).
    */
   getUtilityTools(): ToolRegistryEntry[] {
-    return this.getEnabledTools().filter((t) => t.metadata.wizardStep === null);
+    return this.getAllTools().filter((t) => {
+      return (
+        t.metadata.wizardStep === null &&
+        t.metadata.uiEntry === 'utility' &&
+        t.metadata.standalone !== false &&
+        hasLaunchableFrontendComponent(t.metadata)
+      );
+    });
   }
 
   /**
@@ -269,6 +332,10 @@ class ToolRegistryImpl {
       initialized: false,
       schemaVersion: null,
       disabledReason: null,
+      uiEntry: 'utility',
+      frontendComponent: id,
+      standalone: true,
+      requiresTemplate: false,
     };
 
     this.tools.set(id, {

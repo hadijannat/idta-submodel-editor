@@ -2259,6 +2259,12 @@ body {
   color: var(--color-text-light);
 }
 
+.utility-tool-status {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: #8a5a00;
+}
+
 /* Utility Tool Modal Overlay */
 .utility-tool-overlay {
   position: fixed;

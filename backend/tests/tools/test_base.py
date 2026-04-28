@@ -29,6 +29,10 @@ class TestToolMetadata:
         assert metadata.feature_flag is None
         assert metadata.requires_auth is False
         assert metadata.dependencies == []
+        assert metadata.resolved_ui_entry == "utility"
+        assert metadata.resolved_frontend_component == "test-tool"
+        assert metadata.resolved_standalone is True
+        assert metadata.requires_template is False
 
     def test_metadata_custom_values(self):
         """Test ToolMetadata with custom values."""
@@ -51,6 +55,8 @@ class TestToolMetadata:
         assert metadata.feature_flag == "custom_enabled"
         assert metadata.requires_auth is True
         assert metadata.dependencies == ["other-tool"]
+        assert metadata.resolved_ui_entry == "wizard"
+        assert metadata.resolved_frontend_component == "custom-tool"
 
     def test_metadata_valid_categories(self):
         """Test that category accepts valid values."""
@@ -80,6 +86,26 @@ class TestToolMetadata:
         assert data["description"] == "Test description"
         assert "version" in data
         assert "category" in data
+        assert data["ui_entry"] == "utility"
+        assert data["frontend_component"] == "test-tool"
+        assert data["standalone"] is True
+        assert data["requires_template"] is False
+
+    def test_metadata_supports_api_only_tools(self):
+        """Test metadata for backend capabilities that are not UI launchers."""
+        metadata = ToolMetadata(
+            id="api-only",
+            name="API Only",
+            description="API-only capability",
+            ui_entry="api_only",
+            standalone=False,
+        )
+
+        data = metadata.to_dict()
+
+        assert data["ui_entry"] == "api_only"
+        assert data["frontend_component"] is None
+        assert data["standalone"] is False
 
 
 class MockTool(BaseTool):

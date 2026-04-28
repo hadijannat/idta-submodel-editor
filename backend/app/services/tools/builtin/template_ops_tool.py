@@ -31,16 +31,19 @@ class TemplateOpsTool(BaseTool):
         feature_flag=None,
         requires_auth=False,
         dependencies=[],
+        ui_entry="utility",
+        frontend_component="template-ops",
+        standalone=True,
     )
 
     async def initialize(self) -> None:
         """Initialize the template operations tool."""
         # No special initialization needed
-        pass
+        await super().initialize()
 
     async def shutdown(self) -> None:
         """Shutdown the template operations tool."""
-        pass
+        await super().shutdown()
 
     async def health_check(self) -> tuple[bool, str | None]:
         """Check if template operations are available."""
