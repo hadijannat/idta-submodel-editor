@@ -19,6 +19,11 @@ from app.services.settings_service import (
     ProviderType,
     get_provider_models,
 )
+from app.utils.url_safety import (
+    UnsafeURL,
+    get_provider_base_url_allowlist,
+    validate_provider_base_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +115,29 @@ def _is_admin_user(user: dict | None) -> bool:
     return "admin" in permissions or any("role:admin" in str(role) for role in roles)
 
 
+def _require_admin_outside_development(user: dict | None, action: str) -> None:
+    """Require admin privileges for sensitive runtime mutations outside dev."""
+    app_settings = get_settings()
+    if app_settings.env != "development" and not _is_admin_user(user):
+        raise HTTPException(
+            status_code=403 if user is not None else 401,
+            detail=f"Admin authentication is required to {action}",
+        )
+
+
+def _validate_provider_base_url(url: str) -> str:
+    """Validate and normalize a provider base URL, raising HTTP 400 on failure."""
+    app_settings = get_settings()
+    try:
+        return validate_provider_base_url(
+            url,
+            configured_ollama_base_url=app_settings.ollama_base_url,
+            allowlist=get_provider_base_url_allowlist(app_settings),
+        )
+    except UnsafeURL as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -163,13 +191,20 @@ async def update_llm_settings(
 
     If an API key is provided, it will be validated before storing.
     """
+    _require_admin_outside_development(user, "update LLM settings")
+
     # Determine provider to update
     provider = request.provider or settings_service.get_effective_provider()
+    base_url = (
+        _validate_provider_base_url(request.base_url)
+        if request.base_url is not None
+        else None
+    )
 
     # Validate API key if provided
     if request.api_key:
         is_valid, message = await _validate_provider_key(
-            provider, request.api_key, request.base_url
+            provider, request.api_key, base_url
         )
         if not is_valid:
             raise HTTPException(status_code=400, detail=message)
@@ -179,7 +214,7 @@ async def update_llm_settings(
         provider=provider,
         api_key=request.api_key,
         model=request.model,
-        base_url=request.base_url,
+        base_url=base_url,
     )
 
     # Update active provider if specified (handles its own load/save)
@@ -224,12 +259,7 @@ async def update_feature_flags(
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> FeatureFlagsResponse:
     """Update runtime feature flags."""
-    app_settings = get_settings()
-    if app_settings.env != "development" and not _is_admin_user(user):
-        raise HTTPException(
-            status_code=403 if user is not None else 401,
-            detail="Admin authentication is required to update runtime feature flags",
-        )
+    _require_admin_outside_development(user, "update runtime feature flags")
 
     if request.dataspace_enabled is not None:
         settings_service.update_feature_flags(
@@ -254,6 +284,8 @@ async def validate_provider(
 
     Returns validation status and available models.
     """
+    _require_admin_outside_development(user, "validate LLM provider settings")
+
     # Use provided key or stored/env key
     api_key = request.api_key or settings_service.get_effective_api_key(request.provider)
 
@@ -304,6 +336,8 @@ async def delete_api_key(
     user: Annotated[dict | None, Depends(get_current_user)] = None,
 ) -> dict:
     """Delete the stored API key for a provider."""
+    _require_admin_outside_development(user, "delete LLM API keys")
+
     deleted = settings_service.delete_provider_api_key(provider)
 
     if deleted:
@@ -402,7 +436,7 @@ async def _validate_ollama(base_url: str | None = None) -> tuple[bool, str]:
     """Validate Ollama connectivity."""
     import httpx
 
-    url = base_url or get_settings().ollama_base_url
+    url = _validate_provider_base_url(base_url or get_settings().ollama_base_url)
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f"{url}/api/tags")

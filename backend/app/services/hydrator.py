@@ -65,7 +65,11 @@ class HydratorService:
 
         logger.info(f"Hydrating submodel: {submodel.id_short}")
 
-        self._apply_metadata(submodel, form_data.get("metadata"))
+        self._apply_metadata_with_reference_updates(
+            object_store,
+            submodel,
+            form_data.get("metadata"),
+        )
         self._apply_pcf_trace(submodel, file_store, form_data.get("metadata"))
         ensure_activity_list_in_submodel(submodel, form_data)
 
@@ -125,7 +129,11 @@ class HydratorService:
         if not submodel:
             raise ValueError("No Submodel found in template")
 
-        self._apply_metadata(submodel, form_data.get("metadata"))
+        self._apply_metadata_with_reference_updates(
+            object_store,
+            submodel,
+            form_data.get("metadata"),
+        )
         self._apply_pcf_trace(submodel, file_store, form_data.get("metadata"))
         ensure_activity_list_in_submodel(submodel, form_data)
 
@@ -149,6 +157,119 @@ class HydratorService:
             if isinstance(obj, model.Submodel):
                 return obj
         return None
+
+    def _get_identifiable_id(self, identifiable: model.Identifiable) -> str:
+        """Return the current BaSyx identifier as a string."""
+        return str(getattr(identifiable, "id", ""))
+
+    def _apply_metadata_with_reference_updates(
+        self,
+        object_store: model.DictObjectStore[model.Identifiable],
+        submodel: model.Submodel,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        """Apply metadata and keep AAS/submodel references consistent."""
+        old_submodel_id = self._get_identifiable_id(submodel)
+        self._apply_metadata(submodel, metadata)
+        new_submodel_id = self._get_identifiable_id(submodel)
+
+        if old_submodel_id and new_submodel_id and old_submodel_id != new_submodel_id:
+            self._rewrite_aas_submodel_references(
+                object_store,
+                old_submodel_id,
+                new_submodel_id,
+            )
+            self._refresh_object_store_identity(
+                object_store,
+                submodel,
+                old_submodel_id,
+            )
+
+        self._assert_aas_reference_integrity(object_store)
+
+    def _rewrite_aas_submodel_references(
+        self,
+        object_store: model.DictObjectStore[model.Identifiable],
+        old_id: str,
+        new_id: str,
+    ) -> None:
+        """Rewrite AAS submodel references that target a changed Submodel ID."""
+        for obj in object_store:
+            if not isinstance(obj, model.AssetAdministrationShell):
+                continue
+            refs = obj.submodel or set()
+            rewritten_refs = {
+                self._rewrite_reference_terminal_key(ref, old_id, new_id)
+                for ref in refs
+            }
+            obj.submodel = rewritten_refs
+
+    def _rewrite_reference_terminal_key(
+        self,
+        ref: model.Reference,
+        old_id: str,
+        new_id: str,
+    ) -> model.Reference:
+        keys = list(ref.key or ())
+        if not keys or keys[-1].value != old_id:
+            return ref
+
+        keys[-1] = model.Key(keys[-1].type, new_id)
+        key_tuple = tuple(keys)
+        if isinstance(ref, model.ModelReference):
+            return model.ModelReference(
+                key=key_tuple,
+                type_=ref.type,
+                referred_semantic_id=ref.referred_semantic_id,
+            )
+        if isinstance(ref, model.ExternalReference):
+            return model.ExternalReference(
+                key=key_tuple,
+                referred_semantic_id=ref.referred_semantic_id,
+            )
+        return ref
+
+    def _refresh_object_store_identity(
+        self,
+        object_store: model.DictObjectStore[model.Identifiable],
+        identifiable: model.Identifiable,
+        old_id: str,
+    ) -> None:
+        """
+        Refresh DictObjectStore's private ID index after an Identifiable ID change.
+
+        BaSyx documents that DictObjectStore does not update its mapping when an
+        Identifiable ID mutates. Hydration intentionally supports submodel ID
+        edits, so we must repair the store before serialization.
+        """
+        backend = getattr(object_store, "_backend", None)
+        if isinstance(backend, dict) and backend.get(old_id) is identifiable:
+            del backend[old_id]
+        object_store.add(identifiable)
+
+    def _assert_aas_reference_integrity(
+        self,
+        object_store: model.DictObjectStore[model.Identifiable],
+    ) -> None:
+        """Ensure every AAS submodel reference points to a Submodel in the store."""
+        submodel_ids = {
+            self._get_identifiable_id(obj)
+            for obj in object_store
+            if isinstance(obj, model.Submodel)
+        }
+        for obj in object_store:
+            if not isinstance(obj, model.AssetAdministrationShell):
+                continue
+            for ref in obj.submodel or ():
+                keys = list(ref.key or ())
+                if not keys:
+                    raise ValueError("AAS contains an empty submodel reference")
+                target_id = keys[-1].value
+                if target_id not in submodel_ids:
+                    raise ValueError(
+                        "AAS submodel reference points to missing submodel: "
+                        f"{target_id}"
+                    )
 
     def _apply_metadata(
         self,

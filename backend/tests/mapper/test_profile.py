@@ -15,7 +15,7 @@ from app.services.parser import ParserService
 async def test_profile_csv(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "0123456789abcdef0123456789abcdef")
     get_settings.cache_clear()
-    csv_path = Path("backend/tests/fixtures/mapper/sample.csv")
+    csv_path = Path(__file__).resolve().parents[1] / "fixtures/mapper/sample.csv"
     data = csv_path.read_bytes()
     file = UploadFile(filename="sample.csv", file=io.BytesIO(data))
     mapper = MapperService(

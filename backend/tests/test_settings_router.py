@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import Settings
+from app.routers import settings as settings_router
 from app.main import create_application
 
 
@@ -31,6 +33,10 @@ def mock_settings(temp_settings_dir):
     settings.ollama_base_url = "http://localhost:11434"
     settings.magic_import_llm_provider = "openai"
     settings.magic_import_llm_model = "gpt-4o-mini"
+    settings.magic_import_confidence_threshold = 0.80
+    settings.magic_import_ocr_enabled = True
+    settings.env = "development"
+    settings.oidc_enabled = False
     return settings
 
 
@@ -255,6 +261,42 @@ class TestSettingsService:
 class TestValidateProvider:
     """Tests for POST /api/settings/llm/validate endpoint."""
 
+    def test_validate_requires_admin_outside_development_oidc_non_admin(
+        self,
+        temp_settings_dir,
+    ):
+        """Test non-admin users cannot trigger provider validation outside development."""
+        settings = Settings(
+            env="staging",
+            oidc_enabled=True,
+            secret_key="staging-secret-key-with-32chars-min",
+            settings_storage_dir=temp_settings_dir,
+        )
+
+        with (
+            patch("app.main.get_settings", return_value=settings),
+            patch("app.routers.settings.get_settings", return_value=settings),
+            patch("app.services.settings_service.get_settings", return_value=settings),
+            patch("app.routers.settings._validate_openai") as mock_validate,
+        ):
+            app = create_application()
+            app.dependency_overrides[settings_router.get_current_user] = lambda: {
+                "sub": "user-123",
+                "permissions": [],
+                "roles": [],
+            }
+
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/settings/llm/validate",
+                    json={"provider": "openai", "api_key": "sk-test-key"},
+                )
+
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 403
+        mock_validate.assert_not_called()
+
     @patch("app.routers.settings._validate_openai")
     def test_validate_openai_success(self, mock_validate, test_client):
         """Test successful OpenAI validation."""
@@ -309,6 +351,28 @@ class TestValidateProvider:
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is True
+
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            "ftp://example.com",
+            "http://user:pass@example.com",
+            "http://169.254.169.254/latest/meta-data",
+            "http://127.0.0.1:11434",
+        ],
+    )
+    def test_validate_local_provider_rejects_unsafe_base_urls(
+        self,
+        test_client,
+        base_url,
+    ):
+        """Test local provider validation rejects SSRF-prone base URLs."""
+        response = test_client.post(
+            "/api/settings/llm/validate",
+            json={"provider": "local", "base_url": base_url},
+        )
+
+        assert response.status_code == 400
 
 
 class TestDirectOpenAIValidation:
@@ -365,6 +429,40 @@ class TestDirectOpenAIValidation:
 
 class TestUpdateLLMSettings:
     """Tests for PUT /api/settings/llm endpoint."""
+
+    def test_update_requires_admin_outside_development_oidc_non_admin(
+        self,
+        temp_settings_dir,
+    ):
+        """Test non-admin users cannot mutate LLM settings outside development."""
+        settings = Settings(
+            env="staging",
+            oidc_enabled=True,
+            secret_key="staging-secret-key-with-32chars-min",
+            settings_storage_dir=temp_settings_dir,
+        )
+
+        with (
+            patch("app.main.get_settings", return_value=settings),
+            patch("app.routers.settings.get_settings", return_value=settings),
+            patch("app.services.settings_service.get_settings", return_value=settings),
+        ):
+            app = create_application()
+            app.dependency_overrides[settings_router.get_current_user] = lambda: {
+                "sub": "user-123",
+                "permissions": [],
+                "roles": [],
+            }
+
+            with TestClient(app) as client:
+                response = client.put(
+                    "/api/settings/llm",
+                    json={"confidence_threshold": 0.9},
+                )
+
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 403
 
     @patch("app.routers.settings._validate_provider_key")
     def test_update_provider(self, mock_validate, test_client, mock_settings, temp_settings_dir):
@@ -426,6 +524,18 @@ class TestUpdateLLMSettings:
             assert response.status_code == 200
             data = response.json()
             assert data["confidence_threshold"] == 0.95
+
+    def test_update_rejects_unsafe_local_base_url(self, test_client):
+        """Test local base URL updates reject SSRF-prone targets."""
+        response = test_client.put(
+            "/api/settings/llm",
+            json={
+                "provider": "local",
+                "base_url": "http://169.254.169.254/latest/meta-data",
+            },
+        )
+
+        assert response.status_code == 400
 
 
 class TestDeleteApiKey:

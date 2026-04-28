@@ -43,6 +43,69 @@ def test_run_conformance_check_success(tmp_path: Path):
     assert len(result.warnings) == 1
 
 
+def test_run_conformance_check_parses_json_output(tmp_path: Path):
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text("{}")
+    check_commands: list[list[str]] = []
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        if cmd[:2] == ["aas_test_engines", "--version"]:
+            return CompletedProcess(cmd, 0, stdout="aas-test-engines 1.0.3", stderr="")
+        check_commands.append(cmd)
+        return CompletedProcess(
+            cmd,
+            1,
+            stdout=(
+                '{"m":"Check","l":0,"s":['
+                '{"m":"AASd-001 missing idShort","l":2,"s":[]},'
+                '{"m":"Optional semanticId warning","l":1,"s":[]}'
+                "]}"
+            ),
+            stderr="",
+        )
+
+    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+        result = run_conformance_check(artifact, "json")
+
+    assert check_commands == [
+        ["aas_test_engines", "check_file", "--format", "json", "--output", "json", str(artifact)]
+    ]
+    assert result.passed is False
+    assert [issue.message for issue in result.errors] == ["AASd-001 missing idShort"]
+    assert [issue.message for issue in result.warnings] == ["Optional semanticId warning"]
+
+
+def test_run_conformance_check_falls_back_when_json_output_unsupported(tmp_path: Path):
+    artifact = tmp_path / "artifact.aasx"
+    artifact.write_bytes(b"PK\x03\x04dummy")
+    check_commands: list[list[str]] = []
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        if cmd[:2] == ["aas_test_engines", "--version"]:
+            return CompletedProcess(cmd, 0, stdout="v", stderr="")
+        check_commands.append(cmd)
+        if "--output" in cmd:
+            return CompletedProcess(
+                cmd,
+                2,
+                stdout="",
+                stderr="error: unrecognized arguments: --output json",
+            )
+        return CompletedProcess(cmd, 0, stdout="WARNING legacy warning", stderr="")
+
+    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+        result = run_conformance_check(artifact, "aasx")
+
+    assert check_commands == [
+        ["aas_test_engines", "check_file", "--format", "aasx", "--output", "json", str(artifact)],
+        ["aas_test_engines", "check_file", "--format", "aasx", str(artifact)],
+    ]
+    assert result.passed is True
+    assert [issue.message for issue in result.warnings] == ["WARNING legacy warning"]
+
+
 def test_run_conformance_check_failure_without_structured_output(tmp_path: Path):
     artifact = tmp_path / "artifact.json"
     artifact.write_text("{}")
@@ -58,6 +121,32 @@ def test_run_conformance_check_failure_without_structured_output(tmp_path: Path)
 
     assert result.passed is False
     assert len(result.errors) == 1
+    assert result.errors[0].message == "Conformance check failed with exit code 2"
+
+
+def test_run_conformance_check_nonzero_runtime_failure_includes_output(tmp_path: Path):
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text("{}")
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        if cmd[:2] == ["aas_test_engines", "--version"]:
+            return CompletedProcess(cmd, 0, stdout="v", stderr="")
+        return CompletedProcess(
+            cmd,
+            2,
+            stdout="",
+            stderr="Traceback: incompatible Python runtime",
+        )
+
+    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+        result = run_conformance_check(artifact, "json")
+
+    assert result.passed is False
+    assert len(result.errors) == 1
+    assert result.errors[0].message == (
+        "Conformance check failed with exit code 2: Traceback: incompatible Python runtime"
+    )
 
 
 def test_run_conformance_check_missing_cli(tmp_path: Path):
@@ -117,6 +206,25 @@ def test_get_engine_version_uses_stderr_when_stdout_empty():
         version = get_engine_version()
 
     assert version == "aas-test-engines 1.0.3"
+
+
+def test_get_engine_version_falls_back_to_package_metadata_on_cli_error():
+    cmd = ["aas_test_engines", "--version"]
+    with (
+        patch(
+            "app.services.conformance.subprocess.run",
+            return_value=CompletedProcess(
+                cmd,
+                1,
+                stdout="",
+                stderr="Unknown command '--version'",
+            ),
+        ),
+        patch("app.services.conformance.package_version", return_value="1.0.3"),
+    ):
+        version = get_engine_version()
+
+    assert version == "1.0.3"
 
 
 def test_run_conformance_check_parses_stderr_issues(tmp_path: Path):
