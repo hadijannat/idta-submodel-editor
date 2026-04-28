@@ -28,6 +28,8 @@
     "strictPropertyInitialization": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
+    /* TODO(frontend-tooling): remove when dependencies are clean under TS 6 deprecation checks. */
+    "ignoreDeprecations": "6.0",
 
     /* Paths */
     "baseUrl": ".",

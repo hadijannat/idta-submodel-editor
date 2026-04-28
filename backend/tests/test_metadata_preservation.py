@@ -235,6 +235,43 @@ class TestSemanticIdPreservation:
         assert "TestProperty" in semantic_ids
         assert semantic_ids["TestProperty"] == "https://eclass.eu/123/456"
 
+    def test_semantic_id_trailing_space_preserved_through_hydration(
+        self,
+        parser: ParserService,
+        hydrator: HydratorService,
+    ):
+        """Untouched form defaults must not normalize semantic reference values."""
+        semantic_value = "0112/2///61987#ABN590#002 "
+        semantic_ref = model.ExternalReference(
+            key=[
+                model.Key(
+                    type_=model.KeyTypes.GLOBAL_REFERENCE,
+                    value=semantic_value,
+                )
+            ]
+        )
+        prop = model.Property(
+            id_short="URIOfTheProduct",
+            value_type=model.datatypes.String,
+            value="urn:product",
+            semantic_id=semantic_ref,
+        )
+        submodel = model.Submodel(
+            id_="https://example.org/test",
+            id_short="TestSubmodel",
+            submodel_element=[prop],
+        )
+
+        aasx_bytes = _create_aasx_from_submodel(submodel)
+        schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+        form_data = _extract_form_data_from_schema(schema)
+
+        hydrated = hydrator.hydrate_submodel(aasx_bytes, form_data)
+        reparsed_schema = parser.parse_aasx_to_ui_schema(hydrated)
+
+        semantic_ids = _extract_semantic_ids_from_schema(reparsed_schema)
+        assert semantic_ids["URIOfTheProduct"] == semantic_value
+
     @pytest.mark.parametrize("aasx_path", AASX_FIXTURES, ids=lambda p: p.name)
     def test_semantic_ids_preserved_from_fixtures(self, parser: ParserService, aasx_path: Path):
         """SemanticIds in fixture AASX files should be preserved in schema."""

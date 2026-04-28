@@ -8,10 +8,10 @@ from functools import lru_cache
 import json
 import re
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Annotated, ClassVar, Literal
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, NoDecode
 
 
 class Settings(BaseSettings):
@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     workers: int = 4
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:8080", "http://localhost:5173"]
+    cors_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:8080",
+        "http://localhost:5173",
+    ]
 
     # GitHub API
     github_token: str | None = None

@@ -1,5 +1,10 @@
 """Tests for table extractor module."""
 
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import fitz
 import pytest
 
 from app.services.magic_import.table_extractor import (
@@ -219,6 +224,32 @@ class TestTableExtractor:
         assert "Header1 | Header2" in text
         assert "Value1 | Value2" in text
 
+    def test_table_to_snippets_uses_dense_rows(self, extractor):
+        """Test converting a table into retrieval snippets."""
+        cells = [
+            ExtractedTableCell(row=0, col=0, text="Header1", is_header=True),
+            ExtractedTableCell(row=0, col=1, text="Header2", is_header=True),
+            ExtractedTableCell(row=1, col=0, text="Value1"),
+            ExtractedTableCell(row=1, col=1, text="Value2"),
+            ExtractedTableCell(row=2, col=0, text="Value3"),
+            ExtractedTableCell(row=2, col=1, text="Value4"),
+        ]
+        table = ExtractedTable(
+            table_id="test",
+            page=0,
+            bbox=BBox(x0=0.1, y0=0.1, x1=0.9, y1=0.9),
+            rows=3,
+            cols=2,
+            cells=cells,
+            headers=["Header1", "Header2"],
+            accuracy=0.95,
+            method="LATTICE",
+        )
+
+        snippets = extractor.table_to_snippets(table, max_rows=2)
+
+        assert snippets == ["Header1 | Header2\nValue1 | Value2"]
+
     def test_get_table_as_text_empty(self, extractor):
         """Test converting empty table to text."""
         table = ExtractedTable(
@@ -325,3 +356,65 @@ class TestTableExtractor:
         )
         pairs = extractor.get_key_value_pairs(table)
         assert pairs == []
+
+    def test_extract_tables_uses_real_pdfplumber_contract(self, extractor, tmp_path: Path):
+        """Exercise pdfplumber.open/find_tables/extract against a small real PDF."""
+        pdf_path = tmp_path / "table.pdf"
+        doc = fitz.open()
+        page = doc.new_page(width=300, height=200)
+        for x in (50, 150, 250):
+            page.draw_line((x, 50), (x, 150), color=(0, 0, 0), width=1)
+        for y in (50, 100, 150):
+            page.draw_line((50, y), (250, y), color=(0, 0, 0), width=1)
+        page.insert_text((65, 80), "Field", fontsize=10)
+        page.insert_text((165, 80), "Value", fontsize=10)
+        page.insert_text((65, 130), "Serial", fontsize=10)
+        page.insert_text((165, 130), "SN-123", fontsize=10)
+        doc.save(pdf_path)
+        doc.close()
+
+        result = extractor.extract_tables(pdf_path)
+
+        assert result.total_tables == 1
+        assert result.pages_with_tables == [0]
+        table = result.tables[0]
+        assert table.rows == 2
+        assert table.cols == 2
+        assert table.headers == ["Field", "Value"]
+        assert "Serial | SN-123" in extractor.get_table_as_text(table)
+
+    def test_extract_tables_handles_missing_pdfplumber(self, extractor, monkeypatch, tmp_path: Path):
+        """Test extraction degrades gracefully when pdfplumber is unavailable."""
+        real_pdfplumber = sys.modules.pop("pdfplumber", None)
+        monkeypatch.setitem(sys.modules, "pdfplumber", None)
+        try:
+            result = extractor.extract_tables(tmp_path / "missing.pdf")
+        finally:
+            if real_pdfplumber is not None:
+                monkeypatch.setitem(sys.modules, "pdfplumber", real_pdfplumber)
+
+        assert result.total_tables == 0
+
+    def test_extract_tables_uses_stream_fallback(self, extractor, monkeypatch, tmp_path: Path):
+        """Test stream extraction is attempted when lattice extraction finds no tables."""
+        mock_table = MagicMock()
+        mock_table.extract.return_value = [["Field", "Value"], ["Serial", "SN-123"]]
+        mock_table.bbox = (0, 0, 100, 100)
+
+        mock_page = MagicMock(width=100, height=100)
+        mock_page.find_tables.side_effect = [[], [mock_table]]
+
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [mock_page]
+        mock_pdf.__enter__.return_value = mock_pdf
+        mock_pdf.__exit__.return_value = None
+
+        mock_pdfplumber = MagicMock()
+        mock_pdfplumber.open.return_value = mock_pdf
+        monkeypatch.setitem(sys.modules, "pdfplumber", mock_pdfplumber)
+
+        result = extractor.extract_tables(tmp_path / "table.pdf")
+
+        assert result.total_tables == 1
+        assert result.tables[0].method == "STREAM"
+        assert mock_page.find_tables.call_count == 2

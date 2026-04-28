@@ -39,12 +39,12 @@ export const VirtualizedList: React.FC<VirtualizedListProps> = ({
 }) => {
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual hook is intentionally non-memoizable.
   const virtualizer = useVirtualizer({
     count: fields.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => ESTIMATED_ITEM_HEIGHT,
     overscan: OVERSCAN_COUNT,
+    getItemKey: (index) => fields[index]?.id ?? index,
   });
 
   const items = virtualizer.getVirtualItems();

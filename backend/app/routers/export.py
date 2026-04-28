@@ -145,6 +145,12 @@ async def export_submodel(
 
     except APIError:
         raise
+    except ValueError as e:
+        raise APIError(
+            code=ErrorCode.BAD_REQUEST,
+            message=str(e),
+            detail={"template_name": template_name},
+        )
     except Exception as e:
         logger.exception(f"Failed to export {template_name}")
         raise APIError(

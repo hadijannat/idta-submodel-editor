@@ -26,32 +26,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 20
 
       - name: Detect changed paths
         id: filter
-        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
-        with:
-          filters: |
-            backend:
-              - 'backend/**'
-            frontend:
-              - 'frontend/**'
-            frontend_lockfile:
-              - 'frontend/package-lock.json'
-            plc4x:
-              - 'plc4x-bridge/**'
-            docker:
-              - 'backend/Dockerfile'
-              - 'frontend/Dockerfile'
-              - 'plc4x-bridge/Dockerfile'
-              - 'docker-compose.yml'
-              - 'docker-compose.yaml'
-              - 'docker-compose.*'
-            workflows:
-              - '.github/workflows/**'
-              - '.github/actions/**'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/compute_changed_paths.py
 
   workflow-lint:
     runs-on: ubuntu-latest
@@ -75,6 +55,25 @@ jobs:
         run: |
           yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable}}" \
             .github/workflows
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.11
+          ACTIONLINT_SHA256: 900919a84f2229bac68ca9cd4103ea297abc35e9689ebb842c6e34a3d1b01b0a
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" "${url}"
+          echo "${ACTIONLINT_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}" actionlint
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Run actionlint
+        run: actionlint
+
+      - name: Test workflow helpers
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
 
   backend:
     runs-on: ubuntu-latest
@@ -105,6 +104,20 @@ jobs:
                   f"Pillow {pillow_version} is outside the supported secure range [12.1.1, 13.0.0)"
               )
           print(f"Using Pillow {pillow_version}")
+          PY
+
+      - name: Verify secure cryptography resolution
+        run: |
+          python - <<'PY'
+          import re
+          from cryptography import __version__ as cryptography_version
+
+          parts = tuple(int(token) for token in re.findall(r"\d+", cryptography_version)[:3])
+          if parts < (46, 0, 5) or parts >= (47, 0, 0):
+              raise SystemExit(
+                  f"cryptography {cryptography_version} is outside the supported secure range [46.0.5, 47.0.0)"
+              )
+          print(f"Using cryptography {cryptography_version}")
           PY
 
       - name: Run backend tests with coverage
@@ -245,6 +258,31 @@ jobs:
         with:
           name: frontend-coverage
           path: frontend/coverage/
+
+  frontend-runtime-floor:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20.19.0'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Verify frontend toolchain floor
+        run: |
+          npm run type-check
+          npm run test:unit
+          npm run build
+        working-directory: frontend
 
   frontend-lockfile-audit:
     runs-on: ubuntu-latest
@@ -416,12 +454,8 @@ jobs:
             -e SECRET_KEY=ci-smoke-test-secret-key-at-least-thirty-two-characters \
             -e ALLOW_INSECURE_PROD_AUTH=true \
             idta-backend:ci)
-          cleanup() {
-            docker logs "$cid" || true
-            docker rm -f "$cid" || true
-          }
-          trap cleanup EXIT
-          for i in {1..24}; do
+          trap 'docker logs "$cid" || true; docker rm -f "$cid" || true' EXIT
+          for _ in {1..24}; do
             status=$(docker inspect -f '{{.State.Status}}' "$cid")
             if [ "$status" != "running" ]; then
               echo "backend image exited before readiness checks completed"
@@ -454,12 +488,8 @@ jobs:
         run: |
           set -euo pipefail
           cid=$(docker run -d --rm -p 18090:8090 idta-plc4x-bridge:ci)
-          cleanup() {
-            docker logs "$cid" || true
-            docker rm -f "$cid" || true
-          }
-          trap cleanup EXIT
-          for i in {1..24}; do
+          trap 'docker logs "$cid" || true; docker rm -f "$cid" || true' EXIT
+          for _ in {1..24}; do
             if curl -fsS http://localhost:18090/actuator/health > /dev/null && \
                (curl -fsS http://localhost:18090/v3/api-docs > /dev/null || \
                 curl -fsS http://localhost:18090/api-docs > /dev/null); then

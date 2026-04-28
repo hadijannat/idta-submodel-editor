@@ -28,6 +28,7 @@ For quick onboarding and local run commands, start with the repository README:
 - [Configuration Reference](reference/configuration.md)
 - [API Endpoints Reference](reference/api-endpoints.md)
 - [Element Types](reference/element-types.md)
+- [Template Coverage Audit](reference/template-coverage-audit.md)
 - [Review Playbook](reference/review-playbook.md)
 
 ## Operational Notes

@@ -1,5 +1,6 @@
 """Tests for conformance service subprocess integration."""
 
+from importlib import metadata
 from pathlib import Path
 import subprocess
 from subprocess import CompletedProcess
@@ -24,17 +25,17 @@ def test_run_conformance_check_success(tmp_path: Path):
     artifact.write_bytes(b"PK\x03\x04dummy")
 
     def fake_run(*args, **kwargs):
-        cmd = args[0]
-        if cmd[:2] == ["aas_test_engines", "--version"]:
-            return CompletedProcess(cmd, 0, stdout="aas-test-engines 1.2.3", stderr="")
         return CompletedProcess(
-            cmd,
+            args[0],
             0,
             stdout="Conformance check completed\nWARNING minor issue",
             stderr="",
         )
 
-    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+    with (
+        patch("app.services.conformance.metadata.version", return_value="1.2.3"),
+        patch("app.services.conformance.subprocess.run", side_effect=fake_run),
+    ):
         result = run_conformance_check(artifact, "aasx")
 
     assert result.passed is True
@@ -111,12 +112,12 @@ def test_run_conformance_check_failure_without_structured_output(tmp_path: Path)
     artifact.write_text("{}")
 
     def fake_run(*args, **kwargs):
-        cmd = args[0]
-        if cmd[:2] == ["aas_test_engines", "--version"]:
-            return CompletedProcess(cmd, 0, stdout="v", stderr="")
-        return CompletedProcess(cmd, 2, stdout="", stderr="")
+        return CompletedProcess(args[0], 2, stdout="", stderr="")
 
-    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+    with (
+        patch("app.services.conformance.metadata.version", return_value="1.2.3"),
+        patch("app.services.conformance.subprocess.run", side_effect=fake_run),
+    ):
         result = run_conformance_check(artifact, "json")
 
     assert result.passed is False
@@ -180,51 +181,33 @@ def test_run_conformance_check_marks_error_output_as_failure(tmp_path: Path):
     artifact.write_text("{}")
 
     def fake_run(*args, **kwargs):
-        cmd = args[0]
-        if cmd[:2] == ["aas_test_engines", "--version"]:
-            return CompletedProcess(cmd, 0, stdout="v", stderr="")
-        return CompletedProcess(cmd, 0, stdout="ERROR: missing semanticId", stderr="")
+        return CompletedProcess(args[0], 0, stdout="ERROR: missing semanticId", stderr="")
 
-    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+    with (
+        patch("app.services.conformance.metadata.version", return_value="1.2.3"),
+        patch("app.services.conformance.subprocess.run", side_effect=fake_run),
+    ):
         result = run_conformance_check(artifact, "json")
 
     assert result.passed is False
     assert len(result.errors) == 1
 
 
-def test_get_engine_version_uses_stderr_when_stdout_empty():
-    cmd = ["aas_test_engines", "--version"]
-    with patch(
-        "app.services.conformance.subprocess.run",
-        return_value=CompletedProcess(
-            cmd,
-            0,
-            stdout="",
-            stderr="aas-test-engines 1.0.3",
-        ),
-    ):
+def test_get_engine_version_reads_installed_package_metadata():
+    with patch("app.services.conformance.metadata.version", return_value="1.0.3"):
         version = get_engine_version()
 
     assert version == "aas-test-engines 1.0.3"
 
 
-def test_get_engine_version_falls_back_to_package_metadata_on_cli_error():
-    cmd = ["aas_test_engines", "--version"]
-    with (
-        patch(
-            "app.services.conformance.subprocess.run",
-            return_value=CompletedProcess(
-                cmd,
-                1,
-                stdout="",
-                stderr="Unknown command '--version'",
-            ),
-        ),
-        patch("app.services.conformance.package_version", return_value="1.0.3"),
+def test_get_engine_version_returns_none_when_package_missing():
+    with patch(
+        "app.services.conformance.metadata.version",
+        side_effect=metadata.PackageNotFoundError,
     ):
         version = get_engine_version()
 
-    assert version == "1.0.3"
+    assert version is None
 
 
 def test_run_conformance_check_parses_stderr_issues(tmp_path: Path):
@@ -232,17 +215,17 @@ def test_run_conformance_check_parses_stderr_issues(tmp_path: Path):
     artifact.write_bytes(b"PK\x03\x04dummy")
 
     def fake_run(*args, **kwargs):
-        cmd = args[0]
-        if cmd[:2] == ["aas_test_engines", "--version"]:
-            return CompletedProcess(cmd, 0, stdout="aas-test-engines 1.0.3", stderr="")
         return CompletedProcess(
-            cmd,
+            args[0],
             1,
             stdout="",
             stderr="FAILED check AAS shell\nWARNING minor field issue",
         )
 
-    with patch("app.services.conformance.subprocess.run", side_effect=fake_run):
+    with (
+        patch("app.services.conformance.metadata.version", return_value="1.0.3"),
+        patch("app.services.conformance.subprocess.run", side_effect=fake_run),
+    ):
         result = run_conformance_check(artifact, "aasx")
 
     assert result.passed is False

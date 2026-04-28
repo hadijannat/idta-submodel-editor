@@ -327,7 +327,7 @@ function generateElementDefaults(element: UIElementSchema): ElementFormData {
       return withSemanticDefaults({
         value: element.value ?? '',
         contentType: element.contentType ?? 'application/octet-stream',
-        valueEncoding: 'utf-8',
+        valueEncoding: element.valueEncoding ?? 'utf-8',
       });
 
     case 'Range':

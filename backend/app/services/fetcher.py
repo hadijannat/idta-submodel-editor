@@ -38,6 +38,8 @@ class TemplateFetcherService:
         github_token: str | None = None,
         cache_dir: Path | None = None,
         cache_ttl_hours: int = 24,
+        local_templates_enabled: bool | None = None,
+        local_templates_dir: Path | None = None,
     ):
         settings = get_settings()
         self.github_token = github_token or settings.github_token
@@ -48,8 +50,12 @@ class TemplateFetcherService:
         self.github_template_ref = settings.github_template_ref
 
         # Local templates configuration
-        self.local_templates_enabled = settings.local_templates_enabled
-        self.local_templates_dir = settings.local_templates_dir
+        self.local_templates_enabled = (
+            settings.local_templates_enabled
+            if local_templates_enabled is None
+            else local_templates_enabled
+        )
+        self.local_templates_dir = local_templates_dir or settings.local_templates_dir
 
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -607,21 +613,24 @@ class TemplateFetcherService:
 
         if aasx_files:
             aasx_files.sort(key=lambda x: x.get("name", ""), reverse=True)
-            filename = aasx_files[0].get("name")
-            if not filename:
+            selected = aasx_files[0]
+            raw_file_path = selected.get("path")
+            filename = selected.get("name")
+            if not raw_file_path and not filename:
                 return None
-            raw_path = quote(f"{template_path}/{filename}", safe="/")
+            raw_path = quote(raw_file_path or f"{template_path}/{filename}", safe="/")
             return (
                 "https://raw.githubusercontent.com/"
                 f"{self.github_repo}/{self.github_template_ref}/{raw_path}"
             )
 
         for subdir in subdirs:
+            subdir_path = subdir.get("path")
             name = subdir.get("name")
-            if not name:
+            if not subdir_path and not name:
                 continue
             result = await self._find_aasx_file_via_html(
-                f"{template_path}/{name}",
+                subdir_path or f"{template_path}/{name}",
                 depth + 1,
                 max_depth,
             )
@@ -645,23 +654,33 @@ class TemplateFetcherService:
             response.raise_for_status()
             html = response.text
 
-        match = re.search(
-            r'data-target=\"react-app.embeddedData\"[^>]*>(.*?)</script>',
+        matches = re.finditer(
+            r'data-target="react-app\.embeddedData"[^>]*>(.*?)</script>',
             html,
             re.S,
         )
-        if not match:
+        for match in matches:
+            raw_json = match.group(1).strip()
+            try:
+                data = json.loads(raw_json)
+            except json.JSONDecodeError as exc:
+                logger.warning("Failed to parse GitHub embedded data JSON: %s", exc)
+                continue
+
+            payload = data.get("payload", {})
+            tree = payload.get("tree", {})
+            items = tree.get("items")
+            if items:
+                return items
+
+            code_view_tree = payload.get("codeViewTreeRoute", {}).get("tree", {})
+            items = code_view_tree.get("items")
+            if items:
+                return items
+
+        if 'data-target="react-app.embeddedData"' not in html:
             logger.warning("Failed to find embedded data on GitHub tree page: %s", url)
-            return []
-
-        raw_json = match.group(1).strip()
-        try:
-            data = json.loads(raw_json)
-        except json.JSONDecodeError as exc:
-            logger.warning("Failed to parse GitHub embedded data JSON: %s", exc)
-            return []
-
-        return data.get("payload", {}).get("tree", {}).get("items", []) or []
+        return []
 
     async def get_template_versions(self, template_path: str) -> list[dict]:
         """
