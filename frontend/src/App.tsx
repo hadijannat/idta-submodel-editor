@@ -96,6 +96,17 @@ function App() {
     ? Math.round((completion.completed / completion.required) * 100)
     : 100;
 
+  const visibleUtilityTools = useMemo(
+    () =>
+      utilityTools.filter((tool) => {
+        if (tool.metadata.id === 'pcf-tools') {
+          return !!schema && isPCFTemplate(schema);
+        }
+        return true;
+      }),
+    [schema, utilityTools]
+  );
+
   const handleTemplateSelect = useCallback((template: TemplateInfo) => {
     setSelectedTemplate(template);
     setSelectedVersion(null);
@@ -186,6 +197,15 @@ function App() {
       setActiveUtilityTool(null);
     }
   }, [activeUtilityTool, canEdit]);
+
+  useEffect(() => {
+    if (
+      activeUtilityTool &&
+      !visibleUtilityTools.some((tool) => tool.metadata.id === activeUtilityTool)
+    ) {
+      setActiveUtilityTool(null);
+    }
+  }, [activeUtilityTool, visibleUtilityTools]);
 
   useEffect(() => {
     if (!activeUtilityTool) return;
@@ -867,22 +887,41 @@ function App() {
             </div>
           )}
 
-          {utilityTools.length > 0 && canEdit && (
+          {visibleUtilityTools.length > 0 && canEdit && (
             <div className="wizard-card utility-tools-card">
               <h4>Utility Tools</h4>
               <div className="utility-tool-list">
-                {utilityTools.map((tool) => (
-                  <button
-                    key={tool.metadata.id}
-                    type="button"
-                    className="utility-tool-btn"
-                    onClick={() => setActiveUtilityTool(tool.metadata.id)}
-                    disabled={!tool.metadata.enabled}
-                  >
-                    <span className="utility-tool-name">{tool.metadata.name}</span>
-                    <span className="utility-tool-desc">{tool.metadata.description}</span>
-                  </button>
-                ))}
+                {visibleUtilityTools.map((tool) => {
+                  const frontendComponent = tool.metadata.frontendComponent ?? tool.metadata.id;
+                  const missingComponent = !toolRegistry.hasComponent(frontendComponent);
+                  const disabledReason = !tool.metadata.enabled
+                    ? tool.metadata.disabledReason ?? `${tool.metadata.name} is disabled.`
+                    : !tool.metadata.initialized
+                      ? tool.metadata.disabledReason ?? `${tool.metadata.name} is not initialized.`
+                      : missingComponent
+                        ? `No UI component is registered for ${tool.metadata.name}.`
+                        : null;
+                  return (
+                    <button
+                      key={tool.metadata.id}
+                      type="button"
+                      className="utility-tool-btn"
+                      onClick={() => {
+                        if (!disabledReason) {
+                          setActiveUtilityTool(tool.metadata.id);
+                        }
+                      }}
+                      disabled={!!disabledReason}
+                      title={disabledReason ?? undefined}
+                    >
+                      <span className="utility-tool-name">{tool.metadata.name}</span>
+                      <span className="utility-tool-desc">{tool.metadata.description}</span>
+                      {disabledReason && (
+                        <span className="utility-tool-status">{disabledReason}</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

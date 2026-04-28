@@ -15,11 +15,18 @@ describe('toolRegistry static initialization', () => {
     expect(tool?.metadata.wizardStep).toBe(6);
   });
 
-  it('registers utility tools even without UI components', () => {
-    const tool = toolRegistry.getTool('template-ops');
+  it('registers only standalone frontend-backed tools as launchable utilities', () => {
+    const templateOps = toolRegistry.getTool('template-ops');
+    const pcfTools = toolRegistry.getTool('pcf-tools');
+    const utilityIds = toolRegistry.getUtilityTools().map((entry) => entry.metadata.id);
 
-    expect(tool).toBeDefined();
-    expect(tool?.metadata.enabled).toBe(true);
+    expect(templateOps).toBeDefined();
+    expect(templateOps?.metadata.enabled).toBe(true);
+    expect(pcfTools).toBeDefined();
+    expect(toolRegistry.hasComponent('template-ops')).toBe(true);
+    expect(toolRegistry.hasComponent('pcf-tools')).toBe(true);
+    expect(utilityIds).toEqual(expect.arrayContaining(['template-ops', 'pcf-tools']));
+    expect(utilityIds).not.toContain('semantic');
   });
 
   it('includes dpp-builder in static fallback manifest', () => {
@@ -136,5 +143,75 @@ describe('toolRegistry static initialization', () => {
       .map((entry) => entry.metadata.id);
 
     expect(stepNineIds).toEqual(['alpha-tool', 'zeta-tool']);
+  });
+
+  it('does not expose field-action or API-only backend tools as sidebar utilities', async () => {
+    const manifest = [
+      {
+        id: 'semantic',
+        name: 'Semantic Lookup',
+        description: 'Search semantic dictionaries',
+        version: '1.0.0',
+        category: 'core',
+        wizard_step: null,
+        feature_flag: 'semantic_enabled',
+        requires_auth: false,
+        dependencies: [],
+        enabled: true,
+        initialized: true,
+        ui_entry: 'field_action',
+        frontend_component: null,
+        standalone: false,
+      },
+      {
+        id: 'pcf-tools',
+        name: 'PCF Tools',
+        description: 'PCF utilities',
+        version: '1.0.0',
+        category: 'analytics',
+        wizard_step: null,
+        feature_flag: null,
+        requires_auth: false,
+        dependencies: [],
+        enabled: true,
+        initialized: true,
+        ui_entry: 'utility',
+        frontend_component: 'pcf-tools',
+        standalone: true,
+      },
+      {
+        id: 'opcua-bridge',
+        name: 'OPC UA Bridge',
+        description: 'OPC UA bridge API',
+        version: '1.0.0',
+        category: 'integration',
+        wizard_step: null,
+        feature_flag: 'opcua_bridge_enabled',
+        requires_auth: false,
+        dependencies: [],
+        enabled: true,
+        initialized: true,
+        ui_entry: 'api_only',
+        frontend_component: null,
+        standalone: false,
+      },
+    ];
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => manifest,
+      })
+    );
+
+    await toolRegistry.loadServerManifest(true);
+    const utilityIds = toolRegistry.getUtilityTools().map((entry) => entry.metadata.id);
+
+    expect(utilityIds).toContain('pcf-tools');
+    expect(utilityIds).not.toContain('semantic');
+    expect(utilityIds).not.toContain('opcua-bridge');
   });
 });

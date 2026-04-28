@@ -38,6 +38,10 @@ class ToolMetadataResponse(BaseModel):
     initialized: bool
     schema_version: str | None = None
     disabled_reason: str | None = None
+    ui_entry: str = "utility"
+    frontend_component: str | None = None
+    standalone: bool = True
+    requires_template: bool = False
 
 
 class ToolHealthResponse(BaseModel):
@@ -113,21 +117,26 @@ async def list_tools(
         if category and tool.metadata.category != category:
             continue
 
+        metadata = tool.metadata.to_dict()
         result.append(
             ToolMetadataResponse(
-                id=tool.metadata.id,
-                name=tool.metadata.name,
-                description=tool.metadata.description,
-                version=tool.metadata.version,
-                category=tool.metadata.category,
-                wizard_step=tool.metadata.wizard_step,
-                feature_flag=tool.metadata.feature_flag,
-                requires_auth=tool.metadata.requires_auth,
-                dependencies=tool.metadata.dependencies,
+                id=metadata["id"],
+                name=metadata["name"],
+                description=metadata["description"],
+                version=metadata["version"],
+                category=metadata["category"],
+                wizard_step=metadata["wizard_step"],
+                feature_flag=metadata["feature_flag"],
+                requires_auth=metadata["requires_auth"],
+                dependencies=metadata["dependencies"],
                 enabled=tool.is_enabled(),
                 initialized=tool.is_initialized,
                 schema_version=registry.MANIFEST_SCHEMA_VERSION,
                 disabled_reason=tool.get_disabled_reason(registry),
+                ui_entry=metadata["ui_entry"],
+                frontend_component=metadata["frontend_component"],
+                standalone=metadata["standalone"],
+                requires_template=metadata["requires_template"],
             )
         )
 

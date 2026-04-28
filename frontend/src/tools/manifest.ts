@@ -80,6 +80,10 @@ export const STATIC_TOOLS: Record<string, Omit<ToolMetadata, 'enabled' | 'initia
     featureFlag: 'semantic_enabled',
     requiresAuth: false,
     dependencies: [],
+    uiEntry: 'field_action',
+    frontendComponent: null,
+    standalone: false,
+    requiresTemplate: true,
   },
   'pcf-tools': {
     id: 'pcf-tools',
@@ -91,6 +95,10 @@ export const STATIC_TOOLS: Record<string, Omit<ToolMetadata, 'enabled' | 'initia
     featureFlag: null,
     requiresAuth: false,
     dependencies: [],
+    uiEntry: 'utility',
+    frontendComponent: 'pcf-tools',
+    standalone: true,
+    requiresTemplate: true,
   },
   'template-ops': {
     id: 'template-ops',
@@ -102,6 +110,10 @@ export const STATIC_TOOLS: Record<string, Omit<ToolMetadata, 'enabled' | 'initia
     featureFlag: null,
     requiresAuth: false,
     dependencies: [],
+    uiEntry: 'utility',
+    frontendComponent: 'template-ops',
+    standalone: true,
+    requiresTemplate: false,
   },
 };
 

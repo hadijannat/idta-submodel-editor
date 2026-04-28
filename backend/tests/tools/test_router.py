@@ -175,6 +175,10 @@ class TestToolsListEndpoint:
         assert "description" in tool
         assert "category" in tool
         assert "enabled" in tool
+        assert "ui_entry" in tool
+        assert "frontend_component" in tool
+        assert "standalone" in tool
+        assert "requires_template" in tool
 
     def test_list_tools_enabled_only_filters_disabled_tools(self, test_client):
         response = test_client.get("/api/tools?enabled_only=true")
@@ -221,6 +225,10 @@ class TestToolsManifestEndpoint:
         assert "initialized" in tool
         assert "schema_version" in tool
         assert "disabled_reason" in tool
+        assert "ui_entry" in tool
+        assert "frontend_component" in tool
+        assert "standalone" in tool
+        assert "requires_template" in tool
 
     def test_manifest_is_sorted_stably(self, test_client):
         response = test_client.get("/api/tools/manifest")

@@ -38,6 +38,10 @@ class SemanticTool(BaseTool):
         feature_flag="semantic_enabled",
         requires_auth=False,
         dependencies=[],
+        ui_entry="field_action",
+        frontend_component=None,
+        standalone=False,
+        requires_template=True,
     )
 
     def __init__(self, context):
@@ -77,7 +81,7 @@ class SemanticTool(BaseTool):
 
         try:
             providers = self._service.providers_info()
-            available = [p for p in providers if p.available]
+            available = [p for p in providers if p.status == "ready"]
             if not available:
                 return (False, "No semantic providers available")
             return (True, None)

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 
 ToolCategory = Literal["core", "import", "export", "integration", "analytics"]
+ToolUiEntry = Literal["wizard", "utility", "field_action", "api_only"]
 
 
 @dataclass
@@ -36,6 +37,10 @@ class ToolMetadata:
         feature_flag: Config key that enables/disables this tool
         requires_auth: Whether authentication is required to use this tool
         dependencies: List of other tool IDs that must be available
+        ui_entry: Where this tool should appear in the frontend
+        frontend_component: Registered frontend component ID, if launchable
+        standalone: Whether the tool can be opened without field-specific context
+        requires_template: Whether the tool needs a selected template/schema
     """
 
     id: str
@@ -47,6 +52,35 @@ class ToolMetadata:
     feature_flag: str | None = None
     requires_auth: bool = False
     dependencies: list[str] = field(default_factory=list)
+    ui_entry: ToolUiEntry | None = None
+    frontend_component: str | None = None
+    standalone: bool | None = None
+    requires_template: bool = False
+
+    @property
+    def resolved_ui_entry(self) -> ToolUiEntry:
+        """Return explicit UI placement, or infer a conservative default."""
+        if self.ui_entry is not None:
+            return self.ui_entry
+        if self.wizard_step is not None:
+            return "wizard"
+        return "utility"
+
+    @property
+    def resolved_standalone(self) -> bool:
+        """Return whether this tool is launchable as an independent panel."""
+        if self.standalone is not None:
+            return self.standalone
+        return self.resolved_ui_entry in {"wizard", "utility"}
+
+    @property
+    def resolved_frontend_component(self) -> str | None:
+        """Return the frontend component ID expected by the tool registry."""
+        if self.frontend_component is not None:
+            return self.frontend_component
+        if self.resolved_ui_entry in {"wizard", "utility"}:
+            return self.id
+        return None
 
     def to_dict(self) -> dict:
         """Convert metadata to a dictionary for API responses."""
@@ -60,6 +94,10 @@ class ToolMetadata:
             "feature_flag": self.feature_flag,
             "requires_auth": self.requires_auth,
             "dependencies": self.dependencies,
+            "ui_entry": self.resolved_ui_entry,
+            "frontend_component": self.resolved_frontend_component,
+            "standalone": self.resolved_standalone,
+            "requires_template": self.requires_template,
         }
 
 
