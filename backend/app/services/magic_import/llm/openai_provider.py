@@ -1,7 +1,7 @@
 """
 OpenAI LLM provider for Magic Import.
 
-Supports GPT-4o and GPT-4o-mini with structured outputs.
+Uses GPT-5.5 with the Responses API and structured outputs.
 """
 
 from __future__ import annotations
@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel
 
 from app.config import get_settings
 from app.services.magic_import.llm.provider_base import LLMProvider
@@ -19,6 +21,12 @@ if TYPE_CHECKING:
 from app.schemas.magic_import import LLMExtractionResponse, LLMFieldExtraction
 
 logger = logging.getLogger(__name__)
+
+
+class OpenAIExtractionOutput(BaseModel):
+    """Structured output shape returned by the OpenAI Responses API."""
+
+    extractions: list[LLMFieldExtraction]
 
 
 class OpenAIProvider(LLMProvider):
@@ -72,33 +80,35 @@ class OpenAIProvider(LLMProvider):
         if not self.is_available():
             raise RuntimeError("OpenAI API key not configured")
 
-        system_prompt = self.build_system_prompt()
-        user_prompt = self.build_user_prompt(hints, snippets)
+        system_prompt = self._build_responses_system_prompt()
+        user_prompt = self._build_responses_user_prompt(hints, snippets)
 
         try:
-            # Use structured output with response_format
-            response = await self.client.chat.completions.create(
+            response = await self.client.responses.parse(
                 model=self._model,
-                messages=[
+                input=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=max_tokens,
-                temperature=0.1,  # Low temperature for precise extraction
-                response_format={"type": "json_object"},
+                max_output_tokens=max_tokens,
+                reasoning={"effort": "low"},
+                text_format=OpenAIExtractionOutput,
             )
 
-            # Parse response
-            content = response.choices[0].message.content
-            prompt_tokens = response.usage.prompt_tokens if response.usage else 0
-            completion_tokens = response.usage.completion_tokens if response.usage else 0
+            prompt_tokens = response.usage.input_tokens if response.usage else 0
+            completion_tokens = response.usage.output_tokens if response.usage else 0
             tokens_used = (
                 response.usage.total_tokens
                 if response.usage and response.usage.total_tokens is not None
                 else prompt_tokens + completion_tokens
             )
 
-            extractions = self._parse_response(content)
+            parsed = response.output_parsed
+            if parsed is None:
+                output_text = getattr(response, "output_text", "")
+                extractions = self._parse_response(output_text)
+            else:
+                extractions = parsed.extractions
 
             logger.info(
                 "OpenAI extracted %d fields using %d tokens",
@@ -160,3 +170,28 @@ class OpenAIProvider(LLMProvider):
         except json.JSONDecodeError as e:
             logger.warning("Failed to parse JSON response: %s", e)
             return []
+
+    def _build_responses_system_prompt(self) -> str:
+        """Build instructions for schema-enforced OpenAI Responses calls."""
+        return """You are a precise data extraction assistant. Extract specific field values from document snippets.
+
+IMPORTANT RULES:
+1. Only extract values that are explicitly stated in the provided snippets
+2. For each extraction, provide the EXACT quote from the document as evidence
+3. If a value is not found or unclear, skip that field
+4. Maintain the exact formatting of values (numbers, dates, units)
+5. For confidence, rate 0.0-1.0 based on how clearly the value is stated"""
+
+    def _build_responses_user_prompt(
+        self,
+        hints: list["ExtractionHint"],
+        snippets: list["Snippet"],
+    ) -> str:
+        """Build the user prompt while letting Structured Outputs own the schema."""
+        prompt = self.build_user_prompt(hints, snippets)
+        return prompt.replace(
+            'Extract values for the target fields from the snippets above. Return ONLY a JSON object with an "extractions" array.\n'
+            "If a field's value is not found in any snippet, do not include it in the output.",
+            "Extract values for the target fields from the snippets above. "
+            "If a field's value is not found in any snippet, do not include it in the output.",
+        )

@@ -190,7 +190,7 @@ class MetricsCalculator:
             index: The PDF index with word positions
             tables: Table extraction results
             llm_provider: LLM provider name (e.g., "openai", "anthropic")
-            llm_model: LLM model name (e.g., "gpt-4")
+            llm_model: LLM model name (e.g., "gpt-5.5")
             llm_tokens: Total tokens used by LLM
             llm_latency_ms: LLM latency in milliseconds
             retrieval_diagnostics: Optional retrieval diagnostics from snippet retrieval

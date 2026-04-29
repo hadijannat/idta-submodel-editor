@@ -491,21 +491,23 @@ def get_effective_base_url(provider: ProviderType) -> str | None:
 def _get_default_model(provider: ProviderType) -> str:
     """Get default model for a provider."""
     defaults = {
-        "openai": "gpt-4o-mini",
+        "openai": "gpt-5.5",
         "anthropic": "claude-3-5-sonnet-20241022",
         "openrouter": "anthropic/claude-3.5-sonnet",
         "local": "llama3.1:8b",
     }
-    return defaults.get(provider, "gpt-4o-mini")
+    return defaults.get(provider, "gpt-5.5")
 
 
 # Model lists by provider
 PROVIDER_MODELS: dict[str, list[str]] = {
     "openai": [
+        "gpt-5.5",
+        "gpt-5.5-pro",
+        "gpt-5.4",
+        "gpt-5.4-mini",
         "gpt-4o",
         "gpt-4o-mini",
-        "gpt-4-turbo",
-        "gpt-3.5-turbo",
     ],
     "anthropic": [
         "claude-3-5-sonnet-20241022",

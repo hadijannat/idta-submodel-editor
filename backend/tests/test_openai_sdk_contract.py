@@ -24,3 +24,4 @@ def test_async_openai_exposes_methods_used_by_backend() -> None:
 
     assert callable(getattr(client.models, "list", None))
     assert callable(getattr(client.chat.completions, "create", None))
+    assert callable(getattr(client.responses, "parse", None))

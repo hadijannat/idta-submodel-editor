@@ -22,7 +22,7 @@ def test_provider_info_serializes_model_recommendations(monkeypatch):
         ProviderInfo(
             name="openai",
             available=True,
-            model="gpt-4o-mini",
+            model="gpt-5.5",
             is_local=False,
             privacy_note="Data sent to OpenAI servers",
             error=None,

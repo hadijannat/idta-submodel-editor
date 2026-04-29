@@ -315,7 +315,7 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
             ))}
           </select>
           <p className="llm-settings-panel__hint">
-            Recommended: claude-3.5-sonnet or gpt-4o-mini for best extraction quality
+            Recommended: gpt-5.5 or claude-3.5-sonnet for best extraction quality
           </p>
         </div>
       )}

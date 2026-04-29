@@ -7,7 +7,7 @@ Upload a PDF datasheet or nameplate and let an LLM extract field values directly
 ## Key Capabilities
 
 - **Privacy-First Extraction**: Only relevant snippets are sent to the LLM, not the full document
-- **Multi-Provider LLM Support**: OpenAI (GPT-4o), Anthropic (Claude), OpenRouter (100+ models), or local Ollama models
+- **Multi-Provider LLM Support**: OpenAI (GPT-5.5), Anthropic (Claude), OpenRouter (100+ models), or local Ollama models
 - **OCR Support**: Tesseract-based OCR for scanned PDFs with configurable language and DPI
 - **Confidence Scoring**: 4-signal weighted formula (LLM confidence, evidence match, OCR quality, format rules)
 - **Source Highlighting**: Click any extracted field to highlight the exact source region in the PDF viewer
@@ -81,7 +81,7 @@ Jobs progress through states: `UPLOADED` → `INDEXING` → `OCR` → `EXTRACTIN
 |----------|-------------|---------|
 | `MAGIC_IMPORT_ENABLED` | Enable Magic Import feature | true |
 | `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai, anthropic, openrouter, local) | openai |
-| `MAGIC_IMPORT_LLM_MODEL` | Model name | gpt-4o-mini |
+| `MAGIC_IMPORT_LLM_MODEL` | Model name | gpt-5.5 |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key | - |
 | `OPENROUTER_API_KEY` | OpenRouter API key | - |
@@ -102,7 +102,7 @@ Jobs progress through states: `UPLOADED` → `INDEXING` → `OCR` → `EXTRACTIN
 
 ```bash
 export MAGIC_IMPORT_LLM_PROVIDER=openai
-export MAGIC_IMPORT_LLM_MODEL=gpt-4o-mini  # or gpt-4o
+export MAGIC_IMPORT_LLM_MODEL=gpt-5.5  # or gpt-5.5-pro
 export OPENAI_API_KEY=sk-...
 ```
 
@@ -126,7 +126,7 @@ export OLLAMA_BASE_URL=http://localhost:11434
 
 ```bash
 export MAGIC_IMPORT_LLM_PROVIDER=openrouter
-export MAGIC_IMPORT_LLM_MODEL=anthropic/claude-3.5-sonnet  # or openai/gpt-4o, google/gemini-pro
+export MAGIC_IMPORT_LLM_MODEL=anthropic/claude-3.5-sonnet  # or another OpenRouter model
 export OPENROUTER_API_KEY=sk-or-...
 ```
 
@@ -146,9 +146,9 @@ Four providers are supported:
 
 | Provider | Description | API Key Required |
 |----------|-------------|------------------|
-| **OpenAI** | GPT-4o, GPT-4o-mini, GPT-4 Turbo | Yes |
+| **OpenAI** | GPT-5.5, GPT-5.5 Pro, GPT-5.4 | Yes |
 | **Anthropic** | Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus | Yes |
-| **OpenRouter** | 100+ models via unified API (Claude, GPT-4, Gemini, Llama) | Yes |
+| **OpenRouter** | 100+ models via unified API (Claude, GPT, Gemini, Llama) | Yes |
 | **Local (Ollama)** | Self-hosted models (Llama, Mistral, Mixtral) | No |
 
 ### Configuration Workflow

@@ -2,7 +2,7 @@
 LLM Provider abstraction for Magic Import.
 
 Supports multiple LLM providers:
-- OpenAI (GPT-4o, GPT-4o-mini)
+- OpenAI (GPT-5.5, GPT-5.5 Pro)
 - Anthropic (Claude 3.5 Sonnet, Claude 3 Haiku)
 - Local (Ollama with Llama 3, Mistral, etc.)
 """
