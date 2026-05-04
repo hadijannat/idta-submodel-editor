@@ -6,7 +6,7 @@ Upload a PDF datasheet or nameplate and let an LLM extract field values directly
 
 ## Key Capabilities
 
-- **Privacy-First Extraction**: Only relevant snippets are sent to the LLM, not the full document
+- **Privacy-First Extraction**: Only relevant snippets are sent to the LLM, not the full document. OpenAI Responses requests are sent with response storage disabled.
 - **Multi-Provider LLM Support**: OpenAI (GPT-5.5), Anthropic (Claude), OpenRouter (100+ models), or local Ollama models
 - **OCR Support**: Tesseract-based OCR for scanned PDFs with configurable language and DPI
 - **Confidence Scoring**: 4-signal weighted formula (LLM confidence, evidence match, OCR quality, format rules)
@@ -82,6 +82,7 @@ Jobs progress through states: `UPLOADED` → `INDEXING` → `OCR` → `EXTRACTIN
 | `MAGIC_IMPORT_ENABLED` | Enable Magic Import feature | true |
 | `MAGIC_IMPORT_LLM_PROVIDER` | LLM provider (openai, anthropic, openrouter, local) | openai |
 | `MAGIC_IMPORT_LLM_MODEL` | Model name | gpt-5.5 |
+| `MAGIC_IMPORT_LLM_MAX_RETRIES` | SDK retry attempts per request | 0 |
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `ANTHROPIC_API_KEY` | Anthropic API key | - |
 | `OPENROUTER_API_KEY` | OpenRouter API key | - |

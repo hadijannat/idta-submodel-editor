@@ -242,12 +242,56 @@ class TestOpenAIProvider:
         assert call_kwargs["model"] == "gpt-5.5"
         assert call_kwargs["max_output_tokens"] == 123
         assert call_kwargs["reasoning"] == {"effort": "low"}
+        assert call_kwargs["store"] is False
         assert call_kwargs["text_format"] is OpenAIExtractionOutput
         assert len(call_kwargs["input"]) == 2
+        assert call_kwargs["input"][0]["role"] == "system"
+        assert call_kwargs["input"][1]["role"] == "user"
+        assert "Return ONLY a JSON object" not in call_kwargs["input"][1]["content"]
+        assert "If a field's value is not found" in call_kwargs["input"][1]["content"]
         assert result.tokens_used == 12
         assert result.prompt_tokens == 7
         assert result.completion_tokens == 5
         assert result.extractions[0].path == "SerialNumber"
+
+    @pytest.mark.asyncio
+    @patch("app.services.magic_import.llm.openai_provider.get_settings")
+    async def test_extract_structured_omits_reasoning_for_legacy_openai_models(
+        self,
+        mock_settings,
+        sample_hints,
+        sample_snippets,
+    ):
+        """Test legacy OpenAI models are not sent GPT reasoning controls."""
+        mock_settings.return_value = MagicMock(
+            openai_api_key="sk-test-key",
+            magic_import_llm_model="gpt-4o",
+        )
+
+        from app.services.magic_import.llm.openai_provider import (
+            OpenAIExtractionOutput,
+            OpenAIProvider,
+        )
+
+        provider = OpenAIProvider()
+        parse_mock = AsyncMock(
+            return_value=MagicMock(
+                output_parsed=OpenAIExtractionOutput(extractions=[]),
+                output_text="",
+                usage=None,
+            )
+        )
+        provider._client = MagicMock(responses=MagicMock(parse=parse_mock))
+
+        await provider.extract_structured(
+            hints=sample_hints,
+            snippets=sample_snippets,
+        )
+
+        call_kwargs = parse_mock.await_args.kwargs
+        assert call_kwargs["model"] == "gpt-4o"
+        assert call_kwargs["store"] is False
+        assert "reasoning" not in call_kwargs
 
     @pytest.mark.asyncio
     @patch("app.services.magic_import.llm.openai_provider.get_settings")

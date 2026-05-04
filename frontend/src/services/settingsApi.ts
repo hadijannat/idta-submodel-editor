@@ -39,6 +39,7 @@ export interface LLMSettingsUpdate {
 export interface ProviderValidationRequest {
   provider: ProviderType;
   api_key?: string;
+  model?: string;
   base_url?: string;
 }
 

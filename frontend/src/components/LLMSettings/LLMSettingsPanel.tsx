@@ -92,7 +92,11 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
     setLocalValidation({ status: 'validating', message: null });
 
     try {
-      const result = await validateCredentials(selectedProvider, apiKeyInput);
+      const model =
+        selectedProvider === settings?.provider
+          ? settings?.model
+          : models[0] || undefined;
+      const result = await validateCredentials(selectedProvider, apiKeyInput, model);
       setLocalValidation({
         status: result.valid ? 'valid' : 'invalid',
         message: result.message,
@@ -103,7 +107,7 @@ export function LLMSettingsPanel({ onClose, compact = false }: LLMSettingsPanelP
         message: err instanceof Error ? err.message : 'Validation failed',
       });
     }
-  }, [selectedProvider, apiKeyInput, validateCredentials]);
+  }, [selectedProvider, settings?.provider, settings?.model, models, apiKeyInput, validateCredentials]);
 
   const handleSaveKey = useCallback(async () => {
     if (!selectedProvider || !apiKeyInput) return;

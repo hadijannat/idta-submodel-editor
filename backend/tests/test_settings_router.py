@@ -89,7 +89,7 @@ class TestGetProviderModels:
         assert data["provider"] == "openai"
         assert len(data["models"]) > 0
         assert "gpt-5.5" in data["models"]
-        assert "default_model" in data
+        assert data["default_model"] == "gpt-5.5"
 
     def test_get_anthropic_models(self, test_client):
         """Test getting Anthropic models."""
@@ -311,6 +311,8 @@ class TestValidateProvider:
         data = response.json()
         assert data["valid"] is True
         assert "valid" in data["message"].lower()
+        assert "gpt-5.5" in data["models"]
+        assert "gpt-5.5-pro" in data["models"]
 
     @patch("app.routers.settings._validate_openai")
     def test_validate_openai_failure(self, mock_validate, test_client):
@@ -384,7 +386,11 @@ class TestDirectOpenAIValidation:
         from app.routers.settings import _validate_openai
 
         mock_client = MagicMock()
-        mock_client.models = MagicMock(list=AsyncMock(return_value=[]))
+        mock_client.models = MagicMock(
+            list=AsyncMock(
+                return_value=SimpleNamespace(data=[SimpleNamespace(id="gpt-5.5")])
+            )
+        )
         mock_async_openai = MagicMock(return_value=mock_client)
 
         monkeypatch.setitem(
@@ -393,7 +399,7 @@ class TestDirectOpenAIValidation:
             SimpleNamespace(AsyncOpenAI=mock_async_openai),
         )
 
-        valid, message = await _validate_openai("sk-test-key")
+        valid, message = await _validate_openai("sk-test-key", model="gpt-5.5")
 
         assert valid is True
         assert "valid" in message.lower()
@@ -403,6 +409,31 @@ class TestDirectOpenAIValidation:
             max_retries=0,
         )
         mock_client.models.list.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_validate_openai_rejects_unavailable_model(self, monkeypatch):
+        """Ensure validation fails when the selected OpenAI model is unavailable."""
+        from app.routers.settings import _validate_openai
+
+        mock_client = MagicMock()
+        mock_client.models = MagicMock(
+            list=AsyncMock(
+                return_value=SimpleNamespace(data=[SimpleNamespace(id="gpt-4o")])
+            )
+        )
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "openai",
+            SimpleNamespace(AsyncOpenAI=mock_async_openai),
+        )
+
+        valid, message = await _validate_openai("sk-test-key", model="gpt-5.5")
+
+        assert valid is False
+        assert "gpt-5.5" in message
+        assert "not available" in message
 
     @pytest.mark.asyncio
     async def test_validate_openai_maps_unauthorized_error(self, monkeypatch):

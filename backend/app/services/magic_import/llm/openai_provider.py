@@ -84,16 +84,20 @@ class OpenAIProvider(LLMProvider):
         user_prompt = self._build_responses_user_prompt(hints, snippets)
 
         try:
-            response = await self.client.responses.parse(
-                model=self._model,
-                input=[
+            parse_kwargs = {
+                "model": self._model,
+                "input": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_output_tokens=max_tokens,
-                reasoning={"effort": "low"},
-                text_format=OpenAIExtractionOutput,
-            )
+                "max_output_tokens": max_tokens,
+                "store": False,
+                "text_format": OpenAIExtractionOutput,
+            }
+            if self._supports_reasoning_controls():
+                parse_kwargs["reasoning"] = {"effort": "low"}
+
+            response = await self.client.responses.parse(**parse_kwargs)
 
             prompt_tokens = response.usage.input_tokens if response.usage else 0
             completion_tokens = response.usage.output_tokens if response.usage else 0
@@ -170,6 +174,10 @@ class OpenAIProvider(LLMProvider):
         except json.JSONDecodeError as e:
             logger.warning("Failed to parse JSON response: %s", e)
             return []
+
+    def _supports_reasoning_controls(self) -> bool:
+        """Return True when the selected OpenAI model accepts reasoning options."""
+        return self._model.startswith("gpt-5")
 
     def _build_responses_system_prompt(self) -> str:
         """Build instructions for schema-enforced OpenAI Responses calls."""

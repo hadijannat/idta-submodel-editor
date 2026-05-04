@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     magic_import_llm_provider: Literal["openai", "anthropic", "openrouter", "local"] = "openai"
     magic_import_llm_model: str = "gpt-5.5"
     magic_import_llm_request_timeout_seconds: float = 60.0
-    magic_import_llm_max_retries: int = 2
+    magic_import_llm_max_retries: int = 0
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None

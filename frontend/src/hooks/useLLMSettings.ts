@@ -33,7 +33,8 @@ export interface UseLLMSettingsReturn {
   setModel: (model: string) => Promise<void>;
   validateCredentials: (
     provider: ProviderType,
-    apiKey?: string
+    apiKey?: string,
+    model?: string
   ) => Promise<ProviderValidationResponse>;
   setConfidenceThreshold: (threshold: number) => Promise<void>;
   setOcrEnabled: (enabled: boolean) => Promise<void>;
@@ -91,8 +92,16 @@ export function useLLMSettings(): UseLLMSettingsReturn {
       setValidationStatus('validating');
 
       try {
+        // Get default model for this provider to include with validation and save.
+        const modelsResponse = await getProviderModels(provider);
+        const defaultModel = modelsResponse.default_model || modelsResponse.models[0];
+
         // Validate first
-        const validation = await validateProvider({ provider, api_key: apiKey });
+        const validation = await validateProvider({
+          provider,
+          api_key: apiKey,
+          model: defaultModel,
+        });
         setValidationMessage(validation.message);
 
         if (!validation.valid) {
@@ -101,10 +110,6 @@ export function useLLMSettings(): UseLLMSettingsReturn {
         }
 
         setValidationStatus('valid');
-
-        // Get default model for this provider to include with the save
-        const modelsResponse = await getProviderModels(provider);
-        const defaultModel = modelsResponse.default_model || modelsResponse.models[0];
 
         // Save with provider, API key, AND default model
         const updated = await updateLLMSettings({
@@ -143,7 +148,8 @@ export function useLLMSettings(): UseLLMSettingsReturn {
   const validateCredentials = useCallback(
     async (
       provider: ProviderType,
-      apiKey?: string
+      apiKey?: string,
+      model?: string
     ): Promise<ProviderValidationResponse> => {
       setValidationStatus('validating');
       setValidationMessage(null);
@@ -152,6 +158,7 @@ export function useLLMSettings(): UseLLMSettingsReturn {
         const result = await validateProvider({
           provider,
           api_key: apiKey,
+          model,
         });
 
         setValidationStatus(result.valid ? 'valid' : 'invalid');

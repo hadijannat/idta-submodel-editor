@@ -72,6 +72,7 @@ class ProviderValidationRequest(BaseModel):
 
     provider: ProviderType
     api_key: str | None = Field(default=None, description="API key to validate")
+    model: str | None = Field(default=None, description="Model to validate access for")
     base_url: str | None = Field(default=None, description="Custom base URL")
 
 
@@ -204,7 +205,10 @@ async def update_llm_settings(
     # Validate API key if provided
     if request.api_key:
         is_valid, message = await _validate_provider_key(
-            provider, request.api_key, base_url
+            provider,
+            request.api_key,
+            base_url,
+            model=request.model,
         )
         if not is_valid:
             raise HTTPException(status_code=400, detail=message)
@@ -297,7 +301,10 @@ async def validate_provider(
         )
 
     is_valid, message = await _validate_provider_key(
-        request.provider, api_key, request.base_url
+        request.provider,
+        api_key,
+        request.base_url,
+        model=request.model,
     )
 
     models = get_provider_models(request.provider) if is_valid else []
@@ -356,6 +363,7 @@ async def _validate_provider_key(
     provider: ProviderType,
     api_key: str | None,
     base_url: str | None = None,
+    model: str | None = None,
 ) -> tuple[bool, str]:
     """
     Validate an API key for a provider.
@@ -370,7 +378,8 @@ async def _validate_provider_key(
         return False, "API key is required"
 
     if provider == "openai":
-        return await _validate_openai(api_key)
+        model_to_validate = model or settings_service.get_effective_model("openai")
+        return await _validate_openai(api_key, model_to_validate)
     if provider == "anthropic":
         return await _validate_anthropic(api_key)
     if provider == "openrouter":
@@ -379,7 +388,7 @@ async def _validate_provider_key(
     return False, f"Unknown provider: {provider}"
 
 
-async def _validate_openai(api_key: str) -> tuple[bool, str]:
+async def _validate_openai(api_key: str, model: str | None = None) -> tuple[bool, str]:
     """Validate OpenAI API key."""
     try:
         from openai import AsyncOpenAI
@@ -390,7 +399,15 @@ async def _validate_openai(api_key: str) -> tuple[bool, str]:
             max_retries=0,
         )
         # List models is a lightweight validation
-        await client.models.list()
+        response = await client.models.list()
+        if model:
+            available_ids = {
+                item.id
+                for item in getattr(response, "data", response)
+                if getattr(item, "id", None)
+            }
+            if available_ids and model not in available_ids:
+                return False, f"API key is valid, but model '{model}' is not available"
         return True, "API key is valid"
     except Exception as e:
         error_msg = str(e)

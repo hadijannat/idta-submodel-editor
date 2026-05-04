@@ -107,6 +107,16 @@ def test_env_parses_boolean_and_path_values(monkeypatch, tmp_path):
     assert settings.cache_dir == Path(cache_dir)
 
 
+def test_magic_import_openai_defaults_are_gpt55_with_bounded_retries(monkeypatch):
+    monkeypatch.delenv("MAGIC_IMPORT_LLM_MODEL", raising=False)
+    monkeypatch.delenv("MAGIC_IMPORT_LLM_MAX_RETRIES", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.magic_import_llm_model == "gpt-5.5"
+    assert settings.magic_import_llm_max_retries == 0
+
+
 def test_env_production_requires_oidc_or_explicit_insecure_override(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     monkeypatch.setenv("SECRET_KEY", "secure-secret-key-with-at-least-32-characters")
