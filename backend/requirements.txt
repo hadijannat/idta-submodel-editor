@@ -13,7 +13,7 @@ aas-test-engines>=0.3.0,<2.0.0
 
 # Authentication
 PyJWT>=2.8.0,<3.0.0
-cryptography>=46.0.5,<47.0.0
+cryptography>=47.0.0,<48.0.0
 
 # PDF generation (optional)
 # Keep >=68.0 to include upstream CVE-2025-68616 fix.
