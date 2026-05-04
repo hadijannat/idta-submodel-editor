@@ -510,6 +510,78 @@ jobs:
             -e CELERY_RESULT_BACKEND=redis://localhost:6379/0 \
             idta-backend:ci celery -A celery_app worker --help >/dev/null
 
+      - name: Smoke test backend worker with Redis
+        if: env.BUILD_BACKEND_IMAGE == 'true'
+        run: |
+          set -euo pipefail
+          network="idta-celery-smoke-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
+          worker_cid=""
+          redis_cid=""
+
+          cleanup() {
+            if [ -n "$worker_cid" ]; then
+              docker logs "$worker_cid" || true
+            fi
+            docker rm -f "$worker_cid" "$redis_cid" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create "$network" >/dev/null
+          redis_cid=$(docker run -d --network "$network" --network-alias redis redis:7-alpine)
+          for _ in {1..30}; do
+            if docker exec "$redis_cid" redis-cli ping | grep -q PONG; then
+              break
+            fi
+            sleep 1
+          done
+          if ! docker exec "$redis_cid" redis-cli ping | grep -q PONG; then
+            echo "redis did not become ready for celery smoke test"
+            exit 1
+          fi
+
+          worker_cid=$(docker run -d --network "$network" \
+            -e SECRET_KEY=ci-smoke-test-secret-key-at-least-thirty-two-characters \
+            -e ALLOW_INSECURE_PROD_AUTH=true \
+            -e CELERY_BROKER_URL=redis://redis:6379/0 \
+            -e CELERY_RESULT_BACKEND=redis://redis:6379/0 \
+            idta-backend:ci celery -A celery_app worker --loglevel=info --concurrency=1)
+          worker_ready=false
+          for _ in {1..30}; do
+            if [ "$(docker inspect -f '{{.State.Running}}' "$worker_cid")" != "true" ]; then
+              echo "celery worker exited before readiness checks completed"
+              exit 1
+            fi
+            if docker run --rm --network "$network" \
+              -e SECRET_KEY=ci-smoke-test-secret-key-at-least-thirty-two-characters \
+              -e ALLOW_INSECURE_PROD_AUTH=true \
+              -e CELERY_BROKER_URL=redis://redis:6379/0 \
+              -e CELERY_RESULT_BACKEND=redis://redis:6379/0 \
+              idta-backend:ci celery -A celery_app inspect ping --timeout=2 >/dev/null 2>&1; then
+              worker_ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$worker_ready" != "true" ]; then
+            echo "celery worker did not answer inspect ping in time"
+            exit 1
+          fi
+
+          docker run --rm -i --network "$network" \
+            -e SECRET_KEY=ci-smoke-test-secret-key-at-least-thirty-two-characters \
+            -e ALLOW_INSECURE_PROD_AUTH=true \
+            -e CELERY_BROKER_URL=redis://redis:6379/0 \
+            -e CELERY_RESULT_BACKEND=redis://redis:6379/0 \
+            idta-backend:ci python - <<'PY'
+          from celery_app import celery_app
+
+          result = celery_app.send_task("magic_import.health_check")
+          payload = result.get(timeout=20)
+          assert payload["status"] == "healthy", payload
+          print(payload)
+          PY
+
       - name: Build frontend image
         if: env.BUILD_FRONTEND_IMAGE == 'true'
         run: docker build -t idta-frontend:ci --build-arg VITE_API_URL=http://localhost:8000 ./frontend
