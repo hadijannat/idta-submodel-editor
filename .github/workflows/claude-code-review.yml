@@ -36,7 +36,7 @@ jobs:
       - name: Run Claude Code Review (attempt 1)
         id: claude-review-attempt-1
         continue-on-error: true
-        uses: anthropics/claude-code-action@567fe954a4527e81f132d87d1bdbcc94f7737434
+        uses: anthropics/claude-code-action@fefa07e9c665b7320f08c3b525980457f22f58aa
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
@@ -50,7 +50,7 @@ jobs:
         id: claude-review-attempt-2
         if: steps.claude-review-attempt-1.outcome == 'failure'
         continue-on-error: true
-        uses: anthropics/claude-code-action@567fe954a4527e81f132d87d1bdbcc94f7737434
+        uses: anthropics/claude-code-action@fefa07e9c665b7320f08c3b525980457f22f58aa
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
