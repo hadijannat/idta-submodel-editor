@@ -10,10 +10,12 @@ Requires:
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import subprocess
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx as aasx_adapter, json as aas_json
@@ -158,6 +160,39 @@ def build_element(schema: dict):
 # ---------------------------
 
 
+def _value_reference_pair_sort_key(pair: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
+    keys = pair.get("valueId", {}).get("keys", [])
+    key_values = tuple(
+        f"{key.get('type', '')}:{key.get('value', '')}"
+        for key in keys
+        if isinstance(key, dict)
+    )
+    return str(pair.get("value", "")), key_values
+
+
+def normalize_fixture_json(data: Any) -> Any:
+    if isinstance(data, dict):
+        normalized = {
+            key: normalize_fixture_json(value)
+            for key, value in data.items()
+        }
+        pairs = normalized.get("valueReferencePairs")
+        if isinstance(pairs, list):
+            normalized["valueReferencePairs"] = sorted(
+                pairs,
+                key=_value_reference_pair_sort_key,
+            )
+        return normalized
+    if isinstance(data, list):
+        return [normalize_fixture_json(item) for item in data]
+    return data
+
+
+def write_normalized_fixture_json(raw_json: str, output_path: Path) -> None:
+    normalized = normalize_fixture_json(json.loads(raw_json))
+    output_path.write_text(json.dumps(normalized), encoding="utf-8")
+
+
 def write_json_from_aasx(aasx_bytes: bytes, output_path: Path) -> None:
     object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
     file_store = aasx_adapter.DictSupplementaryFileContainer()
@@ -166,7 +201,10 @@ def write_json_from_aasx(aasx_bytes: bytes, output_path: Path) -> None:
 
     json_buffer = BytesIO()
     aas_json.write_aas_json_file(json_buffer, object_store)
-    output_path.write_bytes(json_buffer.getvalue())
+    write_normalized_fixture_json(
+        json_buffer.getvalue().decode("utf-8"),
+        output_path,
+    )
 
 
 async def generate_digital_nameplate_filled(
@@ -191,9 +229,9 @@ async def generate_digital_nameplate_filled(
     aasx_path.write_bytes(hydrated_aasx)
 
     json_path = OUTPUT_JSON / "digital-nameplate-filled.json"
-    json_path.write_text(
+    write_normalized_fixture_json(
         hydrator.hydrate_to_json(aasx_bytes, form_data),
-        encoding="utf-8",
+        json_path,
     )
 
 
@@ -230,9 +268,9 @@ async def generate_carbon_footprint_filled(
     aasx_path.write_bytes(hydrated_aasx)
 
     json_path = OUTPUT_JSON / "carbon-footprint-filled.json"
-    json_path.write_text(
+    write_normalized_fixture_json(
         hydrator.hydrate_to_json(aasx_bytes, form_data),
-        encoding="utf-8",
+        json_path,
     )
 
 
