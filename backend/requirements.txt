@@ -1,5 +1,8 @@
 # Core web framework
-fastapi>=0.109.0,<1.0.0
+fastapi>=0.136.1,<1.0.0
+# FastAPI 0.136.x only declares a lower bound; keep Starlette below 1.x until
+# middleware and instrumentation compatibility are validated for that line.
+starlette>=0.52.1,<1.0.0
 uvicorn[standard]>=0.27.0,<1.0.0
 pydantic>=2.5.0,<3.0.0
 pydantic-settings>=2.14.0,<3.0.0
@@ -13,7 +16,7 @@ aas-test-engines>=0.3.0,<2.0.0
 
 # Authentication
 PyJWT>=2.8.0,<3.0.0
-cryptography>=46.0.5,<47.0.0
+cryptography>=47.0.0,<48.0.0
 
 # PDF generation (optional)
 # Keep >=68.0 to include upstream CVE-2025-68616 fix.
@@ -29,7 +32,7 @@ python-multipart>=0.0.6,<1.0.0
 openpyxl>=3.1.2,<4.0.0
 
 # Testing
-pytest>=7.4.0,<10.0.0
+pytest>=9.0.3,<10.0.0
 pytest-asyncio>=0.23.0,<2.0.0
 pytest-cov>=4.1.0,<8.0.0
 httpx>=0.28.1,<0.29.0
@@ -52,7 +55,7 @@ anthropic>=0.97.0,<1.0.0
 rapidfuzz>=3.6.0,<4.0.0
 
 # Magic Import - Background Processing
-celery[redis]>=5.3.0,<6.0.0
+celery[redis]>=5.6.3,<6.0.0
 redis>=5.0.0,<8.0.0
 
 # Observability - Prometheus metrics
