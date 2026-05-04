@@ -1,5 +1,5 @@
 # Core web framework
-fastapi>=0.109.0,<1.0.0
+fastapi>=0.136.1,<1.0.0
 uvicorn[standard]>=0.27.0,<1.0.0
 pydantic>=2.5.0,<3.0.0
 pydantic-settings>=2.14.0,<3.0.0
