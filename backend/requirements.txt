@@ -4,7 +4,7 @@ fastapi>=0.136.1,<1.0.0
 # middleware and instrumentation compatibility are validated for that line.
 starlette>=0.52.1,<1.0.0
 uvicorn[standard]>=0.27.0,<1.0.0
-pydantic>=2.5.0,<3.0.0
+pydantic>=2.13.4,<3.0.0
 pydantic-settings>=2.14.0,<3.0.0
 
 # Eclipse BaSyx Python SDK for AAS handling
