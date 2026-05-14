@@ -2,7 +2,7 @@
 OpenRouter LLM provider for Magic Import.
 
 OpenRouter provides access to 100+ models through an OpenAI-compatible API,
-including Claude, GPT-4, Gemini, Llama, and more.
+including Claude, GPT-family models, Gemini, Llama, and more.
 """
 
 from __future__ import annotations

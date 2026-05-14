@@ -22,7 +22,7 @@ def test_magic_import_health_sets_celery_available_true_on_ping(monkeypatch):
     settings = Settings(
         magic_import_enabled=True,
         magic_import_llm_provider="openai",
-        magic_import_llm_model="gpt-4o-mini",
+        magic_import_llm_model="gpt-5.5",
         magic_import_ocr_enabled=True,
     )
 
@@ -50,7 +50,7 @@ def test_magic_import_health_sets_celery_available_false_on_ping_exception(monke
     settings = Settings(
         magic_import_enabled=True,
         magic_import_llm_provider="openai",
-        magic_import_llm_model="gpt-4o-mini",
+        magic_import_llm_model="gpt-5.5",
         magic_import_ocr_enabled=False,
     )
 

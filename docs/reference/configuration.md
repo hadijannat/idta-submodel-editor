@@ -80,7 +80,8 @@ Notes:
 |---|---|---|
 | `MAGIC_IMPORT_ENABLED` | Enable Magic Import APIs | `true` |
 | `MAGIC_IMPORT_LLM_PROVIDER` | Provider (`openai`, `anthropic`, `openrouter`, `local`) | `openai` |
-| `MAGIC_IMPORT_LLM_MODEL` | Active LLM model | `gpt-4o-mini` |
+| `MAGIC_IMPORT_LLM_MODEL` | Active LLM model | `gpt-5.5` |
+| `MAGIC_IMPORT_LLM_MAX_RETRIES` | LLM SDK retry attempts per request | `0` |
 | `OPENAI_API_KEY` | OpenAI API key | unset |
 | `ANTHROPIC_API_KEY` | Anthropic API key | unset |
 | `OPENROUTER_API_KEY` | OpenRouter API key | unset |

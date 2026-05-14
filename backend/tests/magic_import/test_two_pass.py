@@ -133,12 +133,12 @@ class TestLLMCandidateResponse:
                 CandidateSet(path="field2", candidates=[]),
             ],
             tokens_used=1500,
-            model="gpt-4",
+            model="gpt-5.5",
         )
 
         assert len(response.candidate_sets) == 2
         assert response.tokens_used == 1500
-        assert response.model == "gpt-4"
+        assert response.model == "gpt-5.5"
 
 
 class TestExtractorTwoPass:

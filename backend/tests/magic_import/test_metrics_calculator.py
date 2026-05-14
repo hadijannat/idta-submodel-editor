@@ -301,7 +301,7 @@ class TestMetricsCalculator:
             index=sample_index,
             tables=sample_tables,
             llm_provider="openai",
-            llm_model="gpt-4",
+            llm_model="gpt-5.5",
             llm_tokens=1500,
             llm_latency_ms=2500,
         )
@@ -309,7 +309,7 @@ class TestMetricsCalculator:
         assert metrics.job_id == "test-job"
         assert metrics.template_name == "TestTemplate"
         assert metrics.llm_provider == "openai"
-        assert metrics.llm_model == "gpt-4"
+        assert metrics.llm_model == "gpt-5.5"
         assert metrics.llm_tokens_used == 1500
         assert metrics.computed_at is not None
 
@@ -340,7 +340,7 @@ class TestMetricsCalculator:
             index=sample_index,
             tables=empty_tables,
             llm_provider="openai",
-            llm_model="gpt-4",
+            llm_model="gpt-5.5",
             llm_tokens=0,
             llm_latency_ms=0,
         )

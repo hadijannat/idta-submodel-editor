@@ -203,7 +203,7 @@ def sample_result(sample_extractions) -> MagicImportResult:
         fields_needing_review=1,
         average_confidence=0.6125,  # (0.95 + 0.85 + 0.65 + 0.0) / 4
         llm_provider="openai",
-        llm_model="gpt-4o",
+        llm_model="gpt-5.5",
         processing_time_seconds=12.5,
         llm_tokens_used=3500,
         llm_prompt_tokens=2800,
@@ -303,7 +303,7 @@ class TestAuditReportMetadata:
         assert metadata.template_status == "published"
         assert metadata.template_version == "1.0.0"
         assert metadata.llm_provider == "openai"
-        assert metadata.llm_model == "gpt-4o"
+        assert metadata.llm_model == "gpt-5.5"
         assert metadata.processing_time_seconds == 12.5
         assert metadata.llm_tokens_used == 3500
 
@@ -489,7 +489,7 @@ class TestEdgeCases:
             fields_needing_review=0,
             average_confidence=0.0,
             llm_provider="openai",
-            llm_model="gpt-4o",
+            llm_model="gpt-5.5",
             processing_time_seconds=0.5,
         )
 
@@ -524,7 +524,7 @@ class TestEdgeCases:
             fields_needing_review=0,
             average_confidence=0.95,
             llm_provider="openai",
-            llm_model="gpt-4o",
+            llm_model="gpt-5.5",
             processing_time_seconds=1.0,
         )
 
@@ -559,7 +559,7 @@ class TestEdgeCases:
             fields_needing_review=0,
             average_confidence=0.95,
             llm_provider="openai",
-            llm_model="gpt-4o",
+            llm_model="gpt-5.5",
             processing_time_seconds=1.0,
         )
 
@@ -588,7 +588,7 @@ class TestEdgeCases:
             fields_needing_review=0,
             average_confidence=0.80,
             llm_provider="openai",
-            llm_model="gpt-4o",
+            llm_model="gpt-5.5",
             processing_time_seconds=1.0,
         )
 
@@ -708,7 +708,7 @@ class TestComplianceSummary:
             fields_needing_review=0,
             average_confidence=0.4,
             llm_provider="openai",
-            llm_model="gpt-4o",
+            llm_model="gpt-5.5",
             processing_time_seconds=1.0,
         )
 
@@ -747,7 +747,7 @@ class TestComplianceSummary:
             fields_needing_review=0,
             average_confidence=0.95,
             llm_provider="openai",
-            llm_model="gpt-4o",
+            llm_model="gpt-5.5",
             processing_time_seconds=1.0,
         )
 
@@ -802,7 +802,7 @@ class TestConfidenceDistribution:
             fields_needing_review=0,
             average_confidence=0.55,
             llm_provider="openai",
-            llm_model="gpt-4o",
+            llm_model="gpt-5.5",
             processing_time_seconds=1.0,
         )
 

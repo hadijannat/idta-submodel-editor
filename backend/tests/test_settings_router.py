@@ -32,7 +32,7 @@ def mock_settings(temp_settings_dir):
     settings.openrouter_api_key = None
     settings.ollama_base_url = "http://localhost:11434"
     settings.magic_import_llm_provider = "openai"
-    settings.magic_import_llm_model = "gpt-4o-mini"
+    settings.magic_import_llm_model = "gpt-5.5"
     settings.magic_import_confidence_threshold = 0.80
     settings.magic_import_ocr_enabled = True
     settings.env = "development"
@@ -88,8 +88,8 @@ class TestGetProviderModels:
         data = response.json()
         assert data["provider"] == "openai"
         assert len(data["models"]) > 0
-        assert "gpt-4o" in data["models"]
-        assert "default_model" in data
+        assert "gpt-5.5" in data["models"]
+        assert data["default_model"] == "gpt-5.5"
 
     def test_get_anthropic_models(self, test_client):
         """Test getting Anthropic models."""
@@ -141,7 +141,7 @@ class TestSettingsService:
         """Test default model retrieval."""
         from app.services.settings_service import _get_default_model
 
-        assert _get_default_model("openai") == "gpt-4o-mini"
+        assert _get_default_model("openai") == "gpt-5.5"
         assert _get_default_model("anthropic") == "claude-3-5-sonnet-20241022"
         assert _get_default_model("openrouter") == "anthropic/claude-3.5-sonnet"
         assert _get_default_model("local") == "llama3.1:8b"
@@ -151,8 +151,8 @@ class TestSettingsService:
         from app.services.settings_service import get_provider_models
 
         openai_models = get_provider_models("openai")
-        assert "gpt-4o" in openai_models
-        assert "gpt-4o-mini" in openai_models
+        assert "gpt-5.5" in openai_models
+        assert "gpt-5.5-pro" in openai_models
 
         openrouter_models = get_provider_models("openrouter")
         assert "anthropic/claude-3.5-sonnet" in openrouter_models
@@ -224,11 +224,11 @@ class TestSettingsService:
         config = update_provider_config(
             provider="openai",
             api_key="sk-test-key",
-            model="gpt-4-turbo",
+            model="gpt-5.5-pro",
         )
 
         assert config.provider == "openai"
-        assert config.model == "gpt-4-turbo"
+        assert config.model == "gpt-5.5-pro"
         assert config.api_key_encrypted is not None
 
         # Verify we can retrieve the key
@@ -311,6 +311,8 @@ class TestValidateProvider:
         data = response.json()
         assert data["valid"] is True
         assert "valid" in data["message"].lower()
+        assert "gpt-5.5" in data["models"]
+        assert "gpt-5.5-pro" in data["models"]
 
     @patch("app.routers.settings._validate_openai")
     def test_validate_openai_failure(self, mock_validate, test_client):
@@ -384,7 +386,11 @@ class TestDirectOpenAIValidation:
         from app.routers.settings import _validate_openai
 
         mock_client = MagicMock()
-        mock_client.models = MagicMock(list=AsyncMock(return_value=[]))
+        mock_client.models = MagicMock(
+            list=AsyncMock(
+                return_value=SimpleNamespace(data=[SimpleNamespace(id="gpt-5.5")])
+            )
+        )
         mock_async_openai = MagicMock(return_value=mock_client)
 
         monkeypatch.setitem(
@@ -393,7 +399,7 @@ class TestDirectOpenAIValidation:
             SimpleNamespace(AsyncOpenAI=mock_async_openai),
         )
 
-        valid, message = await _validate_openai("sk-test-key")
+        valid, message = await _validate_openai("sk-test-key", model="gpt-5.5")
 
         assert valid is True
         assert "valid" in message.lower()
@@ -403,6 +409,31 @@ class TestDirectOpenAIValidation:
             max_retries=0,
         )
         mock_client.models.list.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_validate_openai_rejects_unavailable_model(self, monkeypatch):
+        """Ensure validation fails when the selected OpenAI model is unavailable."""
+        from app.routers.settings import _validate_openai
+
+        mock_client = MagicMock()
+        mock_client.models = MagicMock(
+            list=AsyncMock(
+                return_value=SimpleNamespace(data=[SimpleNamespace(id="gpt-4o")])
+            )
+        )
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        monkeypatch.setitem(
+            sys.modules,
+            "openai",
+            SimpleNamespace(AsyncOpenAI=mock_async_openai),
+        )
+
+        valid, message = await _validate_openai("sk-test-key", model="gpt-5.5")
+
+        assert valid is False
+        assert "gpt-5.5" in message
+        assert "not available" in message
 
     @pytest.mark.asyncio
     async def test_validate_openai_maps_unauthorized_error(self, monkeypatch):
@@ -616,7 +647,7 @@ class TestDeleteApiKey:
         # First, create a key
         from app.services.settings_service import update_provider_config
 
-        update_provider_config("openai", api_key="sk-to-delete", model="gpt-4o")
+        update_provider_config("openai", api_key="sk-to-delete", model="gpt-5.5")
 
         # Now delete it
         response = test_client.delete("/api/settings/llm/api-key/openai")

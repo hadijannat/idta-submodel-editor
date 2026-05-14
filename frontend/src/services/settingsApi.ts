@@ -39,6 +39,7 @@ export interface LLMSettingsUpdate {
 export interface ProviderValidationRequest {
   provider: ProviderType;
   api_key?: string;
+  model?: string;
   base_url?: string;
 }
 
@@ -130,7 +131,7 @@ export const PROVIDERS: ProviderInfo[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'GPT-4o, GPT-4o-mini, GPT-4 Turbo',
+    description: 'GPT-5.5, GPT-5.5 Pro, GPT-5.4',
     icon: '🤖',
     requiresApiKey: true,
     docsUrl: 'https://platform.openai.com/api-keys',
@@ -146,7 +147,7 @@ export const PROVIDERS: ProviderInfo[] = [
   {
     id: 'openrouter',
     name: 'OpenRouter',
-    description: '100+ models: Claude, GPT-4, Gemini, Llama, Mistral',
+    description: '100+ models: Claude, GPT, Gemini, Llama, Mistral',
     icon: '🌐',
     requiresApiKey: true,
     docsUrl: 'https://openrouter.ai/keys',

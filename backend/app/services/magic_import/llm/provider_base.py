@@ -71,7 +71,7 @@ IMPORTANT RULES:
 5. For confidence, rate 0.0-1.0 based on how clearly the value is stated
 
 OUTPUT FORMAT:
-Return a JSON array of extractions. Each extraction must have:
+Return a JSON object with an "extractions" array. Each extraction must have:
 - "path": The field path from the hints
 - "value": The extracted value as a string
 - "evidence_quote": The EXACT text from the snippet that contains this value
@@ -79,15 +79,17 @@ Return a JSON array of extractions. Each extraction must have:
 - "reasoning": Brief explanation of why you extracted this value (optional)
 
 Example output:
-[
-  {
-    "path": "ManufacturerName",
-    "value": "Siemens AG",
-    "evidence_quote": "Manufactured by Siemens AG",
-    "confidence": 0.95,
-    "reasoning": "Clear manufacturer attribution"
-  }
-]"""
+{
+  "extractions": [
+    {
+      "path": "ManufacturerName",
+      "value": "Siemens AG",
+      "evidence_quote": "Manufactured by Siemens AG",
+      "confidence": 0.95,
+      "reasoning": "Clear manufacturer attribution"
+    }
+  ]
+}"""
 
     def build_user_prompt(
         self,
@@ -121,7 +123,7 @@ Example output:
         return f"""{hints_text}
 {snippets_text}
 
-Extract values for the target fields from the snippets above. Return ONLY a JSON array of extractions.
+Extract values for the target fields from the snippets above. Return ONLY a JSON object with an "extractions" array.
 If a field's value is not found in any snippet, do not include it in the output."""
 
     def build_response_schema(self) -> dict:
