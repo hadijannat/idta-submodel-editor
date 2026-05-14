@@ -4,7 +4,7 @@ fastapi>=0.136.1,<1.0.0
 # middleware and instrumentation compatibility are validated for that line.
 starlette>=0.52.1,<1.0.0
 uvicorn[standard]>=0.27.0,<1.0.0
-pydantic>=2.5.0,<3.0.0
+pydantic>=2.13.4,<3.0.0
 pydantic-settings>=2.14.0,<3.0.0
 
 # Eclipse BaSyx Python SDK for AAS handling
@@ -15,7 +15,7 @@ httpx>=0.28.1,<0.29.0
 aas-test-engines>=0.3.0,<2.0.0
 
 # Authentication
-PyJWT>=2.8.0,<3.0.0
+PyJWT>=2.12.1,<3.0.0
 cryptography>=47.0.0,<48.0.0
 
 # PDF generation (optional)
@@ -28,7 +28,7 @@ pydyf>=0.12.1,<0.13
 slowapi>=0.1.8,<1.0.0
 
 # Development dependencies
-python-multipart>=0.0.6,<1.0.0
+python-multipart>=0.0.28,<1.0.0
 openpyxl>=3.1.2,<4.0.0
 
 # Testing
@@ -49,10 +49,10 @@ pdfplumber>=0.11.9,<0.12.0
 
 # Magic Import - LLM Providers
 openai>=2.24.0,<3.0.0
-anthropic>=0.97.0,<1.0.0
+anthropic>=0.102.0,<1.0.0
 
 # Magic Import - Text Processing
-rapidfuzz>=3.6.0,<4.0.0
+rapidfuzz>=3.14.5,<4.0.0
 
 # Magic Import - Background Processing
 celery>=5.6.3,<6.0.0
