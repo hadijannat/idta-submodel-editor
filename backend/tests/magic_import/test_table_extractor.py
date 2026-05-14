@@ -311,6 +311,34 @@ class TestTableExtractor:
         assert len(results) == 1
         assert "Motor" in results[0][0].text
 
+    def test_search_table_for_value_fuzzy_typo(self, extractor):
+        """Test fuzzy match handles table value typos."""
+        cells = [
+            ExtractedTableCell(row=0, col=0, text="Product Name"),
+            ExtractedTableCell(row=0, col=1, text="Motor Controller XYZ-100"),
+        ]
+        table = ExtractedTable(
+            table_id="test",
+            page=0,
+            bbox=BBox(x0=0.1, y0=0.1, x1=0.9, y1=0.9),
+            rows=1,
+            cols=2,
+            cells=cells,
+            headers=[],
+            accuracy=0.95,
+            method="LATTICE",
+        )
+
+        typo_query = "Mtor Controller XYZ100"
+
+        non_fuzzy_results = extractor.search_table_for_value(table, typo_query, fuzzy=False)
+        assert non_fuzzy_results == []
+
+        fuzzy_results = extractor.search_table_for_value(table, typo_query, fuzzy=True)
+        assert len(fuzzy_results) == 1
+        assert fuzzy_results[0][0].text == "Motor Controller XYZ-100"
+        assert fuzzy_results[0][1] > 0.6
+
     def test_get_key_value_pairs(self, extractor):
         """Test extracting key-value pairs from 2-column table."""
         cells = [
