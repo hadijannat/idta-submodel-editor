@@ -28,7 +28,7 @@ pydyf>=0.12.1,<0.13
 slowapi>=0.1.8,<1.0.0
 
 # Development dependencies
-python-multipart>=0.0.28,<1.0.0
+python-multipart>=0.0.29,<1.0.0
 openpyxl>=3.1.2,<4.0.0
 
 # Testing
