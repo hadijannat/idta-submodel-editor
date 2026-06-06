@@ -32,6 +32,10 @@ from app.schemas.magic_import import (
 from app.services.magic_import.audit_report import AuditReport, AuditReportGenerator
 from app.services.magic_import.job_manager import JobManager
 from app.services.magic_import.outcome_tracker import OutcomeTracker
+from app.services.magic_import.pymupdf_guard import (
+    UnsafePyMuPDFError,
+    assert_pymupdf_allowed,
+)
 from app.utils.upload_security import FileType, UploadValidator, read_upload_file
 
 logger = logging.getLogger(__name__)
@@ -76,6 +80,21 @@ class RecordCorrectionRequest(BaseModel):
 def get_job_manager() -> JobManager:
     """Get job manager instance."""
     return JobManager()
+
+
+def _ensure_magic_import_pdf_processing_allowed(settings) -> None:
+    if not settings.magic_import_enabled:
+        raise APIError(
+            code=ErrorCode.FEATURE_DISABLED,
+            message="Magic Import is disabled",
+        )
+    try:
+        assert_pymupdf_allowed(settings)
+    except UnsafePyMuPDFError as exc:
+        raise APIError(
+            code=ErrorCode.FEATURE_DISABLED,
+            message=str(exc),
+        ) from exc
 
 
 def _estimate_snippet_tokens(snippets: list[Snippet]) -> int:
@@ -171,11 +190,7 @@ async def preview_job(
     """
     settings = get_settings()
 
-    if not settings.magic_import_enabled:
-        raise APIError(
-            code=ErrorCode.FEATURE_DISABLED,
-            message="Magic Import is disabled",
-        )
+    _ensure_magic_import_pdf_processing_allowed(settings)
 
     content = await read_upload_file(
         file,
@@ -267,11 +282,7 @@ async def create_job(
     """
     settings = get_settings()
 
-    if not settings.magic_import_enabled:
-        raise APIError(
-            code=ErrorCode.FEATURE_DISABLED,
-            message="Magic Import is disabled",
-        )
+    _ensure_magic_import_pdf_processing_allowed(settings)
 
     # Read file content with size limit
     content = await read_upload_file(
