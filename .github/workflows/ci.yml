@@ -99,9 +99,9 @@ jobs:
           from PIL import __version__ as pillow_version
 
           parts = tuple(int(token) for token in re.findall(r"\d+", pillow_version)[:3])
-          if parts < (12, 1, 1) or parts >= (13, 0, 0):
+          if parts < (12, 2, 0) or parts >= (13, 0, 0):
               raise SystemExit(
-                  f"Pillow {pillow_version} is outside the supported secure range [12.1.1, 13.0.0)"
+                  f"Pillow {pillow_version} is outside the supported secure range [12.2.0, 13.0.0)"
               )
           print(f"Using Pillow {pillow_version}")
           PY
