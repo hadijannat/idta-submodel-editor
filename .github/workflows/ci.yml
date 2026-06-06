@@ -306,6 +306,25 @@ jobs:
           npm run build
         working-directory: frontend
 
+      - name: Smoke test Vite dev server
+        run: |
+          set -euo pipefail
+          npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/vite-dev-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/vite-dev-server.log || true' EXIT
+
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:5173/ >/dev/null && \
+               curl -fsS http://127.0.0.1:5173/@vite/client >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Vite dev server did not become ready in time"
+          exit 1
+        working-directory: frontend
+
   frontend-lockfile-audit:
     runs-on: ubuntu-latest
     needs: changes
