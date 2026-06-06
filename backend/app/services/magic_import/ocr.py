@@ -20,6 +20,7 @@ from app.schemas.magic_import import (
     PDFPageInfo,
     PDFWord,
 )
+from app.services.magic_import.pymupdf_guard import assert_pymupdf_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,8 @@ class OCRProcessor:
         if not self.is_available:
             logger.warning("OCR requested but Tesseract not available")
             return index
+
+        assert_pymupdf_allowed()
 
         import fitz  # PyMuPDF
         import pytesseract
@@ -211,6 +214,8 @@ class OCRProcessor:
         """
         if not self.is_available:
             return [], 0.0
+
+        assert_pymupdf_allowed()
 
         import fitz
         import pytesseract

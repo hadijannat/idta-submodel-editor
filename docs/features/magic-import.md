@@ -94,6 +94,7 @@ Jobs progress through states: `UPLOADED` → `INDEXING` → `OCR` → `EXTRACTIN
 | `MAGIC_IMPORT_OCR_DPI` | OCR resolution | 300 |
 | `MAGIC_IMPORT_MAX_PDF_SIZE_MB` | Maximum PDF file size | 50 |
 | `MAGIC_IMPORT_JOB_TTL_HOURS` | Job retention period | 24 |
+| `MAGIC_IMPORT_ALLOW_VULNERABLE_PYMUPDF` | Allow production PDF parsing with a PyMuPDF/MuPDF build that is vulnerable or unknown; use only with an external sandbox | false |
 | `CELERY_BROKER_URL` | Redis URL for Celery broker | redis://localhost:6379/0 |
 | `CELERY_RESULT_BACKEND` | Redis URL for Celery results | redis://localhost:6379/0 |
 

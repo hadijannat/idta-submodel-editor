@@ -32,6 +32,7 @@ from app.schemas.magic_import import (
     MagicImportJob,
     MagicImportResult,
 )
+from app.services.magic_import.pymupdf_guard import assert_pymupdf_allowed
 
 if TYPE_CHECKING:
     pass
@@ -561,6 +562,8 @@ class AuditReportGenerator:
         import base64
 
         padding = 10  # points (PDF uses 72 points per inch)
+
+        assert_pymupdf_allowed()
 
         try:
             import fitz

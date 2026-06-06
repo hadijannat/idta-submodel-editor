@@ -250,6 +250,28 @@ def test_preview_endpoint_rejects_when_magic_import_disabled():
     assert exc_info.value.code == ErrorCode.FEATURE_DISABLED
 
 
+def test_preview_endpoint_blocks_vulnerable_pymupdf_in_production():
+    settings = Settings(
+        env="production",
+        secret_key="secure-secret-key-with-at-least-32-characters",
+        oidc_enabled=True,
+        magic_import_enabled=True,
+        magic_import_max_pdf_size_mb=5,
+    )
+
+    with patch("app.routers.magic_import.get_settings", return_value=settings):
+        with TestClient(_build_app()) as client:
+            with pytest.raises(APIError) as exc_info:
+                client.post(
+                    "/api/magic-import/jobs/preview",
+                    files={"file": ("datasheet.pdf", _pdf_payload(), "application/pdf")},
+                    data={"template_name": "Digital Nameplate", "template_status": "published"},
+                )
+
+    assert exc_info.value.code == ErrorCode.FEATURE_DISABLED
+    assert "PyMuPDF" in exc_info.value.message
+
+
 def test_preview_endpoint_hides_internal_errors(monkeypatch):
     settings = Settings(
         magic_import_enabled=True,
