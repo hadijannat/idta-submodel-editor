@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     magic_import_confidence_threshold: float = 0.80
     magic_import_max_pdf_size_mb: int = 50
     magic_import_job_ttl_hours: int = 24
+    magic_import_allow_vulnerable_pymupdf: bool = False
 
     # Magic Import - LLM Provider (supports openai, anthropic, openrouter, local)
     magic_import_llm_provider: Literal["openai", "anthropic", "openrouter", "local"] = "openai"

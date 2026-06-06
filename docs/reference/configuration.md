@@ -96,6 +96,7 @@ Notes:
 | `MAGIC_IMPORT_MAX_PDF_SIZE_MB` | Max PDF size | `50` |
 | `MAGIC_IMPORT_JOB_TTL_HOURS` | Job retention time | `24` |
 | `MAGIC_IMPORT_VALIDATION_MODE` | Validation mode (`warn`, `strict`, `off`) | `warn` |
+| `MAGIC_IMPORT_ALLOW_VULNERABLE_PYMUPDF` | Allow production Magic Import PDF parsing with a PyMuPDF/MuPDF build that is vulnerable or unknown; use only with an external sandbox | `false` |
 | `CELERY_BROKER_URL` | Celery broker URL | `redis://localhost:6379/0` |
 | `CELERY_RESULT_BACKEND` | Celery result backend URL | `redis://localhost:6379/0` |
 

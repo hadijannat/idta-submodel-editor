@@ -23,6 +23,7 @@ from app.schemas.magic_import import (
     PDFPageInfo,
     PDFWord,
 )
+from app.services.magic_import.pymupdf_guard import assert_pymupdf_allowed
 from app.services.magic_import.table_extractor import TableExtractor
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,8 @@ class PDFIndexer:
         Returns:
             PDFIndex with all words and page information
         """
+        assert_pymupdf_allowed()
+
         import fitz  # PyMuPDF
 
         doc = fitz.open(pdf_path)
@@ -161,6 +164,8 @@ class PDFIndexer:
 
     def get_text_for_page(self, pdf_path: Path, page_num: int) -> str:
         """Get full text content for a specific page."""
+        assert_pymupdf_allowed()
+
         import fitz
 
         doc = fitz.open(pdf_path)

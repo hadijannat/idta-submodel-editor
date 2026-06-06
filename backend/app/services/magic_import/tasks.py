@@ -105,6 +105,10 @@ def process_magic_import_job(self, job_id: str, use_two_pass: bool = True) -> di
         return {"error": "PDF file not found", "job_id": job_id}
 
     try:
+        from app.services.magic_import.pymupdf_guard import assert_pymupdf_allowed
+
+        assert_pymupdf_allowed(settings)
+
         # ================================================================
         # Step 1: Index PDF (with artifact persistence)
         # ================================================================
