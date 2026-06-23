@@ -4,7 +4,7 @@
 fastapi>=0.136.1,<0.137.0
 # FastAPI 0.136.x only declares a lower bound; keep Starlette below 1.x until
 # middleware and instrumentation compatibility are validated for that line.
-starlette>=0.52.1,<1.0.0
+starlette>=1.3.1,<2.0.0
 uvicorn[standard]>=0.27.0,<1.0.0
 pydantic>=2.13.4,<3.0.0
 pydantic-settings>=2.14.0,<3.0.0
