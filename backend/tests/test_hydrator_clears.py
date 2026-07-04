@@ -139,6 +139,20 @@ def test_hydrator_coerces_gyear_property_values():
     assert prop.value.year == 2024
 
 
+def test_hydrator_coerces_decimal_property_values():
+    hydrator = HydratorService()
+    prop = model.Property(
+        id_short="decimal",
+        value_type=model.datatypes.Decimal,
+        value=Decimal("0"),
+    )
+
+    hydrator._hydrate_property(prop, {"value": 1.0})
+
+    assert isinstance(prop.value, Decimal)
+    assert prop.value == Decimal("1.0")
+
+
 def test_hydrator_rejects_invalid_property_assignment():
     hydrator = HydratorService()
     prop = model.Property(

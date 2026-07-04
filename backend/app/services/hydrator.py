@@ -12,8 +12,10 @@ import copy
 import json
 import logging
 import base64
+from decimal import Decimal, InvalidOperation
+from importlib import import_module
 from io import BytesIO
-from typing import Any
+from typing import Any, cast
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
@@ -251,7 +253,7 @@ class HydratorService:
                 self._rewrite_reference_terminal_key(ref, old_id, new_id)
                 for ref in refs
             }
-            obj.submodel = rewritten_refs
+            obj.submodel = cast("set[model.ModelReference[model.Submodel]]", rewritten_refs)
 
     def _rewrite_reference_terminal_key(
         self,
@@ -355,7 +357,9 @@ class HydratorService:
             template_id = normalize_text(admin_data.get("templateId"))
 
             def is_numeric_token(value: str | None) -> bool:
-                return bool(value) and value.isdigit() and 1 <= len(value) <= 4
+                if value is None:
+                    return False
+                return value.isdigit() and 1 <= len(value) <= 4
 
             if version and not is_numeric_token(version):
                 logger.warning("Skipping invalid administration version: %s", version)
@@ -640,7 +644,8 @@ class HydratorService:
                 element.value.add(item)
             else:
                 # Clone template for new item or create from list type
-                if template_item:
+                new_item: model.SubmodelElement | None
+                if template_item is not None:
                     new_item = self._clone_element(template_item)
                     self._ensure_list_item_id_short(new_item)
                 else:
@@ -677,7 +682,7 @@ class HydratorService:
                 return element_type(id_short=None, value_type=value_type)
 
             if issubclass(element_type, model.MultiLanguageProperty):
-                return element_type(id_short=None, value={})
+                return element_type(id_short=None, value=None)
 
             if issubclass(element_type, model.SubmodelElementCollection):
                 return element_type(id_short=None, value=())
@@ -828,12 +833,12 @@ class HydratorService:
             if value_data["first"]:
                 element.first = self._build_reference(value_data["first"], element.first)
             else:
-                element.first = None
+                setattr(element, "first", None)
         if "second" in value_data:
             if value_data["second"]:
                 element.second = self._build_reference(value_data["second"], element.second)
             else:
-                element.second = None
+                setattr(element, "second", None)
 
     def _hydrate_annotated_relationship(
         self,
@@ -870,7 +875,14 @@ class HydratorService:
             if not number.is_integer():
                 raise ValueError(f"{value!r} is not an integer")
             return int(number)
-        if any(t in type_str for t in ["float", "double", "decimal"]):
+        if "decimal" in type_str:
+            if isinstance(value, Decimal):
+                return value
+            try:
+                return Decimal(str(value))
+            except (InvalidOperation, ValueError) as exc:
+                raise ValueError(f"{value!r} is not a decimal") from exc
+        if any(t in type_str for t in ["float", "double"]):
             return float(value)
         if "bool" in type_str:
             if isinstance(value, bool):
@@ -957,11 +969,13 @@ class HydratorService:
         """Ensure ConceptDescriptions exist for external semantic references."""
         from basyx.aas import model
 
-        existing_ids: set[str] = {
-            getattr(obj, "id", None)
-            for obj in object_store
-            if isinstance(obj, model.ConceptDescription) and getattr(obj, "id", None)
-        }
+        existing_ids: set[str] = set()
+        for obj in object_store:
+            if not isinstance(obj, model.ConceptDescription):
+                continue
+            concept_id = getattr(obj, "id", None)
+            if concept_id:
+                existing_ids.add(str(concept_id))
 
         def ensure_for_reference(semantic_ref, id_short: str | None) -> None:
             if semantic_ref is None:
@@ -980,10 +994,10 @@ class HydratorService:
                 semantic_id = keys[0].value
                 if semantic_id in existing_ids:
                     return
-                cd = model.ConceptDescription(id=semantic_id)
+                cd = model.ConceptDescription(id_=semantic_id)
                 if id_short:
                     cd.id_short = id_short
-                    cd.display_name = model.MultiLanguageTextType({"en": id_short})
+                    cd.display_name = model.MultiLanguageNameType({"en": id_short})
                 object_store.add(cd)
                 existing_ids.add(semantic_id)
 
@@ -1043,9 +1057,12 @@ class PDFExportService:
         """
         try:
             from jinja2 import Environment, FileSystemLoader
-            from weasyprint import HTML, pdf as weasy_pdf
             import inspect
-            import pydyf
+
+            weasyprint: Any = import_module("weasyprint")
+            pydyf: Any = import_module("pydyf")
+            HTML = weasyprint.HTML
+            weasy_pdf = weasyprint.pdf
         except ImportError:
             raise ImportError(
                 "PDF export requires weasyprint and jinja2. "
