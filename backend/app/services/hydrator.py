@@ -15,7 +15,7 @@ import base64
 from decimal import Decimal, InvalidOperation
 from importlib import import_module
 from io import BytesIO
-from typing import Any, cast
+from typing import Any
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
@@ -249,36 +249,28 @@ class HydratorService:
             if not isinstance(obj, model.AssetAdministrationShell):
                 continue
             refs = obj.submodel or set()
-            rewritten_refs = {
-                self._rewrite_reference_terminal_key(ref, old_id, new_id)
+            rewritten_refs: set[model.ModelReference[model.Submodel]] = {
+                self._rewrite_aas_submodel_reference(ref, old_id, new_id)
                 for ref in refs
             }
-            obj.submodel = cast("set[model.ModelReference[model.Submodel]]", rewritten_refs)
+            obj.submodel = rewritten_refs
 
-    def _rewrite_reference_terminal_key(
+    def _rewrite_aas_submodel_reference(
         self,
-        ref: model.Reference,
+        ref: model.ModelReference[model.Submodel],
         old_id: str,
         new_id: str,
-    ) -> model.Reference:
+    ) -> model.ModelReference[model.Submodel]:
         keys = list(ref.key or ())
         if not keys or keys[-1].value != old_id:
             return ref
 
         keys[-1] = model.Key(keys[-1].type, new_id)
-        key_tuple = tuple(keys)
-        if isinstance(ref, model.ModelReference):
-            return model.ModelReference(
-                key=key_tuple,
-                type_=ref.type,
-                referred_semantic_id=ref.referred_semantic_id,
-            )
-        if isinstance(ref, model.ExternalReference):
-            return model.ExternalReference(
-                key=key_tuple,
-                referred_semantic_id=ref.referred_semantic_id,
-            )
-        return ref
+        return model.ModelReference(
+            key=tuple(keys),
+            type_=ref.type,
+            referred_semantic_id=ref.referred_semantic_id,
+        )
 
     def _refresh_object_store_identity(
         self,

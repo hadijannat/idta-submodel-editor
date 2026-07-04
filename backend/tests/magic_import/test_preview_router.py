@@ -20,6 +20,7 @@ from app.routers.magic_import import (
 )
 from app.schemas.magic_import import ExtractionHint, Snippet
 from app.services.magic_import.job_manager import JobManager
+from app.services.magic_import.pymupdf_guard import UnsafePyMuPDFError
 
 
 def _build_app() -> FastAPI:
@@ -259,7 +260,13 @@ def test_preview_endpoint_blocks_vulnerable_pymupdf_in_production():
         magic_import_max_pdf_size_mb=5,
     )
 
-    with patch("app.routers.magic_import.get_settings", return_value=settings):
+    with (
+        patch("app.routers.magic_import.get_settings", return_value=settings),
+        patch(
+            "app.routers.magic_import.assert_pymupdf_allowed",
+            side_effect=UnsafePyMuPDFError("PyMuPDF build is vulnerable"),
+        ),
+    ):
         with TestClient(_build_app()) as client:
             with pytest.raises(APIError) as exc_info:
                 client.post(
