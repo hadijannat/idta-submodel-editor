@@ -113,6 +113,38 @@ def test_metadata_id_change_serializes_to_aasx_with_updated_aas_reference():
     assert _aas_submodel_reference_ids(aases[0]) == ["urn:new-submodel"]
 
 
+def test_embed_concept_descriptions_creates_external_reference_description():
+    hydrator = HydratorService()
+    semantic_ref = model.ExternalReference(
+        key=(model.Key(model.KeyTypes.GLOBAL_REFERENCE, "urn:semantic"),)
+    )
+    prop = model.Property(
+        id_short="Temperature",
+        value_type=model.datatypes.String,
+        value="25",
+        semantic_id=semantic_ref,
+    )
+    submodel = model.Submodel(
+        id_="urn:submodel",
+        id_short="TestSubmodel",
+        submodel_element=[prop],
+    )
+    object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore(
+        [submodel]
+    )
+
+    hydrator._embed_concept_descriptions(object_store, submodel)
+
+    concept_descriptions = [
+        obj for obj in object_store if isinstance(obj, model.ConceptDescription)
+    ]
+    assert [cd.id for cd in concept_descriptions] == ["urn:semantic"]
+    assert concept_descriptions[0].id_short == "Temperature"
+    assert concept_descriptions[0].display_name == model.MultiLanguageNameType(
+        {"en": "Temperature"}
+    )
+
+
 def _aas_for_submodel(submodel: model.Submodel) -> model.AssetAdministrationShell:
     return model.AssetAdministrationShell(
         id_="urn:test-aas",

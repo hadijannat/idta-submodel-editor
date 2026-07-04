@@ -139,6 +139,48 @@ def test_hydrator_coerces_gyear_property_values():
     assert prop.value.year == 2024
 
 
+def test_hydrator_coerces_decimal_property_values():
+    hydrator = HydratorService()
+    prop = model.Property(
+        id_short="decimal",
+        value_type=model.datatypes.Decimal,
+        value=Decimal("0"),
+    )
+
+    hydrator._hydrate_property(prop, {"value": 1.0})
+
+    assert isinstance(prop.value, Decimal)
+    assert prop.value == Decimal("1.0")
+
+
+def test_hydrator_preserves_decimal_property_instances():
+    hydrator = HydratorService()
+    prop = model.Property(
+        id_short="decimal",
+        value_type=model.datatypes.Decimal,
+        value=Decimal("0"),
+    )
+
+    hydrator._hydrate_property(prop, {"value": Decimal("1.23")})
+
+    assert isinstance(prop.value, Decimal)
+    assert prop.value == Decimal("1.23")
+
+
+def test_hydrator_rejects_invalid_decimal_property_values():
+    hydrator = HydratorService()
+    prop = model.Property(
+        id_short="decimal",
+        value_type=model.datatypes.Decimal,
+        value=Decimal("0"),
+    )
+
+    with pytest.raises(ValueError, match="Invalid value for property decimal"):
+        hydrator._hydrate_property(prop, {"value": "not-a-decimal"})
+
+    assert prop.value == Decimal("0")
+
+
 def test_hydrator_rejects_invalid_property_assignment():
     hydrator = HydratorService()
     prop = model.Property(
@@ -251,3 +293,21 @@ def test_hydrator_updates_readonly_list_semantic_id_field():
     )
 
     assert list_element.semantic_id_list_element is None
+
+
+def test_hydrator_creates_multilang_property_for_empty_list():
+    hydrator = HydratorService()
+    list_element = model.SubmodelElementList(
+        id_short="list",
+        type_value_list_element=model.MultiLanguageProperty,
+        value=(),
+    )
+
+    hydrator._hydrate_list(
+        list_element,
+        {"items": [{"value": {"en": "Example"}}]},
+    )
+
+    item = next(iter(list_element.value))
+    assert isinstance(item, model.MultiLanguageProperty)
+    assert item.value == model.MultiLanguageTextType({"en": "Example"})
