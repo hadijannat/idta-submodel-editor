@@ -5,7 +5,7 @@ fastapi>=0.136.1,<0.137.0
 starlette>=1.3.1,<2.0.0
 uvicorn[standard]>=0.49.0,<1.0.0
 pydantic>=2.13.4,<3.0.0
-pydantic-settings>=2.14.0,<3.0.0
+pydantic-settings>=2.14.2,<3.0.0
 
 # Eclipse BaSyx Python SDK for AAS handling
 basyx-python-sdk>=2.0.1,<3.0.0
