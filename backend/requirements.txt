@@ -49,7 +49,7 @@ pdfplumber>=0.11.10,<0.12.0
 
 # Magic Import - LLM Providers
 openai>=2.44.0,<3.0.0
-anthropic>=0.111.0,<1.0.0
+anthropic>=0.116.0,<1.0.0
 
 # Magic Import - Text Processing
 rapidfuzz>=3.14.5,<4.0.0
