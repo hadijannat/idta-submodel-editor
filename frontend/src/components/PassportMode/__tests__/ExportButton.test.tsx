@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { ExportButton } from '../ExportButton';
 import * as exportImage from '../utils/exportImage';
 
@@ -215,6 +215,30 @@ describe('ExportButton', () => {
       fireEvent.click(screen.getByRole('button'));
 
       expect(exportImage.exportToPng).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores late export results after unmount', async () => {
+      const onSuccess = vi.fn();
+      let resolveExport!: (value: exportImage.ExportResult) => void;
+      vi.mocked(exportImage.exportToPng).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveExport = resolve;
+          })
+      );
+
+      const { unmount } = render(
+        <ExportButton cardRef={mockCardRef} onExportSuccess={onSuccess} />
+      );
+
+      fireEvent.click(screen.getByRole('button'));
+      unmount();
+
+      await act(async () => {
+        resolveExport({ success: true, filename: 'late.png' });
+      });
+
+      expect(onSuccess).not.toHaveBeenCalled();
     });
   });
 

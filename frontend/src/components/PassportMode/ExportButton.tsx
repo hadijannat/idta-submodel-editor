@@ -103,6 +103,7 @@ export function ExportButton({
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(false);
 
   const supported = isExportSupported();
 
@@ -124,7 +125,13 @@ export function ExportButton({
     [clearResetTimer]
   );
 
-  useEffect(() => clearResetTimer, [clearResetTimer]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearResetTimer();
+    };
+  }, [clearResetTimer]);
 
   const handleExport = useCallback(async () => {
     if (!cardRef.current || isExporting || disabled) return;
@@ -137,6 +144,8 @@ export function ExportButton({
       const filename = getFilenameForType(passportType);
       const result = await exportToPng(cardRef.current, { filename });
 
+      if (!mountedRef.current) return;
+
       if (result.success) {
         setExportStatus('success');
         onExportSuccess?.(result.filename || filename);
@@ -148,12 +157,15 @@ export function ExportButton({
         scheduleStatusReset(3000);
       }
     } catch (err) {
+      if (!mountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : 'Export failed';
       setExportStatus('error');
       onExportError?.(errorMessage);
       scheduleStatusReset(3000);
     } finally {
-      setIsExporting(false);
+      if (mountedRef.current) {
+        setIsExporting(false);
+      }
     }
   }, [
     cardRef,
