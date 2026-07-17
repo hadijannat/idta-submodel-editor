@@ -39,7 +39,7 @@ pytest-cov>=4.1.0,<8.0.0
 httpx>=0.28.1,<0.29.0
 
 # Type checking
-mypy>=2.1.0,<3.0.0
+mypy>=2.3.0,<3.0.0
 types-PyJWT>=1.7.1
 
 # Magic Import - PDF Processing
