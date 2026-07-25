@@ -11,7 +11,6 @@ import logging
 import pprint
 
 import io
-import re
 from io import BytesIO
 from xml.parsers import expat
 
@@ -30,13 +29,6 @@ _AAS_XML_NAMESPACES = (
 )
 _EXPECTED_AAS_XML_NAMESPACE = (
     xml_deserialization.NS_AAS.removeprefix("{").removesuffix("}").encode()
-)
-_AAS_XML_NAMESPACE_DECLARATION = re.compile(
-    rb"(xmlns(?::[A-Za-z_][\w.-]*)?\s*=\s*(['\"]))"
-    + rb"("
-    + rb"|".join(re.escape(namespace) for namespace in _AAS_XML_NAMESPACES)
-    + rb")"
-    + rb"(\2)"
 )
 
 _LENIENT_LANG_STRING_MAX_LENGTH = {
@@ -163,18 +155,71 @@ class SafeAASXReader(aasx.AASXReader):
             return None
 
         root_tag = raw[root_start:root_end]
-        if _EXPECTED_AAS_XML_NAMESPACE in root_tag:
-            return None
-
-        mapped = _AAS_XML_NAMESPACE_DECLARATION.sub(
-            lambda match: (
-                match.group(1) + _EXPECTED_AAS_XML_NAMESPACE + match.group(4)
-            ),
-            root_tag,
+        position = 1
+        name_end = position
+        while (
+            name_end < len(root_tag)
+            and not chr(root_tag[name_end]).isspace()
+            and root_tag[name_end] not in (ord("/"), ord(">"))
+        ):
+            name_end += 1
+        root_name = root_tag[position:name_end]
+        namespace_attribute = (
+            b"xmlns:" + root_name.split(b":", 1)[0]
+            if b":" in root_name
+            else b"xmlns"
         )
-        if mapped == root_tag:
-            return None
-        return raw[:root_start] + mapped + raw[root_end:]
+        position = name_end
+
+        while position < len(root_tag):
+            while position < len(root_tag) and chr(root_tag[position]).isspace():
+                position += 1
+            if position >= len(root_tag) or root_tag[position] in (ord("/"), ord(">")):
+                break
+
+            attribute_start = position
+            while (
+                position < len(root_tag)
+                and not chr(root_tag[position]).isspace()
+                and root_tag[position] not in (ord("="), ord("/"), ord(">"))
+            ):
+                position += 1
+            attribute_name = root_tag[attribute_start:position]
+            while position < len(root_tag) and chr(root_tag[position]).isspace():
+                position += 1
+            if position >= len(root_tag) or root_tag[position] != ord("="):
+                return None
+            position += 1
+            while position < len(root_tag) and chr(root_tag[position]).isspace():
+                position += 1
+            if position >= len(root_tag) or root_tag[position] not in (
+                ord('"'),
+                ord("'"),
+            ):
+                return None
+
+            quote = root_tag[position]
+            value_start = position + 1
+            value_end = root_tag.find(bytes((quote,)), value_start)
+            if value_end < 0:
+                return None
+
+            if attribute_name == namespace_attribute:
+                namespace = root_tag[value_start:value_end]
+                if namespace == _EXPECTED_AAS_XML_NAMESPACE:
+                    return None
+                if namespace in _AAS_XML_NAMESPACES:
+                    mapped_tag = (
+                        root_tag[:value_start]
+                        + _EXPECTED_AAS_XML_NAMESPACE
+                        + root_tag[value_end:]
+                    )
+                    return raw[:root_start] + mapped_tag + raw[root_end:]
+                return None
+
+            position = value_end + 1
+
+        return None
 
     def _parse_aas_part(self, part_name: str, **kwargs) -> model.DictIdentifiableStore:
         settings = get_settings()

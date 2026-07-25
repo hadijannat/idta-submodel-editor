@@ -42,7 +42,10 @@ def test_namespace_mapping_does_not_rewrite_element_values():
     legacy_namespace = b"https://admin-shell.io/aas/3/0"
     raw = (
         b'<!-- xmlns="' + legacy_namespace + b'" -->'
-        b'<environment xmlns="' + legacy_namespace + b'">'
+        b"<environment "
+        b"note='xmlns=\"" + legacy_namespace + b"\"' "
+        b"decoy='https://admin-shell.io/aas/3/1' "
+        b'xmlns="' + legacy_namespace + b'">'
         b"<value>xmlns=\"" + legacy_namespace + b"\"</value>"
         b"<other><![CDATA[xmlns=\"" + legacy_namespace + b"\"]]></other>"
         b'<!-- xmlns="' + legacy_namespace + b'" -->'
@@ -53,7 +56,21 @@ def test_namespace_mapping_does_not_rewrite_element_values():
 
     assert mapped is not None
     assert b'xmlns="https://admin-shell.io/aas/3/1"' in mapped
-    assert mapped.count(b'xmlns="' + legacy_namespace + b'"') == 4
+    assert mapped.count(b'xmlns="' + legacy_namespace + b'"') == 5
+    assert b"decoy='https://admin-shell.io/aas/3/1'" in mapped
+
+
+def test_namespace_mapping_updates_the_prefix_bound_to_the_root():
+    raw = (
+        b"<aas:environment xmlns='urn:unrelated' "
+        b"xmlns:aas='https://admin-shell.io/aas/3/0' />"
+    )
+
+    mapped = SafeAASXReader._map_xml_namespace_to_sdk(raw)
+
+    assert mapped is not None
+    assert b"xmlns='urn:unrelated'" in mapped
+    assert b"xmlns:aas='https://admin-shell.io/aas/3/1'" in mapped
 
 
 def test_hydrated_aasx_uses_json_aas_part():
