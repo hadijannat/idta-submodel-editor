@@ -242,7 +242,7 @@ class SafeAASXReader(aasx.AASXReader):
                 kwargs["decoder"] = LenientAASFromXmlDecoder
             patched = self._map_xml_namespace_to_sdk(raw)
             if patched is not None:
-                logger.warning(
+                logger.debug(
                     "AAS namespace in %s is not native to this SDK; mapping it to %s",
                     part_name,
                     _EXPECTED_AAS_XML_NAMESPACE.decode(),
