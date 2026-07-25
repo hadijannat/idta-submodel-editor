@@ -13,6 +13,7 @@ import pprint
 import io
 import re
 from io import BytesIO
+from xml.parsers import expat
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx
@@ -125,13 +126,55 @@ class SafeAASXReader(aasx.AASXReader):
 
     @staticmethod
     def _map_xml_namespace_to_sdk(raw: bytes) -> bytes | None:
+        class _RootElementFound(Exception):
+            pass
+
+        parser = expat.ParserCreate()
+        root_start: int | None = None
+
+        def capture_root(_name, _attributes) -> None:
+            nonlocal root_start
+            root_start = parser.CurrentByteIndex
+            raise _RootElementFound
+
+        parser.StartElementHandler = capture_root
+        try:
+            parser.Parse(raw, True)
+        except _RootElementFound:
+            pass
+
+        if root_start is None:
+            return None
+
+        quote: int | None = None
+        root_end: int | None = None
+        for index in range(root_start, len(raw)):
+            byte = raw[index]
+            if quote is not None:
+                if byte == quote:
+                    quote = None
+            elif byte in (ord('"'), ord("'")):
+                quote = byte
+            elif byte == ord(">"):
+                root_end = index + 1
+                break
+
+        if root_end is None:
+            return None
+
+        root_tag = raw[root_start:root_end]
+        if _EXPECTED_AAS_XML_NAMESPACE in root_tag:
+            return None
+
         mapped = _AAS_XML_NAMESPACE_DECLARATION.sub(
             lambda match: (
                 match.group(1) + _EXPECTED_AAS_XML_NAMESPACE + match.group(4)
             ),
-            raw,
+            root_tag,
         )
-        return mapped if mapped != raw else None
+        if mapped == root_tag:
+            return None
+        return raw[:root_start] + mapped + raw[root_end:]
 
     def _parse_aas_part(self, part_name: str, **kwargs) -> model.DictIdentifiableStore:
         settings = get_settings()

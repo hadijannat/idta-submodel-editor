@@ -41,8 +41,11 @@ def test_reads_legacy_aas_30_fixture_with_basyx_21():
 def test_namespace_mapping_does_not_rewrite_element_values():
     legacy_namespace = b"https://admin-shell.io/aas/3/0"
     raw = (
+        b'<!-- xmlns="' + legacy_namespace + b'" -->'
         b'<environment xmlns="' + legacy_namespace + b'">'
-        b"<value>" + legacy_namespace + b"</value>"
+        b"<value>xmlns=\"" + legacy_namespace + b"\"</value>"
+        b"<other><![CDATA[xmlns=\"" + legacy_namespace + b"\"]]></other>"
+        b'<!-- xmlns="' + legacy_namespace + b'" -->'
         b"</environment>"
     )
 
@@ -50,7 +53,7 @@ def test_namespace_mapping_does_not_rewrite_element_values():
 
     assert mapped is not None
     assert b'xmlns="https://admin-shell.io/aas/3/1"' in mapped
-    assert b"<value>" + legacy_namespace + b"</value>" in mapped
+    assert mapped.count(b'xmlns="' + legacy_namespace + b'"') == 4
 
 
 def test_hydrated_aasx_uses_json_aas_part():
