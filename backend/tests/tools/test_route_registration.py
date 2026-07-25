@@ -8,11 +8,21 @@ from app.main import create_application
 from app.routers.tools import get_registry
 
 
+def _effective_routes(routes):
+    for route in routes:
+        original_router = getattr(route, "original_router", None)
+        nested_routes = getattr(original_router, "routes", None)
+        if nested_routes is None:
+            yield route
+        else:
+            yield from _effective_routes(nested_routes)
+
+
 def _route_duplicates(app) -> list[tuple[tuple[str, str], int]]:
     """Return duplicate (method, path) route entries."""
     keys = [
         (method, route.path)
-        for route in app.routes
+        for route in _effective_routes(app.routes)
         for method in (route.methods or set())
         if method in {"GET", "POST", "PUT", "PATCH", "DELETE"}
     ]
@@ -23,7 +33,7 @@ def _route_duplicates(app) -> list[tuple[tuple[str, str], int]]:
 def _route_occurrences(app, *, path: str, method: str) -> int:
     return sum(
         1
-        for route in app.routes
+        for route in _effective_routes(app.routes)
         if route.path == path and method in (route.methods or set())
     )
 
