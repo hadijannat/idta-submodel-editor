@@ -23,6 +23,7 @@ from basyx.aas.adapter import aasx as aasx_adapter, json as aas_json
 from app.services.fetcher import TemplateFetcherService
 from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
+from app.utils.aasx_reader import SafeAASXReader
 
 OUTPUT_DIR = Path(__file__).resolve().parent
 OUTPUT_AASX = OUTPUT_DIR / "aasx"
@@ -196,7 +197,7 @@ def write_normalized_fixture_json(raw_json: str, output_path: Path) -> None:
 def write_json_from_aasx(aasx_bytes: bytes, output_path: Path) -> None:
     object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
     file_store = aasx_adapter.DictSupplementaryFileContainer()
-    with aasx_adapter.AASXReader(BytesIO(aasx_bytes)) as reader:
+    with SafeAASXReader(BytesIO(aasx_bytes)) as reader:
         reader.read_into(object_store, file_store)
 
     json_buffer = BytesIO()

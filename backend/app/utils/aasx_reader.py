@@ -11,17 +11,32 @@ import logging
 import pprint
 
 import io
+import re
 from io import BytesIO
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 from basyx.aas.adapter.json import json_deserialization, read_aas_json_file
 from basyx.aas.adapter.xml import xml_deserialization, read_aas_xml_file
-from basyx.aas.util import traversal
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_AAS_XML_NAMESPACES = (
+    b"https://admin-shell.io/aas/3/0",
+    b"https://admin-shell.io/aas/3/1",
+)
+_EXPECTED_AAS_XML_NAMESPACE = (
+    xml_deserialization.NS_AAS.removeprefix("{").removesuffix("}").encode()
+)
+_AAS_XML_NAMESPACE_DECLARATION = re.compile(
+    rb"(xmlns(?::[A-Za-z_][\w.-]*)?\s*=\s*(['\"]))"
+    + rb"("
+    + rb"|".join(re.escape(namespace) for namespace in _AAS_XML_NAMESPACES)
+    + rb")"
+    + rb"(\2)"
+)
 
 _LENIENT_LANG_STRING_MAX_LENGTH = {
     model.MultiLanguageNameType: 64,
@@ -108,7 +123,17 @@ class LenientAASFromXmlDecoder(xml_deserialization.AASFromXmlDecoder):
 class SafeAASXReader(aasx.AASXReader):
     """AASXReader that skips missing supplementary files instead of raising."""
 
-    def _parse_aas_part(self, part_name: str, **kwargs) -> model.DictObjectStore:
+    @staticmethod
+    def _map_xml_namespace_to_sdk(raw: bytes) -> bytes | None:
+        mapped = _AAS_XML_NAMESPACE_DECLARATION.sub(
+            lambda match: (
+                match.group(1) + _EXPECTED_AAS_XML_NAMESPACE + match.group(4)
+            ),
+            raw,
+        )
+        return mapped if mapped != raw else None
+
+    def _parse_aas_part(self, part_name: str, **kwargs) -> model.DictIdentifiableStore:
         settings = get_settings()
         lenient = settings.aasx_lenient_name_types
 
@@ -125,43 +150,16 @@ class SafeAASXReader(aasx.AASXReader):
             logger.debug("Parsing AAS objects from XML stream in OPC part %s ...", part_name)
             with self.reader.open_part(part_name) as part:
                 raw = part.read()
-            try:
-                if "decoder" not in kwargs and lenient:
-                    kwargs["decoder"] = LenientAASFromXmlDecoder
-                parsed = read_aas_xml_file(BytesIO(raw), **kwargs)
-            except Exception as exc:
-                if b"https://admin-shell.io/aas/3/1" in raw and b"https://admin-shell.io/aas/3/0" not in raw:
-                    logger.warning(
-                        "Detected AAS 3.1 namespace in %s, retrying with 3.0 namespace mapping",
-                        part_name,
-                    )
-                    patched = raw.replace(
-                        b"https://admin-shell.io/aas/3/1",
-                        b"https://admin-shell.io/aas/3/0",
-                    )
-                    if "decoder" not in kwargs and lenient:
-                        kwargs["decoder"] = LenientAASFromXmlDecoder
-                    return read_aas_xml_file(BytesIO(patched), **kwargs)
-                raise exc
-
-            if (
-                not parsed
-                and b"https://admin-shell.io/aas/3/1" in raw
-                and b"https://admin-shell.io/aas/3/0" not in raw
-            ):
+            if "decoder" not in kwargs and lenient:
+                kwargs["decoder"] = LenientAASFromXmlDecoder
+            patched = self._map_xml_namespace_to_sdk(raw)
+            if patched is not None:
                 logger.warning(
-                    "Parsed no objects for %s, retrying with 3.0 namespace mapping",
+                    "AAS namespace in %s is not native to this SDK; mapping it to %s",
                     part_name,
+                    _EXPECTED_AAS_XML_NAMESPACE.decode(),
                 )
-                patched = raw.replace(
-                    b"https://admin-shell.io/aas/3/1",
-                    b"https://admin-shell.io/aas/3/0",
-                )
-                if "decoder" not in kwargs and lenient:
-                    kwargs["decoder"] = LenientAASFromXmlDecoder
-                return read_aas_xml_file(BytesIO(patched), **kwargs)
-
-            return parsed
+            return read_aas_xml_file(BytesIO(patched or raw), **kwargs)
 
         if is_json:
             logger.debug("Parsing AAS objects from JSON stream in OPC part %s ...", part_name)
@@ -178,51 +176,25 @@ class SafeAASXReader(aasx.AASXReader):
             content_type,
             extension,
         )
-        return model.DictObjectStore()
+        return model.DictIdentifiableStore()
 
-    def _collect_supplementary_files(
+    def _add_supplementary_file(
         self,
         part_name: str,
-        submodel: model.Submodel,
+        file_path: str,
         file_store: "aasx.AbstractSupplementaryFileContainer",
-    ) -> None:
-        for element in traversal.walk_submodel(submodel):
-            if not isinstance(element, model.File):
-                continue
-            if element.value is None:
-                continue
-            if element.value.startswith("//") or ":" in element.value.split("/")[0]:
-                logger.info(
-                    "Skipping supplementary file %s, since it seems to be an absolute URI or network-path URI reference",
-                    element.value,
-                )
-                continue
-
-            absolute_name = aasx.pyecma376_2.package_model.part_realpath(
-                element.value,
-                part_name,
+    ) -> str | None:
+        try:
+            return super()._add_supplementary_file(part_name, file_path, file_store)
+        except KeyError:
+            logger.warning(
+                "Supplementary file missing in AASX package: %s",
+                file_path,
             )
-            logger.debug("Reading supplementary file %s from AASX package ...", absolute_name)
-            try:
-                with self.reader.open_part(absolute_name) as part:
-                    final_name = file_store.add_file(
-                        absolute_name,
-                        part,
-                        self.reader.get_content_type(absolute_name),
-                    )
-            except KeyError:
-                logger.warning(
-                    "Supplementary file missing in AASX package: %s (referenced by %s)",
-                    absolute_name,
-                    element.value,
-                )
-                continue
-            except Exception as exc:  # pragma: no cover - defensive safety net
-                logger.warning(
-                    "Failed to read supplementary file %s: %s",
-                    absolute_name,
-                    exc,
-                )
-                continue
-
-            element.value = final_name
+        except Exception as exc:  # pragma: no cover - defensive safety net
+            logger.warning(
+                "Failed to read supplementary file %s: %s",
+                file_path,
+                exc,
+            )
+        return None
