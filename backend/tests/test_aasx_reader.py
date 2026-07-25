@@ -1,8 +1,11 @@
 from pathlib import Path
+from io import BytesIO
+from zipfile import ZipFile
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 
+from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
 from app.utils.aasx_reader import SafeAASXReader
 
@@ -48,6 +51,20 @@ def test_namespace_mapping_does_not_rewrite_element_values():
     assert mapped is not None
     assert b'xmlns="https://admin-shell.io/aas/3/1"' in mapped
     assert b"<value>" + legacy_namespace + b"</value>" in mapped
+
+
+def test_hydrated_aasx_uses_json_aas_part():
+    raw = (FIXTURES_DIR / "minimal-example.aasx").read_bytes()
+
+    hydrated = HydratorService().hydrate_submodel(raw, {"elements": {}})
+
+    with ZipFile(BytesIO(hydrated)) as package:
+        aas_parts = [
+            name for name in package.namelist() if name.endswith((".json", ".xml"))
+        ]
+    assert "aasx/data.json" in aas_parts
+    assert "aasx/data.xml" not in aas_parts
+    assert ParserService().parse_aasx_to_ui_schema(hydrated)["submodelId"]
 
 
 def test_missing_default_thumbnail_is_tolerated():
