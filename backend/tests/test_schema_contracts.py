@@ -19,6 +19,7 @@ from basyx.aas.adapter import aasx as aasx_adapter
 from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
 from app.services.validation import validate_form_data
+from app.utils.aasx_reader import SafeAASXReader
 
 
 def _json_serializer(obj: Any) -> Any:
@@ -362,7 +363,7 @@ def _inject_unknown_element(aasx_bytes: bytes) -> bytes:
     object_store: model.DictObjectStore[model.Identifiable] = model.DictObjectStore()
     file_store = aasx_adapter.DictSupplementaryFileContainer()
 
-    with aasx_adapter.AASXReader(BytesIO(aasx_bytes)) as reader:
+    with SafeAASXReader(BytesIO(aasx_bytes)) as reader:
         reader.read_into(object_store, file_store)
 
     submodel = next(

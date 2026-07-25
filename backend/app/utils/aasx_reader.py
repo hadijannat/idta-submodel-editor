@@ -12,16 +12,24 @@ import pprint
 
 import io
 from io import BytesIO
+from xml.parsers import expat
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 from basyx.aas.adapter.json import json_deserialization, read_aas_json_file
 from basyx.aas.adapter.xml import xml_deserialization, read_aas_xml_file
-from basyx.aas.util import traversal
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_AAS_XML_NAMESPACES = (
+    b"https://admin-shell.io/aas/3/0",
+    b"https://admin-shell.io/aas/3/1",
+)
+_EXPECTED_AAS_XML_NAMESPACE = (
+    xml_deserialization.NS_AAS.removeprefix("{").removesuffix("}").encode()
+)
 
 _LENIENT_LANG_STRING_MAX_LENGTH = {
     model.MultiLanguageNameType: 64,
@@ -108,7 +116,112 @@ class LenientAASFromXmlDecoder(xml_deserialization.AASFromXmlDecoder):
 class SafeAASXReader(aasx.AASXReader):
     """AASXReader that skips missing supplementary files instead of raising."""
 
-    def _parse_aas_part(self, part_name: str, **kwargs) -> model.DictObjectStore:
+    @staticmethod
+    def _map_xml_namespace_to_sdk(raw: bytes) -> bytes | None:
+        class _RootElementFound(Exception):
+            pass
+
+        parser = expat.ParserCreate()
+        root_start: int | None = None
+
+        def capture_root(_name, _attributes) -> None:
+            nonlocal root_start
+            root_start = parser.CurrentByteIndex
+            raise _RootElementFound
+
+        parser.StartElementHandler = capture_root
+        try:
+            parser.Parse(raw, True)
+        except _RootElementFound:
+            pass
+
+        if root_start is None:
+            return None
+
+        quote: int | None = None
+        root_end: int | None = None
+        for index in range(root_start, len(raw)):
+            byte = raw[index]
+            if quote is not None:
+                if byte == quote:
+                    quote = None
+            elif byte in (ord('"'), ord("'")):
+                quote = byte
+            elif byte == ord(">"):
+                root_end = index + 1
+                break
+
+        if root_end is None:
+            return None
+
+        root_tag = raw[root_start:root_end]
+        position = 1
+        name_end = position
+        while (
+            name_end < len(root_tag)
+            and not chr(root_tag[name_end]).isspace()
+            and root_tag[name_end] not in (ord("/"), ord(">"))
+        ):
+            name_end += 1
+        root_name = root_tag[position:name_end]
+        namespace_attribute = (
+            b"xmlns:" + root_name.split(b":", 1)[0]
+            if b":" in root_name
+            else b"xmlns"
+        )
+        position = name_end
+
+        while position < len(root_tag):
+            while position < len(root_tag) and chr(root_tag[position]).isspace():
+                position += 1
+            if position >= len(root_tag) or root_tag[position] in (ord("/"), ord(">")):
+                break
+
+            attribute_start = position
+            while (
+                position < len(root_tag)
+                and not chr(root_tag[position]).isspace()
+                and root_tag[position] not in (ord("="), ord("/"), ord(">"))
+            ):
+                position += 1
+            attribute_name = root_tag[attribute_start:position]
+            while position < len(root_tag) and chr(root_tag[position]).isspace():
+                position += 1
+            if position >= len(root_tag) or root_tag[position] != ord("="):
+                return None
+            position += 1
+            while position < len(root_tag) and chr(root_tag[position]).isspace():
+                position += 1
+            if position >= len(root_tag) or root_tag[position] not in (
+                ord('"'),
+                ord("'"),
+            ):
+                return None
+
+            quote = root_tag[position]
+            value_start = position + 1
+            value_end = root_tag.find(bytes((quote,)), value_start)
+            if value_end < 0:
+                return None
+
+            if attribute_name == namespace_attribute:
+                namespace = root_tag[value_start:value_end]
+                if namespace == _EXPECTED_AAS_XML_NAMESPACE:
+                    return None
+                if namespace in _AAS_XML_NAMESPACES:
+                    mapped_tag = (
+                        root_tag[:value_start]
+                        + _EXPECTED_AAS_XML_NAMESPACE
+                        + root_tag[value_end:]
+                    )
+                    return raw[:root_start] + mapped_tag + raw[root_end:]
+                return None
+
+            position = value_end + 1
+
+        return None
+
+    def _parse_aas_part(self, part_name: str, **kwargs) -> model.DictIdentifiableStore:
         settings = get_settings()
         lenient = settings.aasx_lenient_name_types
 
@@ -125,43 +238,16 @@ class SafeAASXReader(aasx.AASXReader):
             logger.debug("Parsing AAS objects from XML stream in OPC part %s ...", part_name)
             with self.reader.open_part(part_name) as part:
                 raw = part.read()
-            try:
-                if "decoder" not in kwargs and lenient:
-                    kwargs["decoder"] = LenientAASFromXmlDecoder
-                parsed = read_aas_xml_file(BytesIO(raw), **kwargs)
-            except Exception as exc:
-                if b"https://admin-shell.io/aas/3/1" in raw and b"https://admin-shell.io/aas/3/0" not in raw:
-                    logger.warning(
-                        "Detected AAS 3.1 namespace in %s, retrying with 3.0 namespace mapping",
-                        part_name,
-                    )
-                    patched = raw.replace(
-                        b"https://admin-shell.io/aas/3/1",
-                        b"https://admin-shell.io/aas/3/0",
-                    )
-                    if "decoder" not in kwargs and lenient:
-                        kwargs["decoder"] = LenientAASFromXmlDecoder
-                    return read_aas_xml_file(BytesIO(patched), **kwargs)
-                raise exc
-
-            if (
-                not parsed
-                and b"https://admin-shell.io/aas/3/1" in raw
-                and b"https://admin-shell.io/aas/3/0" not in raw
-            ):
-                logger.warning(
-                    "Parsed no objects for %s, retrying with 3.0 namespace mapping",
+            if "decoder" not in kwargs and lenient:
+                kwargs["decoder"] = LenientAASFromXmlDecoder
+            patched = self._map_xml_namespace_to_sdk(raw)
+            if patched is not None:
+                logger.debug(
+                    "AAS namespace in %s is not native to this SDK; mapping it to %s",
                     part_name,
+                    _EXPECTED_AAS_XML_NAMESPACE.decode(),
                 )
-                patched = raw.replace(
-                    b"https://admin-shell.io/aas/3/1",
-                    b"https://admin-shell.io/aas/3/0",
-                )
-                if "decoder" not in kwargs and lenient:
-                    kwargs["decoder"] = LenientAASFromXmlDecoder
-                return read_aas_xml_file(BytesIO(patched), **kwargs)
-
-            return parsed
+            return read_aas_xml_file(BytesIO(patched or raw), **kwargs)
 
         if is_json:
             logger.debug("Parsing AAS objects from JSON stream in OPC part %s ...", part_name)
@@ -178,51 +264,25 @@ class SafeAASXReader(aasx.AASXReader):
             content_type,
             extension,
         )
-        return model.DictObjectStore()
+        return model.DictIdentifiableStore()
 
-    def _collect_supplementary_files(
+    def _add_supplementary_file(
         self,
         part_name: str,
-        submodel: model.Submodel,
+        file_path: str,
         file_store: "aasx.AbstractSupplementaryFileContainer",
-    ) -> None:
-        for element in traversal.walk_submodel(submodel):
-            if not isinstance(element, model.File):
-                continue
-            if element.value is None:
-                continue
-            if element.value.startswith("//") or ":" in element.value.split("/")[0]:
-                logger.info(
-                    "Skipping supplementary file %s, since it seems to be an absolute URI or network-path URI reference",
-                    element.value,
-                )
-                continue
-
-            absolute_name = aasx.pyecma376_2.package_model.part_realpath(
-                element.value,
-                part_name,
+    ) -> str | None:
+        try:
+            return super()._add_supplementary_file(part_name, file_path, file_store)
+        except KeyError:
+            logger.warning(
+                "Supplementary file missing in AASX package: %s",
+                file_path,
             )
-            logger.debug("Reading supplementary file %s from AASX package ...", absolute_name)
-            try:
-                with self.reader.open_part(absolute_name) as part:
-                    final_name = file_store.add_file(
-                        absolute_name,
-                        part,
-                        self.reader.get_content_type(absolute_name),
-                    )
-            except KeyError:
-                logger.warning(
-                    "Supplementary file missing in AASX package: %s (referenced by %s)",
-                    absolute_name,
-                    element.value,
-                )
-                continue
-            except Exception as exc:  # pragma: no cover - defensive safety net
-                logger.warning(
-                    "Failed to read supplementary file %s: %s",
-                    absolute_name,
-                    exc,
-                )
-                continue
-
-            element.value = final_name
+        except Exception as exc:  # pragma: no cover - defensive safety net
+            logger.warning(
+                "Failed to read supplementary file %s: %s",
+                file_path,
+                exc,
+            )
+        return None

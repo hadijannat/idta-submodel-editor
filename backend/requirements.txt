@@ -7,9 +7,9 @@ uvicorn[standard]>=0.51.0,<1.0.0
 pydantic>=2.13.4,<3.0.0
 pydantic-settings>=2.14.2,<3.0.0
 
-# Eclipse BaSyx Python SDK for AAS handling. The 2.1 line changes AASX
-# parsing/traversal incompatibly with the repository's AAS 3.0 fixtures.
-basyx-python-sdk>=2.0.1,<2.1.0
+# Eclipse BaSyx Python SDK for AAS handling. SafeAASXReader adapts the 2.1
+# namespace/traversal changes so existing AAS 3.0 fixtures remain readable.
+basyx-python-sdk>=2.1.0,<2.2.0
 
 # HTTP client for GitHub API
 httpx>=0.28.1,<0.29.0

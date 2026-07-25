@@ -115,14 +115,14 @@ class HydratorService:
                     aas_ids=aas_ids,
                     object_store=object_store,
                     file_store=file_store,
-                    write_json=False,
+                    write_json=True,
                 )
             else:
                 writer.write_all_aas_objects(
-                    "/aasx/data.xml",
+                    "/aasx/data.json",
                     object_store,
                     file_store,
-                    write_json=False,
+                    write_json=True,
                 )
 
         return output.getvalue()
