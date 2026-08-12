@@ -123,12 +123,11 @@ jobs:
       - name: Verify Anthropic resolution
         run: |
           python - <<'PY'
-          import re
           from importlib.metadata import version
+          from packaging.version import Version
 
-          anthropic_version = version("anthropic")
-          parts = tuple(int(token) for token in re.findall(r"\d+", anthropic_version)[:3])
-          if parts < (0, 121, 0) or parts >= (1, 0, 0):
+          anthropic_version = Version(version("anthropic"))
+          if not Version("0.121.0") <= anthropic_version < Version("1.0.0"):
               raise SystemExit(
                   f"anthropic {anthropic_version} is outside the supported range [0.121.0, 1.0.0)"
               )
