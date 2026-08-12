@@ -120,6 +120,21 @@ jobs:
           print(f"Using cryptography {cryptography_version}")
           PY
 
+      - name: Verify Anthropic resolution
+        run: |
+          python - <<'PY'
+          import re
+          from importlib.metadata import version
+
+          anthropic_version = version("anthropic")
+          parts = tuple(int(token) for token in re.findall(r"\d+", anthropic_version)[:3])
+          if parts < (0, 121, 0) or parts >= (1, 0, 0):
+              raise SystemExit(
+                  f"anthropic {anthropic_version} is outside the supported range [0.121.0, 1.0.0)"
+              )
+          print(f"Using anthropic {anthropic_version}")
+          PY
+
       - name: Run backend tests with coverage
         run: |
           PYTHONPATH=backend pytest backend/tests \
