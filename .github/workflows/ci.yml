@@ -113,9 +113,9 @@ jobs:
           from cryptography import __version__ as cryptography_version
 
           parts = tuple(int(token) for token in re.findall(r"\d+", cryptography_version)[:3])
-          if parts < (49, 0, 0) or parts >= (50, 0, 0):
+          if parts < (50, 0, 0) or parts >= (51, 0, 0):
               raise SystemExit(
-                  f"cryptography {cryptography_version} is outside the supported secure range [49.0.0, 50.0.0)"
+                  f"cryptography {cryptography_version} is outside the supported secure range [50.0.0, 51.0.0)"
               )
           print(f"Using cryptography {cryptography_version}")
           PY
