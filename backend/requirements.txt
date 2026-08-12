@@ -61,4 +61,4 @@ redis>=7.4.0,<8.0.0
 
 # Observability - Prometheus metrics
 prometheus-client>=0.26.0,<1.0.0
-prometheus-fastapi-instrumentator>=8.0.2,<9.0.0
+prometheus-fastapi-instrumentator>=8.1.0,<9.0.0
