@@ -42,7 +42,7 @@
     "demo:magic-import": "playwright test e2e/magic-import-demo.spec.ts --headed"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.4.0",
+    "@hookform/resolvers": "^5.7.1",
     "@tanstack/react-virtual": "^3.14.9",
     "html-to-image": "^1.11.13",
     "localforage": "^1.10.0",
