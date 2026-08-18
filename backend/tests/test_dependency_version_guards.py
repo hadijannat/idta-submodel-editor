@@ -26,6 +26,7 @@ def test_anthropic_guard_accepts_stable_versions_in_supported_range() -> None:
 
 def test_anthropic_guard_rejects_prereleases_and_upper_boundary() -> None:
     _, supported_range = _declared_anthropic_specifier()
+    assert not supported_range.contains("0.121.9", prereleases=False)
     assert not supported_range.contains("0.122.0rc1", prereleases=False)
     assert not supported_range.contains("1.0.0a1", prereleases=False)
     assert not supported_range.contains("1.0.0", prereleases=False)
