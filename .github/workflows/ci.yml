@@ -127,10 +127,10 @@ jobs:
           from packaging.specifiers import SpecifierSet
 
           anthropic_version = version("anthropic")
-          supported_range = SpecifierSet(">=0.121.0,<1.0.0")
+          supported_range = SpecifierSet(">=0.122.0,<1.0.0")
           if not supported_range.contains(anthropic_version, prereleases=False):
               raise SystemExit(
-                  f"anthropic {anthropic_version} is outside the supported range [0.121.0, 1.0.0)"
+                  f"anthropic {anthropic_version} is outside the supported range [0.122.0, 1.0.0)"
               )
           print(f"Using anthropic {anthropic_version}")
           PY
