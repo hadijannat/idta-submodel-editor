@@ -391,6 +391,7 @@ class TestDirectOpenAIValidation:
                 return_value=SimpleNamespace(data=[SimpleNamespace(id="gpt-5.5")])
             )
         )
+        mock_client.close = AsyncMock()
         mock_async_openai = MagicMock(return_value=mock_client)
 
         monkeypatch.setitem(
@@ -409,6 +410,7 @@ class TestDirectOpenAIValidation:
             max_retries=0,
         )
         mock_client.models.list.assert_awaited_once()
+        mock_client.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_validate_openai_rejects_unavailable_model(self, monkeypatch):
@@ -421,6 +423,7 @@ class TestDirectOpenAIValidation:
                 return_value=SimpleNamespace(data=[SimpleNamespace(id="gpt-4o")])
             )
         )
+        mock_client.close = AsyncMock()
         mock_async_openai = MagicMock(return_value=mock_client)
 
         monkeypatch.setitem(
@@ -434,6 +437,7 @@ class TestDirectOpenAIValidation:
         assert valid is False
         assert "gpt-5.5" in message
         assert "not available" in message
+        mock_client.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_validate_openai_maps_unauthorized_error(self, monkeypatch):
@@ -444,6 +448,7 @@ class TestDirectOpenAIValidation:
         mock_client.models = MagicMock(
             list=AsyncMock(side_effect=Exception("401 Unauthorized"))
         )
+        mock_client.close = AsyncMock()
         mock_async_openai = MagicMock(return_value=mock_client)
 
         monkeypatch.setitem(
@@ -456,6 +461,7 @@ class TestDirectOpenAIValidation:
 
         assert valid is False
         assert message == "Invalid API key"
+        mock_client.close.assert_awaited_once()
 
 
 class TestDirectAnthropicValidation:

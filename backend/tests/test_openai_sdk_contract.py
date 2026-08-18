@@ -44,3 +44,6 @@ async def test_async_openai_constructs_backend_clients_and_exposes_methods() -> 
     finally:
         await client.close()
         await openrouter_client.close()
+
+    assert client.is_closed()
+    assert openrouter_client.is_closed()

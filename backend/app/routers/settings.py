@@ -398,17 +398,20 @@ async def _validate_openai(api_key: str, model: str | None = None) -> tuple[bool
             timeout=10.0,
             max_retries=0,
         )
-        # List models is a lightweight validation
-        response = await client.models.list()
-        if model:
-            available_ids = {
-                item.id
-                for item in getattr(response, "data", response)
-                if getattr(item, "id", None)
-            }
-            if available_ids and model not in available_ids:
-                return False, f"API key is valid, but model '{model}' is not available"
-        return True, "API key is valid"
+        try:
+            # List models is a lightweight validation
+            response = await client.models.list()
+            if model:
+                available_ids = {
+                    item.id
+                    for item in getattr(response, "data", response)
+                    if getattr(item, "id", None)
+                }
+                if available_ids and model not in available_ids:
+                    return False, f"API key is valid, but model '{model}' is not available"
+            return True, "API key is valid"
+        finally:
+            await client.close()
     except Exception as e:
         error_msg = str(e)
         if "401" in error_msg or "Unauthorized" in error_msg:
