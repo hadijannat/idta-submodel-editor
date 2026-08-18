@@ -208,17 +208,20 @@ class OpenRouterProvider(LLMProvider):
                 timeout=10.0,
                 max_retries=0,
             )
-            response = await client.models.list()
+            try:
+                response = await client.models.list()
 
-            models = []
-            for model in response.data:
-                models.append({
-                    "id": model.id,
-                    "name": getattr(model, "name", model.id),
-                    "context_length": getattr(model, "context_length", None),
-                })
+                models = []
+                for model in response.data:
+                    models.append({
+                        "id": model.id,
+                        "name": getattr(model, "name", model.id),
+                        "context_length": getattr(model, "context_length", None),
+                    })
 
-            return models
+                return models
+            finally:
+                await client.close()
 
         except Exception as e:
             logger.warning("Failed to list OpenRouter models: %s", e)
@@ -244,9 +247,12 @@ class OpenRouterProvider(LLMProvider):
                 timeout=10.0,
                 max_retries=0,
             )
-            # List models is a lightweight way to validate the key
-            await client.models.list()
-            return True, "API key is valid"
+            try:
+                # List models is a lightweight way to validate the key
+                await client.models.list()
+                return True, "API key is valid"
+            finally:
+                await client.close()
 
         except Exception as e:
             error_msg = str(e)

@@ -649,6 +649,7 @@ class TestOpenRouterProvider:
 
         mock_client = MagicMock()
         mock_client.models.list = AsyncMock(return_value=MagicMock())
+        mock_client.close = AsyncMock()
         mock_async_openai = MagicMock(return_value=mock_client)
 
         with patch.dict("sys.modules", {"openai": MagicMock(AsyncOpenAI=mock_async_openai)}):
@@ -663,6 +664,38 @@ class TestOpenRouterProvider:
             max_retries=0,
         )
         mock_client.models.list.assert_awaited_once()
+        mock_client.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_list_models_closes_short_lived_client(self):
+        from app.services.magic_import.llm.openrouter_provider import OpenRouterProvider
+
+        mock_client = MagicMock()
+        mock_client.models.list = AsyncMock(
+            return_value=SimpleNamespace(
+                data=[
+                    SimpleNamespace(
+                        id="openai/gpt-5.5",
+                        name="GPT-5.5",
+                        context_length=128000,
+                    )
+                ]
+            )
+        )
+        mock_client.close = AsyncMock()
+        mock_async_openai = MagicMock(return_value=mock_client)
+
+        with patch.dict("sys.modules", {"openai": MagicMock(AsyncOpenAI=mock_async_openai)}):
+            models = await OpenRouterProvider.list_models("sk-or-test-key")
+
+        assert models == [
+            {
+                "id": "openai/gpt-5.5",
+                "name": "GPT-5.5",
+                "context_length": 128000,
+            }
+        ]
+        mock_client.close.assert_awaited_once()
 
     def test_parse_response_valid_json(self):
         """Test parsing valid JSON response."""

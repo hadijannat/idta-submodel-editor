@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 
 def test_async_openai_constructor_supports_openrouter_options() -> None:
     """Ensure options used by OpenRouterProvider remain supported."""
@@ -16,12 +18,32 @@ def test_async_openai_constructor_supports_openrouter_options() -> None:
     assert "default_headers" in params
 
 
-def test_async_openai_exposes_methods_used_by_backend() -> None:
-    """Ensure methods used by OpenAI and OpenRouter providers exist."""
+@pytest.mark.asyncio
+async def test_async_openai_constructs_backend_clients_and_exposes_methods() -> None:
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(api_key="test-key")
+    client = AsyncOpenAI(api_key="test-key", timeout=60.0, max_retries=2)
+    openrouter_client = AsyncOpenAI(
+        api_key="test-key",
+        base_url="https://openrouter.ai/api/v1",
+        timeout=60.0,
+        max_retries=2,
+        default_headers={
+            "HTTP-Referer": "https://idta-submodel-editor.app",
+            "X-Title": "IDTA Submodel Editor - Magic Import",
+        },
+    )
 
-    assert callable(getattr(client.models, "list", None))
-    assert callable(getattr(client.chat.completions, "create", None))
-    assert callable(getattr(client.responses, "parse", None))
+    try:
+        assert callable(getattr(client.models, "list", None))
+        assert callable(getattr(client.responses, "parse", None))
+        assert callable(getattr(openrouter_client.chat.completions, "create", None))
+        assert str(openrouter_client.base_url).rstrip("/") == (
+            "https://openrouter.ai/api/v1"
+        )
+    finally:
+        await client.close()
+        await openrouter_client.close()
+
+    assert client.is_closed()
+    assert openrouter_client.is_closed()
