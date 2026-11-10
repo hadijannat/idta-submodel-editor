@@ -63,7 +63,7 @@ Use this file to record prioritized review findings and remediation status for e
 | P2 | TR-014 | Operations | `backend/app/services/fetcher.py` | Every template fetch needed several GitHub API requests (60 per hour unauthenticated) and nothing worked without GitHub. | One tree request, downloads from raw content, index saved to disk, optional local mirror (`TEMPLATE_REPO_DIR`). | Resolved |
 | P2 | TR-015 | UX | `frontend/src/components/AASRenderer` | Labels were raw idShorts, the definition of a concept was hidden whenever an element had notes, semantic controls cluttered every field, IDTA numbers and versions were not shown. | Readable labels, definition plus notes, semantic controls behind a toggle, release information in list and configuration step. | Resolved |
 | P2 | TR-016 | Repeatable elements | `frontend/src/components/AASRenderer` | Collections and properties a template allows several times (`[0..*]`, `[1..*]`) outside of lists are rendered once and cannot be added. | — | Open |
-| P2 | TR-018 | Export | `backend/app/services/hydrator.py` | Exported AASX packages reference supplementary files by a lower-cased part name while the file is stored under its original mixed-case name (seen with Carbon Footprint 1.0.3), so `aas-test-engines` reports a relationship with a non-existing target. Present before this review. | — | Open |
+| P2 | TR-018 | Export | `backend/app/services/hydrator.py` | Exported AASX packages reference supplementary files by a lower-cased part name while the file is stored under its original mixed-case name (seen with Carbon Footprint 1.0.3), so `aas-test-engines` reports a relationship with a non-existing target. Present before this review. | The BaSyx `AASXWriter` (2.1.0 and 2.2.0) lower-cases the targets of supplementary file relationships. `ConformantAASXWriter` (`backend/app/utils/aasx_writer.py`) writes them with the names the parts are stored under; file names and `File` values keep their case. | Resolved |
 | P3 | TR-017 | Multi-submodel packages | `backend/app/services/parser.py` | A package with several submodels (MTP) is edited one submodel at a time. | — | Open |
 
 #### Verification
@@ -71,14 +71,13 @@ Use this file to record prioritized review findings and remediation status for e
 - Backend tests: `pytest backend/tests` — all pass except `test_404_returns_error_response_format`, which needs live access to the GitHub API and fails identically on the unmodified code in a sandbox without it.
 - Frontend tests: `npm run lint`, `npm run type-check`, `npm run test:unit` pass.
 - E2E/tests: `backend/scripts/audit_template_coverage.py` against a checkout of the template repository: 74 of 74 templates fetched, parsed, validated with generated required data, exported to AASX and JSON and re-parsed. Default Playwright profile on Chromium against that checkout: 114 passed, 29 skipped, 0 failed. Three page-object selectors and one assertion were adapted (exact template card match, label text, rows of virtualized lists, date picker input).
-- Conformance: exports of Digital Nameplate 3.0.3 and Technical Data 2.0.4 filled with required data pass `aas-test-engines`. Carbon Footprint 1.0.3 fails on TR-018; Contact Information 1.0.4 is not conformant as published upstream.
+- Conformance: exports of Digital Nameplate 3.0.3 and Technical Data 2.0.4 filled with required data pass `aas-test-engines`. Carbon Footprint 1.0.3 failed on TR-018; since its fix an unedited export passes and its supplementary file is preserved under its original name (regression test `backend/tests/test_hydrator_supplementary_files.py`). Contact Information 1.0.4 is not conformant as published upstream.
 - Docs: `docs/features/template-requirements.md` added; configuration, API reference, README and changelog updated.
 
 #### Follow-ups
 
 - TR-016: support adding further occurrences of repeatable collections and properties, including idShort numbering on export.
 - TR-017: let the user choose the submodel of a multi-submodel package.
-- TR-018: keep the case of supplementary file part names consistent between package content and relationships on export.
 - Specification PDFs generated from Word are read less completely than the AsciiDoc-generated ones; extraction quality per template is reported by the `specification-notes` endpoint (`matched` / `total`).
 
 ## Template

@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `xs:duration` values could not be exported
 - Packages declaring internal parts as external relationship targets could not be opened
 - List items were named after SDK placeholders that changed on every request
+- Exported AASX packages referenced supplementary files with upper-case letters in their names by a lower-cased name, so conformance checks reported a relationship with a non-existing target
 
 ## [1.0.0] - 2025-01-27
 
