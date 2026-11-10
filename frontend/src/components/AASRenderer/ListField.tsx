@@ -9,10 +9,13 @@ import React, { useState, useCallback } from 'react';
 import { useFormContext, useFieldArray, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import type { ElementFormData } from '../../types/aas-elements';
-import { getMaxItems, getMinItems } from '../../types/aas-elements';
+import { getListItemBounds } from '../../types/aas-elements';
 import SemanticChip from '../semantic/SemanticChip';
 import SemanticLookupModal from '../semantic/SemanticLookupModal';
 import { VirtualizedList } from './VirtualizedList';
+import FieldGuidance from './FieldGuidance';
+import { useFormOptions } from './FormOptionsContext';
+import { elementLabel } from '../../utils/fieldRequirements';
 
 /** Threshold above which virtualization is enabled for performance */
 const VIRTUALIZATION_THRESHOLD = 20;
@@ -50,7 +53,10 @@ function createDefaultItem(template: UIElementSchema | null): ElementFormData {
 
   switch (template.modelType) {
     case 'Property':
-      return withSemanticDefaults({ value: template.value ?? '' }, template);
+      return withSemanticDefaults(
+        { value: template.inputType === 'checkbox' ? (template.value ?? false) : '' },
+        template
+      );
 
     case 'MultiLanguageProperty':
       return withSemanticDefaults({ value: {} }, template);
@@ -141,10 +147,11 @@ export const ListField: React.FC<ListFieldProps> = ({
     name: `${path}.items` as const,
   });
 
-  const displayTitle = schema.semanticLabel || schema.idShort;
+  const { showSemantic: semanticEnabled } = useFormOptions();
+  const displayTitle = elementLabel(schema);
   const itemTemplate = schema.itemTemplate;
-  const minItems = getMinItems(schema.cardinality);
-  const maxItems = getMaxItems(schema.cardinality);
+  const itemLabel = itemTemplate ? elementLabel(itemTemplate) : 'Item';
+  const { min: minItems, max: maxItems } = getListItemBounds(schema);
   const canRemove = fields.length > minItems;
   const canAdd = maxItems === undefined || fields.length < maxItems;
 
@@ -221,7 +228,9 @@ export const ListField: React.FC<ListFieldProps> = ({
       return (
         <div key={field.id} className="aas-list-item" data-index={index}>
           <div className="aas-list-item-header">
-            <span className="aas-list-item-index">Item {index + 1}</span>
+            <span className="aas-list-item-index">
+              {itemLabel === 'Item' ? 'Item' : itemLabel} {index + 1}
+            </span>
             <div className="aas-list-item-actions">
               {schema.orderRelevant !== false && (
                 <>
@@ -276,6 +285,7 @@ export const ListField: React.FC<ListFieldProps> = ({
       minItems,
       renderItem,
       path,
+      itemLabel,
     ]
   );
 
@@ -289,6 +299,9 @@ export const ListField: React.FC<ListFieldProps> = ({
       <div className="aas-list-header">
         <span className="aas-list-title">{displayTitle}</span>
         <span className="aas-list-count">({fields.length} items)</span>
+        {schema.idShort && schema.idShort !== displayTitle && (
+          <code className="aas-id-short">{schema.idShort}</code>
+        )}
         {schema.cardinality !== '[1]' && (
           <span className="aas-cardinality">{schema.cardinality}</span>
         )}
@@ -308,20 +321,20 @@ export const ListField: React.FC<ListFieldProps> = ({
         </button>
       </div>
 
-      <div className="semantic-row">
-        <span className="aas-sublabel">List semantic</span>
-        <SemanticChip
-          semanticId={semanticIdListElement}
-          onOpen={() => setSemanticOpen(true)}
-          onClear={() =>
-            setValue(`${path}.semanticIdListElement`, null, { shouldDirty: true })
-          }
-        />
-      </div>
-
-      {schema.description?.en && (
-        <p className="aas-list-description">{schema.description.en}</p>
+      {semanticEnabled && (
+        <div className="semantic-row">
+          <span className="aas-sublabel">List semantic</span>
+          <SemanticChip
+            semanticId={semanticIdListElement}
+            onOpen={() => setSemanticOpen(true)}
+            onClear={() =>
+              setValue(`${path}.semanticIdListElement`, null, { shouldDirty: true })
+            }
+          />
+        </div>
       )}
+
+      <FieldGuidance schema={schema} path={path} hideExample />
 
       <div className="aas-list-items">
         {fields.length === 0 ? (

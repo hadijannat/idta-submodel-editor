@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import DescriptionText from './DescriptionText';
+import { useFormOptions } from './FormOptionsContext';
 import SemanticChip from '../semantic/SemanticChip';
 import SemanticLookupModal from '../semantic/SemanticLookupModal';
 
@@ -54,6 +55,7 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
 }) => {
   const { control, setValue } = useFormContext();
   const [isSemanticOpen, setSemanticOpen] = useState(false);
+  const { showSemantic: semanticEnabled } = useFormOptions();
   const basePath = path.replace(/\.value$/, '');
   const semanticId = useWatch({
     control,
@@ -63,11 +65,14 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
   return (
     <div className="aas-field aas-field-reference">
       <label className="aas-label" htmlFor={path}>
-        {label}
+        <span className="aas-label-text">{label}</span>
         {required && <span className="aas-required">*</span>}
+        {schema.idShort && schema.idShort !== label && (
+          <code className="aas-id-short">{schema.idShort}</code>
+        )}
       </label>
 
-      {showSemantic && (
+      {showSemantic && semanticEnabled && (
         <div className="semantic-row">
           <span className="aas-sublabel">Semantic</span>
           <SemanticChip
@@ -80,7 +85,7 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
         </div>
       )}
 
-      <DescriptionText description={schema.description} />
+      <DescriptionText description={schema.description} schema={schema} path={path} />
 
       <Controller
         name={path}
@@ -117,7 +122,7 @@ export const ReferenceField: React.FC<ReferenceFieldProps> = ({
         Enter a URI/IRI or IRDI (e.g., ECLASS identifier) to reference another element.
       </p>
 
-      {showSemantic && (
+      {showSemantic && semanticEnabled && (
         <SemanticLookupModal
           isOpen={isSemanticOpen}
           onClose={() => setSemanticOpen(false)}
