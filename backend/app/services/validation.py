@@ -10,6 +10,12 @@ from typing import Any
 from app.schemas.form_data import ValidationError
 from app.services.format_rules import check_format
 from app.services.template_constraints import normalize_cardinality
+from app.services.occurrences import (
+    OCCURRENCES_KEY,
+    additional_occurrences,
+    is_repeatable,
+    max_occurrences,
+)
 
 # Longest value a template-supplied regular expression is applied to. Keeps
 # pathological patterns from stalling a request.
@@ -59,8 +65,66 @@ def _validate_elements(
         elem_path = f"{path}.{id_short}" if path else id_short
         form_elem = form_elements.get(id_short)
         _validate_element(schema_elem, form_elem, errors, warnings, elem_path)
+        _validate_occurrences(schema_elem, form_elem, errors, warnings, elem_path)
 
     _validate_either_or_groups(schema_elements, form_elements, errors, path)
+
+
+def _validate_occurrences(
+    schema_elem: dict[str, Any],
+    form_elem: dict[str, Any] | None,
+    errors: list[ValidationError],
+    warnings: list[ValidationError],
+    elem_path: str,
+) -> None:
+    """Validate the further occurrences of an element against the element's schema."""
+    occurrences = additional_occurrences(form_elem)
+    if not occurrences:
+        return
+
+    cardinality = _normalize_cardinality_value(schema_elem.get("cardinality")) or "[1]"
+    if not is_repeatable(schema_elem.get("modelType"), cardinality):
+        errors.append(
+            ValidationError(
+                field=f"{elem_path}.{OCCURRENCES_KEY}",
+                message=f"'{schema_elem['idShort']}' may occur only once",
+                code="not_repeatable",
+            )
+        )
+        return
+
+    limit = max_occurrences(cardinality)
+    total = 1 + len(occurrences)
+    if limit is not None and total > limit:
+        errors.append(
+            ValidationError(
+                field=f"{elem_path}.{OCCURRENCES_KEY}",
+                message=f"At most {limit} occurrence(s) are allowed, got {total}",
+                code="max_items",
+            )
+        )
+
+    for index, occurrence in enumerate(occurrences):
+        occurrence_path = f"{elem_path}.{OCCURRENCES_KEY}[{index}]"
+        if not isinstance(occurrence, dict):
+            errors.append(
+                ValidationError(
+                    field=occurrence_path,
+                    message="An occurrence must be an object",
+                    code="invalid_occurrence",
+                )
+            )
+            continue
+        _validate_element(schema_elem, occurrence, errors, warnings, occurrence_path)
+        # Occurrences are flat: a further occurrence cannot itself carry occurrences.
+        if additional_occurrences(occurrence):
+            errors.append(
+                ValidationError(
+                    field=f"{occurrence_path}.{OCCURRENCES_KEY}",
+                    message="Occurrences cannot be nested; list them on the first one",
+                    code="invalid_occurrence",
+                )
+            )
 
 
 def _validate_either_or_groups(

@@ -88,9 +88,23 @@ interface UseSubmodelFormReturn {
 }
 
 /**
- * Generate Zod schema from UI element schema.
+ * Zod schema for an element, including the further occurrences of a
+ * repeatable element. Each occurrence is validated like the element itself.
  */
 function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
+  const elementSchema = generateSingleElementSchema(element);
+  if (!element.repeatable || !(elementSchema instanceof z.ZodObject)) {
+    return elementSchema;
+  }
+  return elementSchema.extend({
+    occurrences: z.array(elementSchema).optional(),
+  });
+}
+
+/**
+ * Generate Zod schema for one occurrence of a UI element.
+ */
+function generateSingleElementSchema(element: UIElementSchema): z.ZodTypeAny {
   const required = isRequired(element.cardinality);
   const withSemanticFields = <T extends z.ZodRawShape>(schema: z.ZodObject<T>) =>
     schema.extend({

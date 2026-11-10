@@ -90,6 +90,11 @@ export interface UIElementSchema {
   qualifiers: QualifierSchema[];
   cardinality: string;
   category: string | null;
+  /**
+   * The element may occur more than once next to its siblings. Further
+   * occurrences are kept in the element's `occurrences` array in form data.
+   */
+  repeatable?: boolean;
 
   // Requirements declared by the template (qualifiers / IEC 61360)
   exampleValues?: string[] | null;

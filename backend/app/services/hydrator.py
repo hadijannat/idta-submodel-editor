@@ -22,6 +22,13 @@ from typing import Any, Literal
 from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
 
+from app.services.occurrences import (
+    additional_occurrences,
+    is_repeatable,
+    max_occurrences,
+    occurrence_id_shorts,
+)
+from app.services.parser import ParserService
 from app.utils.aas_json_output import NormalizingAASXWriter, normalize_aas_json
 from app.utils.aasx_reader import SafeAASXReader
 from app.config import get_settings
@@ -598,13 +605,74 @@ class HydratorService:
         else:
             iterable = list(elements)
 
+        taken = {element.id_short for element in iterable if element.id_short}
+        ordered: list[model.SubmodelElement] = []
+        added = False
+
         for element in iterable:
+            ordered.append(element)
             id_short = element.id_short
             if id_short not in form_values:
                 continue
 
             value_data = form_values[id_short]
+            occurrences = self._occurrences_to_add(element, value_data)
+            # Copy the untouched template element before values go into it,
+            # and blank it: like a new list item, a further occurrence never
+            # inherits the template's example values.
+            pristine = None
+            if occurrences:
+                pristine = self._clone_element(element)
+                self._clear_values(pristine)
+
             self._hydrate_single_element(element, value_data)
+
+            if pristine is None:
+                continue
+            names = occurrence_id_shorts(id_short, len(occurrences), taken)
+            for name, occurrence_data in zip(names, occurrences):
+                occurrence = self._clone_element(pristine)
+                occurrence.id_short = name
+                taken.add(name)
+                self._hydrate_single_element(occurrence, occurrence_data)
+                ordered.append(occurrence)
+                added = True
+
+        if added:
+            # Keep each occurrence next to the element it repeats.
+            elements.clear()
+            for element in ordered:
+                elements.add(element)
+
+    def _occurrences_to_add(
+        self,
+        element: model.SubmodelElement,
+        value_data: Any,
+    ) -> list[dict[str, Any]]:
+        """
+        The further occurrences to create for ``element``.
+
+        Raises ``ValueError`` when the form asks for more occurrences than the
+        template allows; a silently shortened export would lose user data.
+        """
+        occurrences = [
+            occurrence
+            for occurrence in additional_occurrences(value_data)
+            if isinstance(occurrence, dict)
+        ]
+        if not occurrences:
+            return []
+
+        cardinality = ParserService()._extract_cardinality(element)
+        if not is_repeatable(type(element).__name__, cardinality):
+            raise ValueError(f"Element {element.id_short} may occur only once")
+        limit = max_occurrences(cardinality)
+        if limit is not None and 1 + len(occurrences) > limit:
+            raise ValueError(
+                f"Element {element.id_short} may occur at most {limit} time(s), "
+                f"got {1 + len(occurrences)}"
+            )
+        return occurrences
 
     def _hydrate_single_element(
         self,

@@ -1213,6 +1213,34 @@ body {
   padding: var(--spacing-md);
 }
 
+/* Further occurrences of a repeatable element */
+.aas-occurrences {
+  margin: var(--spacing-xs) 0 var(--spacing-md);
+}
+
+.aas-occurrence {
+  border-left: 3px solid var(--color-border);
+  margin-bottom: var(--spacing-sm);
+  padding-left: var(--spacing-sm);
+}
+
+.aas-occurrence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-xs) 0;
+}
+
+.aas-occurrence-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-light);
+}
+
+.aas-btn-add-occurrence {
+  font-size: 0.8125rem;
+}
+
 /* Virtualized list styles */
 .aas-virtualized-badge {
   font-size: 0.75rem;

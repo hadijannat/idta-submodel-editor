@@ -26,6 +26,7 @@ from app.services.template_constraints import (
     normalize_cardinality,
     qualifier_family,
 )
+from app.services.occurrences import is_repeatable
 from app.utils.semantic_resolver import (
     _resolve_concept_description,
     get_unit_from_concept_description,
@@ -208,7 +209,7 @@ class ParserService:
                 else None
             ),
             "elements": [
-                self._element_to_schema(e, object_store, semantic_index)
+                self._element_to_schema(e, object_store, semantic_index, in_container=True)
                 for e in submodel.submodel_element
             ],
             "supplementaryFiles": list(file_store),
@@ -364,6 +365,7 @@ class ParserService:
         object_store: model.DictObjectStore,
         semantic_index: SemanticIndex | None = None,
         item_id_short: str | None = None,
+        in_container: bool = False,
     ) -> dict[str, Any]:
         """
         Convert a SubmodelElement to UI schema.
@@ -374,6 +376,10 @@ class ParserService:
             element: SubmodelElement to convert
             object_store: Object store containing ConceptDescriptions
             semantic_index: Pre-built index for O(1) ConceptDescription lookups
+            in_container: Whether the element is a direct child of a submodel,
+                collection or entity. Only there can an element with a
+                "to many" cardinality be repeated as a sibling; list items
+                repeat through their list.
         """
         # Base schema applicable to all element types. In IDTA templates the
         # element description carries the specification notes ("Note: country
@@ -422,6 +428,10 @@ class ParserService:
             "cardinality": self._extract_cardinality(element),
             "category": getattr(element, "category", None),
         }
+        if in_container and is_repeatable(
+            base_schema["modelType"], base_schema["cardinality"]
+        ):
+            base_schema["repeatable"] = True
 
         constraints = extract_constraints(
             qualifiers,
@@ -607,7 +617,7 @@ class ParserService:
         """Generate schema for SubmodelElementCollection."""
         return {
             "elements": [
-                self._element_to_schema(e, object_store, semantic_index)
+                self._element_to_schema(e, object_store, semantic_index, in_container=True)
                 for e in element.value
             ],
         }
@@ -733,7 +743,7 @@ class ParserService:
                 else []
             ),
             "statements": [
-                self._element_to_schema(e, object_store, semantic_index)
+                self._element_to_schema(e, object_store, semantic_index, in_container=True)
                 for e in element.statement
             ],
         }

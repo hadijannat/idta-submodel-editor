@@ -60,6 +60,41 @@ Editable relationship references plus annotation value editing for available ann
 Rendered as read-only metadata because invocation is runtime-dependent and not part of template value hydration.
 
 
+## Repeatable Elements
+
+Many templates let an element occur several times without using a list: the
+element has a cardinality of `ZeroToMany` or `OneToMany` and every occurrence
+is a sibling with an idShort of its own. In the form such an element has an
+"Add another ..." button, and each further occurrence can be removed again.
+The first occurrence is the element itself and cannot be removed.
+
+This applies to elements directly inside the submodel, a collection or an
+entity. Items of a `SubmodelElementList` repeat through their list, and
+`Operation`, `Capability` and `BasicEventElement` are read-only.
+
+In form data the further occurrences are listed on the element:
+
+```json
+{
+  "elements": {
+    "Phone": {
+      "value": "+49 30 1234",
+      "occurrences": [{ "value": "+49 30 5678" }]
+    }
+  }
+}
+```
+
+Each occurrence has the same shape as the element and is validated like it.
+The schema marks such elements with `repeatable: true`, and `occurrences` on
+any other element is a validation error.
+
+On export every occurrence becomes a sibling right after the element. Its
+idShort continues the counter of the template (`Mode__00__` is followed by
+`Mode__01__`); an idShort without a counter gets one appended, so `Phone` is
+followed by `Phone__01__`. A new occurrence starts empty and does not inherit
+example values from the template.
+
 ## Reading Templates
 
 Published templates are read as they are, including content that the AAS

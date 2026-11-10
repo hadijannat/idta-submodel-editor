@@ -83,6 +83,13 @@ class ElementSchema(BaseModel):
     qualifiers: list[QualifierSchema] = Field(default_factory=list)
     cardinality: str = "[1]"
     category: str | None = None
+    repeatable: bool = Field(
+        default=False,
+        description=(
+            "The element may occur more than once next to its siblings. Further "
+            "occurrences are submitted in the element's `occurrences` list."
+        ),
+    )
 
     # Requirements declared by the template (qualifiers / IEC 61360)
     exampleValues: list[str] | None = None

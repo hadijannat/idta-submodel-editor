@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Specification PDF, JSON and AASX of a release can be opened from the editor
 - `TEMPLATE_REPO_DIR` serves templates from a local checkout of the template repository for offline installations
 - Fields that still hold example values from the template are marked and can be cleared at once
+- Elements that may occur several times without being a list (cardinality `ZeroToMany`/`OneToMany`) can be added and removed in the form; each further occurrence is exported as a sibling with its own idShort (`Phone`, `Phone__01__`, ...)
 - `readWarnings` on the UI schema and a notice above the form when part of a template cannot be read or a package holds more submodels than the form shows
 
 ### Fixed
