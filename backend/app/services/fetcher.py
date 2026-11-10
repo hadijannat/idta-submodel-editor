@@ -20,6 +20,7 @@ import httpx
 from app.config import get_settings
 from app.metrics import record_template_fetch, template_fetch_duration_seconds
 from app.services.template_repo import (
+    PART_SEPARATOR,
     TEMPLATE_STATUSES,
     RepoFile,
     ResolvedTemplate,
@@ -523,6 +524,21 @@ class TemplateFetcherService:
             "variants": [variant.name for variant in selected.variants],
         }
 
+    @staticmethod
+    def _to_repository_path(template_path: str, version: str | None = None) -> str:
+        """
+        Turn a template path into the directory path used in the repository:
+        part separators become folders and versions become ``3/0/2``.
+        """
+        path = template_path.strip().strip("/").replace(PART_SEPARATOR, "/")
+        segments = path.split("/")
+        if len(segments) > 2 and re.fullmatch(r"\d+(\.\d+)+", segments[-1]):
+            segments[-1] = segments[-1].replace(".", "/")
+        path = "/".join(segments)
+        if version:
+            path = f"{path}/{version.strip().strip('/').replace('.', '/')}"
+        return path
+
     def _get_blob_cache_path(self, file: RepoFile) -> Path:
         key = hashlib.md5(file.path.encode()).hexdigest()
         suffix = Path(file.name).suffix.lower() or ".bin"
@@ -813,10 +829,26 @@ class TemplateFetcherService:
 
         if not template_path.startswith("local/"):
             repo_index = await self.get_repo_index()
-            if repo_index is not None:
-                resolved = repo_index.resolve(template_path, version)
-                if resolved is None or resolved.version.aasx is None:
+            resolved = (
+                repo_index.resolve(template_path, version)
+                if repo_index is not None
+                else None
+            )
+            if repo_index is not None and (
+                resolved is None or resolved.version.aasx is None
+            ):
+                if repo_index.source == "local-mirror":
+                    # The mirror is the only source: there is nothing to fall back to.
                     raise ValueError(f"Template not found: {template_path}")
+                # The index can be incomplete (GitHub truncates very large
+                # trees) or a package can sit in a layout the index does not
+                # model. The directory search still finds those.
+                logger.info(
+                    "Template %s is not in the repository index; using directory search",
+                    template_path,
+                )
+                resolved = None
+            if resolved is not None and resolved.version.aasx is not None:
                 cache_file = self._get_blob_cache_path(resolved.version.aasx)
                 cache_hit = self._use_local_mirror() or cache_file.exists()
                 source = "local" if self._use_local_mirror() else "github"
@@ -826,8 +858,7 @@ class TemplateFetcherService:
                     time.perf_counter() - fetch_start
                 )
                 return content
-            if version:
-                template_path = f"{template_path.rstrip('/')}/{version.replace('.', '/')}"
+            template_path = self._to_repository_path(template_path, version)
 
         template_path = await self.resolve_template_path(template_path)
 

@@ -115,6 +115,12 @@ class LenientAASFromXmlDecoder(xml_deserialization.AASFromXmlDecoder):
         return object_class(collected)
 
 
+# Bounds on what the relationship repair reads into memory. Upload limits
+# apply to the compressed package only; a small archive can declare members
+# that expand to gigabytes.
+_MAX_RELS_PART_BYTES = 1024 * 1024
+_MAX_REPAIR_EXPANDED_BYTES = 512 * 1024 * 1024
+
 _EXTERNAL_INTERNAL_TARGET_RE = re.compile(
     rb"<Relationship\b[^>]*>",
     re.IGNORECASE,
@@ -147,9 +153,18 @@ def _repair_internal_relationships(package: bytes) -> bytes | None:
                     return tag
                 return re.sub(rb"\s+TargetMode\s*=\s*[\"']External[\"']", b"", tag)
 
-            for name in names:
-                if not name.lower().endswith(".rels"):
-                    continue
+            rels_members = [
+                info for info in source.infolist() if info.filename.lower().endswith(".rels")
+            ]
+            for info in rels_members:
+                if info.file_size > _MAX_RELS_PART_BYTES:
+                    raise ValueError(
+                        "Not a valid AASX file: relationship part "
+                        f"{info.filename} is too large"
+                    )
+
+            for info in rels_members:
+                name = info.filename
                 original = source.read(name)
                 if b"External" not in original:
                     continue
@@ -159,6 +174,13 @@ def _repair_internal_relationships(package: bytes) -> bytes | None:
 
             if not patched:
                 return None
+
+            expanded = sum(info.file_size for info in source.infolist())
+            if expanded > _MAX_REPAIR_EXPANDED_BYTES:
+                raise ValueError(
+                    "Not a valid AASX file: the package is too large to repair "
+                    "its relationships"
+                )
 
             output = BytesIO()
             with zipfile.ZipFile(output, "w") as target_zip:

@@ -45,6 +45,9 @@ _LABELLED_NOTE_FAMILIES = {
 }
 
 _REGEX_META_RE = re.compile(r"[\\^$*+?\[\]{}()]|\.\*|\.\+")
+# Parentheses also occur in plain enumeration entries ("kg (kilogram)"), so
+# they do not count as evidence of a regular expression in a ";" list.
+_REGEX_STRONG_META_RE = re.compile(r"[\\^$*+?\[\]{}]|\.\*|\.\+")
 
 
 def qualifier_family(qualifier_type: str | None) -> str:
@@ -145,7 +148,7 @@ def parse_allowed_value(value: str) -> tuple[list[str], str | None]:
     text = value.strip()
     if not text:
         return [], None
-    if ";" in text and not _REGEX_META_RE.search(text):
+    if ";" in text and not _REGEX_STRONG_META_RE.search(text):
         return _split_choices(text, ";"), None
     if "|" in text and not _REGEX_META_RE.search(text):
         return _split_choices(text, "|"), None

@@ -7,6 +7,7 @@ import datetime
 import zipfile
 from io import BytesIO
 
+import pytest
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 
@@ -453,6 +454,59 @@ def test_hydrator_parses_remaining_xsd_types():
     assert duration.minutes == 30
     assert hydrator._coerce_value("2024-05-06", model.datatypes.Date) == datetime.date(2024, 5, 6)
     assert hydrator._coerce_value("text", model.datatypes.String) == "text"
+
+
+def test_hydrator_keeps_large_integers_exact_and_rejects_non_integers():
+    hydrator = HydratorService()
+
+    # Above 2**53 a float round trip would change the value.
+    assert hydrator._coerce_value("12345678901234567", model.datatypes.Long) == 12345678901234567
+    assert hydrator._coerce_value(9007199254740993, model.datatypes.Integer) == 9007199254740993
+    assert hydrator._coerce_value("5.0", model.datatypes.Int) == 5
+    assert hydrator._coerce_value(" 42 ", model.datatypes.Integer) == 42
+    for bad in ("Infinity", "NaN", "1.5", "abc"):
+        with pytest.raises(ValueError):
+            hydrator._coerce_value(bad, model.datatypes.Integer)
+    # Bounded types still check their range.
+    with pytest.raises(ValueError):
+        hydrator._coerce_value("256", model.datatypes.UnsignedByte)
+
+
+def test_hydrator_accepts_time_zone_suffix_that_validation_accepts():
+    hydrator = HydratorService()
+    schema = {
+        "elements": [
+            {"idShort": "Day", "modelType": "Property", "cardinality": "[1]", "valueType": "xs:date"},
+            {"idShort": "Year", "modelType": "Property", "cardinality": "[1]", "valueType": "xs:gYear"},
+        ]
+    }
+    form = {"elements": {"Day": {"value": "2024-05-06Z"}, "Year": {"value": "2024+01:00"}}}
+
+    errors, _ = validate_form_data(schema, form)
+    assert errors == []
+    assert hydrator._coerce_value("2024-05-06Z", model.datatypes.Date) == datetime.date(2024, 5, 6)
+    assert hydrator._coerce_value("2024-05-06+01:00", model.datatypes.Date) == datetime.date(
+        2024, 5, 6
+    )
+    assert hydrator._coerce_value("2024+01:00", model.datatypes.GYear).year == 2024
+
+
+def test_reader_rejects_oversized_relationship_parts():
+    """A tiny archive must not make the repair read a huge member into memory."""
+    original = _build_aasx(_template_elements(), _concept_descriptions())
+    bomb = BytesIO()
+    with zipfile.ZipFile(BytesIO(original)) as source, zipfile.ZipFile(
+        bomb, "w", zipfile.ZIP_DEFLATED
+    ) as target:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename == "_rels/.rels":
+                data = data + b" " * (2 * 1024 * 1024)
+            target.writestr(info.filename, data)
+    assert len(bomb.getvalue()) < 200 * 1024
+
+    with pytest.raises(ValueError, match="relationship part"):
+        ParserService().parse_aasx_to_ui_schema(bomb.getvalue())
 
 
 def test_reader_repairs_internal_parts_declared_as_external():

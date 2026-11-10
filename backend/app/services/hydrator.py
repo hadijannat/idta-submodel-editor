@@ -11,6 +11,7 @@ the UI didn't render.
 import copy
 import json
 import logging
+import re
 import base64
 from decimal import Decimal, InvalidOperation
 from importlib import import_module
@@ -25,6 +26,13 @@ from app.config import get_settings
 from app.services.pcf.activity_list import ensure_activity_list_in_submodel
 
 logger = logging.getLogger(__name__)
+
+_TIMEZONE_SUFFIX_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
+
+
+def _strip_timezone_suffix(text: str) -> str:
+    """Remove the optional XSD time zone suffix of a date or year."""
+    return _TIMEZONE_SUFFIX_RE.sub("", text)
 
 
 class HydratorService:
@@ -879,8 +887,16 @@ class HydratorService:
             type_str = str(value_type).lower() if value_type else "xs:string"
 
         if any(token in type_str for token in ("int", "long", "short", "byte")):
-            number = float(value)
-            if not number.is_integer():
+            # Parse exactly: a round trip through float changes integers above
+            # 2**53 (xs:long, xs:unsignedLong) and accepts "Infinity".
+            if isinstance(value, bool):
+                number = Decimal(int(value))
+            else:
+                try:
+                    number = Decimal(str(value).strip())
+                except InvalidOperation as exc:
+                    raise ValueError(f"{value!r} is not an integer") from exc
+            if not number.is_finite() or number != number.to_integral_value():
                 raise ValueError(f"{value!r} is not an integer")
             integer = int(number)
             if isinstance(value_type, type) and value_type is not int:
@@ -916,7 +932,9 @@ class HydratorService:
 
             if isinstance(value, date):
                 return value
-            return date.fromisoformat(str(value))
+            # xs:date allows a time zone suffix ("2024-05-06Z"), which
+            # validation accepts and date.fromisoformat does not.
+            return date.fromisoformat(_strip_timezone_suffix(str(value).strip()))
         if type_str.endswith(":time") or type_str in ("time", "<class 'datetime.time'>"):
             from datetime import time
 
@@ -926,7 +944,9 @@ class HydratorService:
         if "gyear" in type_str and "gyearmonth" not in type_str:
             if isinstance(value, model.datatypes.GYear):
                 return value
-            return model.datatypes.GYear(int(str(value)))
+            return model.datatypes.GYear(
+                int(_strip_timezone_suffix(str(value).strip()))
+            )
 
         # Remaining XSD types (duration, gYearMonth, anyURI, binary types ...)
         # are parsed from their lexical form.

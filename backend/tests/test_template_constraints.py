@@ -204,3 +204,17 @@ def test_value_format_is_exposed_with_length_bound():
     assert result["valueFormatDescription"] == "up to 35 characters"
     assert result["maxLength"] == 35
     assert describe_value_format(None) is None
+
+
+def test_parenthesised_enumeration_entries_are_not_a_pattern():
+    result = extract_constraints([q("SMT/AllowedValue", "kg (kilogram);g (gram)")])
+
+    assert [option["value"] for option in result["allowedValues"]] == [
+        "kg (kilogram)",
+        "g (gram)",
+    ]
+    assert result["allowedValuesStrict"] is True
+    assert "pattern" not in result
+    # A grouped alternation is still a regular expression.
+    assert parse_allowed_value("(foo|bar)") == ([], "(foo|bar)")
+    assert parse_allowed_value(r"[A-Z]+;\d+") == ([], r"[A-Z]+;\d+")

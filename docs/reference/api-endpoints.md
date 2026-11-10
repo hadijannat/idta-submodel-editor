@@ -35,7 +35,7 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 | `GET /api/templates` | List templates (`status=published|deprecated|all`) |
 | `GET /api/templates/{template_name}` | Get template metadata |
 | `GET /api/templates/{template_name}/versions` | List releases of a template, newest first |
-| `GET /api/templates/{template_name}/documents/{kind}` | Download a document of a release (`kind=specification|json|aasx`, optional `version`) |
+| `GET /api/templates/{template_name}/documents/{kind}` | Download a document of a release (`kind=specification\|json\|aasx`, optional `version`) |
 | `POST /api/templates/refresh` | Refresh template cache |
 | `DELETE /api/templates/{template_name}/cache` | Clear cached template payload |
 

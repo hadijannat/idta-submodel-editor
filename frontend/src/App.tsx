@@ -129,16 +129,16 @@ function App() {
   }, [schema, form]);
 
   const toggleSemantic = useCallback(() => {
-    setShowSemantic((current) => {
-      const next = !current;
-      try {
-        window.localStorage.setItem('idta-editor:show-semantic', String(next));
-      } catch {
-        // Preference is not persisted when storage is unavailable.
-      }
-      return next;
-    });
+    setShowSemantic((current) => !current);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('idta-editor:show-semantic', String(showSemantic));
+    } catch {
+      // Preference is not persisted when storage is unavailable.
+    }
+  }, [showSemantic]);
 
   const templateSource = schema?.template ?? null;
   const hasSpecification = Boolean(templateSource?.documents?.specification);

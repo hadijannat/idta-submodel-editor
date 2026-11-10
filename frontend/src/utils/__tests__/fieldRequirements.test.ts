@@ -154,6 +154,15 @@ describe('requirementError', () => {
     expect(requirementError(schema, 'AB12345')).toContain('pattern');
   });
 
+  it('treats patterns anchored only at the start as full matches too', () => {
+    const schema = element({ pattern: '^[A-Z]{2}' });
+    expect(requirementError(schema, 'AB')).toBeNull();
+    expect(requirementError(schema, 'ABCD')).toContain('pattern');
+    expect(formatHintWarning({ ...countryHint, pattern: '^[A-Z]{2}', options: null }, 'DEU')).toContain(
+      'ISO 3166-1 alpha-2'
+    );
+  });
+
   it('enforces allowed ranges and value type bounds', () => {
     const schema = element({
       valueType: 'xs:unsignedByte',

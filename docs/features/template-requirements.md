@@ -153,6 +153,22 @@ git clone --depth 1 https://github.com/admin-shell-io/submodel-templates.git /sr
 TEMPLATE_REPO_DIR=/srv/submodel-templates uvicorn app.main:app
 ```
 
+With Docker Compose the checkout has to be mounted into the backend
+container and the setting has to name the path inside the container. Add a
+`docker-compose.override.yaml` next to `docker-compose.yaml`:
+
+```yaml
+services:
+  backend:
+    environment:
+      - TEMPLATE_REPO_DIR=/srv/submodel-templates
+    volumes:
+      - /path/on/host/submodel-templates:/srv/submodel-templates:ro
+```
+
+A directory without a `published` or `deprecated` folder is ignored with a
+warning in the log, and templates are loaded from GitHub instead.
+
 Without a mirror the repository layout is read with a single GitHub API
 request and files are downloaded from `raw.githubusercontent.com`, which does
 not count against the API rate limit. The layout is saved to disk and reused

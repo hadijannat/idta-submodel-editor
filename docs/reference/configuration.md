@@ -28,7 +28,7 @@ For quick local startup, use the [repository README](https://github.com/hadijann
 | `GITHUB_REPO` | Template source repository | `admin-shell-io/submodel-templates` |
 | `GITHUB_TEMPLATE_REF` | Git ref for templates | `main` |
 | `TEMPLATE_REPO_INDEX_ENABLED` | Resolve releases, template parts and companion documents from one listing of the template repository | `true` |
-| `TEMPLATE_REPO_DIR` | Local checkout of the template repository; when set, templates are served from disk and GitHub is not contacted | unset |
+| `TEMPLATE_REPO_DIR` | Local checkout of the template repository; when set, templates are served from disk and GitHub is not contacted. In a container this is the path inside the container | unset |
 | `TEMPLATE_SPEC_PDF_ENABLED` | Read notes, examples and page references from the specification PDF | `true` |
 | `CACHE_DIR` | Template cache directory | `./cache/templates` |
 | `CACHE_TTL_HOURS` | Template cache TTL | `24` |

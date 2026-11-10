@@ -339,3 +339,54 @@ async def test_directory_without_template_folders_is_not_used_as_mirror(tmp_path
 
     assert [template["name"] for template in templates] == ["Digital nameplate"]
     assert any("/git/trees/" in url for url in calls)
+
+
+@pytest.mark.asyncio
+async def test_template_missing_from_github_index_falls_back_to_directory_search(tmp_path):
+    """An incomplete index (truncated tree, unusual layout) must not hide a template."""
+    fetcher = _make_fetcher(tmp_path)
+    indexed = [f"{NAMEPLATE}/3/0/IDTA 02006-3-0_Template_Digital Nameplate.aasx"]
+    calls: list[str] = []
+
+    def handler(url: str):
+        response = MagicMock()
+        response.status_code = 200
+        response.raise_for_status = MagicMock()
+        response.headers = {}
+        if "/git/trees/" in url:
+            return _tree_response(indexed)
+        if "/contents/published/Unusual%20Layout" in url or "/contents/published/Unusual Layout" in url:
+            response.json.return_value = [
+                {
+                    "type": "file",
+                    "name": "IDTA 02998_Template_Unusual.aasx",
+                    "download_url": "https://raw.githubusercontent.com/x/y/main/unusual.aasx",
+                    "sha": "abc",
+                }
+            ]
+            return response
+        response.content = b"legacy-bytes"
+        return response
+
+    with patch(
+        "app.services.fetcher.httpx.AsyncClient",
+        side_effect=lambda *a, **k: _FakeClient(handler, calls),
+    ):
+        content = await fetcher.fetch_template_aasx("published/Unusual Layout")
+
+    assert content == b"legacy-bytes"
+    assert any("/contents/published/Unusual" in url for url in calls)
+
+
+def test_repository_path_for_directory_search():
+    to_path = TemplateFetcherService._to_repository_path
+
+    assert to_path("published/Digital nameplate") == "published/Digital nameplate"
+    assert to_path("published/Digital nameplate/3.0.2") == "published/Digital nameplate/3/0/2"
+    assert to_path("published/Digital nameplate", "3.0") == "published/Digital nameplate/3/0"
+    assert (
+        to_path("published/Digital Battery Passport~7_Circularity")
+        == "published/Digital Battery Passport/7_Circularity"
+    )
+    # A template whose name looks like a version is left alone.
+    assert to_path("published/sensor4.0") == "published/sensor4.0"

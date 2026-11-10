@@ -160,7 +160,9 @@ export function fieldPlaceholder(schema: UIElementSchema, label: string): string
 function safeRegExp(pattern: string | null | undefined): RegExp | null {
   if (!pattern) return null;
   try {
-    return new RegExp(pattern.startsWith('^') ? pattern : `^(?:${pattern})$`);
+    // Always a full match: a pattern anchored only at the start ("^[A-Z]{2}")
+    // would otherwise accept any suffix.
+    return new RegExp(`^(?:${pattern})$`);
   } catch {
     return null;
   }
