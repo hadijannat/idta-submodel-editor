@@ -103,7 +103,12 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
               <div className="template-group-heading">
                 {template.group}
                 <span className="template-group-count">
-                  {templates.filter((entry) => entry.group === template.group).length} parts
+                  {(() => {
+                    const count = templates.filter(
+                      (entry) => entry.group === template.group
+                    ).length;
+                    return `${count} ${count === 1 ? 'part' : 'parts'}`;
+                  })()}
                 </span>
               </div>
             )}
