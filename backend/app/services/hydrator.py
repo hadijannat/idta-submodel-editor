@@ -22,6 +22,7 @@ from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
 
 from app.utils.aasx_reader import SafeAASXReader
+from app.utils.aasx_writer import ConformantAASXWriter
 from app.config import get_settings
 from app.services.pcf.activity_list import ensure_activity_list_in_submodel
 
@@ -114,7 +115,7 @@ class HydratorService:
         """Serialize hydrated stores to AASX bytes."""
         # Write back to AASX
         output = BytesIO()
-        with aasx.AASXWriter(output) as writer:
+        with ConformantAASXWriter(output) as writer:
             aas_ids = [
                 obj.id for obj in object_store if isinstance(obj, model.AssetAdministrationShell)
             ]
