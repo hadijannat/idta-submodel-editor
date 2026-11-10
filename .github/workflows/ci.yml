@@ -451,6 +451,16 @@ jobs:
             echo "No fixture files found; skipping conformance checks (branch '$target_branch' not in '$required_branches_csv')."
           fi
 
+      # The fixtures above only change when they are regenerated. This exports
+      # a sample with the code under test, so a defect in the export fails here.
+      - name: Check a freshly exported package
+        run: |
+          set -euo pipefail
+          export_dir="${RUNNER_TEMP}/fresh-export"
+          PYTHONPATH=backend python backend/scripts/export_conformance_sample.py "$export_dir"
+          aas_test_engines check_file --format aasx "$export_dir/fresh-export.aasx"
+          aas_test_engines check_file --format json "$export_dir/fresh-export.json"
+
   e2e-smoke:
     needs: [frontend-build, backend]
     uses: ./.github/workflows/_e2e-runner.yml
