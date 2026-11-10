@@ -18,8 +18,23 @@ import httpx
 
 from app.config import get_settings
 from app.metrics import record_template_fetch, template_fetch_duration_seconds
+from app.services.template_index import (
+    TemplateFile,
+    TemplateUnit,
+    build_template_units,
+    find_unit_for_path,
+    is_aasx,
+    select_file_for_path,
+    select_template_file,
+    template_file_rank,
+)
 
 logger = logging.getLogger(__name__)
+
+# How long a failed repository listing is remembered before it is retried.
+_REPO_LISTING_RETRY_SECONDS = 300
+# Template folders nest at most part/major/minor/patch below the template root.
+_MAX_TEMPLATE_DEPTH = 5
 
 
 class TemplateFetcherService:
@@ -66,6 +81,10 @@ class TemplateFetcherService:
 
         # In-memory index cache
         self._index_cache: dict[str, tuple[Any, datetime]] = {}
+
+        # Flat listing of the template repository (one request for all templates)
+        self._repo_files_cache: tuple[list[TemplateFile], datetime] | None = None
+        self._repo_files_failed_at: datetime | None = None
 
     @property
     def headers(self) -> dict[str, str]:
@@ -133,6 +152,26 @@ class TemplateFetcherService:
                     if value and self._normalize_template_key(value) == target_key:
                         return template
 
+        # Folder match: the folder of a multi-part template resolves to the
+        # folder's own template when it has one, otherwise to its first part.
+        folder_matches = [
+            template
+            for template in templates
+            if template.get("folder")
+            and (
+                template["folder"].lower() == name_lower
+                or (
+                    target_key
+                    and self._normalize_template_key(template["folder"]) == target_key
+                )
+            )
+        ]
+        if folder_matches:
+            return min(
+                folder_matches,
+                key=lambda t: (t.get("part") is not None, (t.get("part") or "").lower()),
+            )
+
         # IDTA number match
         idta_number = self._extract_idta_number(template_name)
         if idta_number:
@@ -157,17 +196,35 @@ class TemplateFetcherService:
 
         status, name = parts[0], parts[1]
         remainder = parts[2] if len(parts) > 2 else ""
+
+        # A path that already points into a known template directory is canonical.
+        # Without this, "<folder>/<part>" would be read as part "<part>" of the
+        # folder's default template.
+        templates, _ = await self.list_available_templates(
+            [status], include_local=False
+        )
+        for template in templates:
+            known_path = template.get("path") or ""
+            if known_path and (
+                template_path == known_path
+                or template_path.startswith(f"{known_path}/")
+            ):
+                return template_path
+
         resolved = await self.resolve_template(name, [status], include_local=False)
         if not resolved:
             return template_path
 
         resolved_name = resolved.get("name") or name
-        if resolved_name == name:
+        resolved_path = resolved.get("path") or ""
+        if not resolved_path.startswith(f"{status}/"):
+            resolved_path = f"{status}/{resolved_name}"
+        if resolved_name == name and resolved_path == f"{status}/{name}":
             return template_path
 
         if remainder:
-            return f"{status}/{resolved_name}/{remainder}"
-        return f"{status}/{resolved_name}"
+            return f"{resolved_path}/{remainder}"
+        return resolved_path
 
     def _add_ref_param(self, url: str, ref: str) -> str:
         """Add or update the ref query parameter in a URL."""
@@ -239,6 +296,8 @@ class TemplateFetcherService:
             key=lambda x: (
                 status_order.get(x.get("status", "published"), 99),
                 x.get("idta_number") or "99999",
+                (x.get("folder") or "").lower(),
+                (x.get("part") or "").lower(),
                 x.get("title") or x.get("name", ""),
             )
         )
@@ -277,10 +336,115 @@ class TemplateFetcherService:
 
         return templates
 
+    async def _get_repo_files(self) -> list[TemplateFile] | None:
+        """
+        List every file of the template repository with one request.
+
+        Uses the Git Trees API (``recursive=1``), which returns all paths at
+        the configured ref. Returns ``None`` when the listing is unavailable
+        or incomplete so callers can fall back to per-directory requests; a
+        previous listing is reused rather than dropped when a refresh fails.
+        """
+        cached = self._repo_files_cache
+        if cached is not None and self._is_cache_valid(cached[1]):
+            return cached[0]
+
+        if self._repo_files_failed_at is not None and (
+            datetime.now() - self._repo_files_failed_at
+            < timedelta(seconds=_REPO_LISTING_RETRY_SECONDS)
+        ):
+            return cached[0] if cached is not None else None
+
+        url = (
+            "https://api.github.com/repos/"
+            f"{self.github_repo}/git/trees/"
+            f"{quote(self.github_template_ref, safe='')}?recursive=1"
+        )
+        files: list[TemplateFile] | None = None
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self.headers)
+            if response.status_code == 200:
+                files = self._parse_repo_tree(response.json())
+            else:
+                logger.warning(
+                    "Template repository listing returned HTTP %s; "
+                    "falling back to per-directory requests",
+                    response.status_code,
+                )
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("Template repository listing failed: %s", exc)
+
+        if files is None:
+            self._repo_files_failed_at = datetime.now()
+            return cached[0] if cached is not None else None
+
+        self._repo_files_failed_at = None
+        self._repo_files_cache = (files, datetime.now())
+        return files
+
+    @staticmethod
+    def _parse_repo_tree(payload: Any) -> list[TemplateFile] | None:
+        """Extract file paths from a Git Trees API response."""
+        if not isinstance(payload, dict):
+            return None
+        tree = payload.get("tree")
+        if not isinstance(tree, list):
+            return None
+        if payload.get("truncated"):
+            # A truncated listing would silently hide templates.
+            logger.warning("Template repository listing was truncated; ignoring it")
+            return None
+
+        files = []
+        for entry in tree:
+            if not isinstance(entry, dict) or entry.get("type") != "blob":
+                continue
+            path = entry.get("path")
+            if isinstance(path, str) and path:
+                sha = entry.get("sha")
+                files.append(TemplateFile(path=path, sha=sha if isinstance(sha, str) else None))
+        return files
+
+    async def _get_template_units(self, root: str) -> list[TemplateUnit] | None:
+        """Templates below ``root`` from the repository listing, or ``None`` without one."""
+        files = await self._get_repo_files()
+        if files is None:
+            return None
+        units = build_template_units(files, root)
+        return units or None
+
+    def _unit_to_template(self, unit: TemplateUnit) -> dict:
+        latest = unit.latest
+        latest_file = unit.latest_file
+        return {
+            "name": unit.name,
+            "path": unit.path,
+            "url": (
+                "https://github.com/"
+                f"{self.github_repo}/tree/{quote(self.github_template_ref, safe='')}/"
+                f"{quote(unit.path, safe='/')}"
+            ),
+            "idta_number": unit.idta_number,
+            "title": unit.title,
+            "sha": latest_file.sha if latest_file else None,
+            "status": unit.status,
+            "folder": unit.folder,
+            "part": unit.part,
+            "latest_version": latest.label if latest and latest.version else None,
+        }
+
     async def _list_templates_for_root(self, root: str) -> list[dict]:
         """
         List templates under a specific root (e.g. published, deprecated).
+
+        Prefers the repository listing, which also reveals the parts of
+        multi-part folders; the per-directory listing below is the fallback.
         """
+        units = await self._get_template_units(root)
+        if units is not None:
+            return [self._unit_to_template(unit) for unit in units]
+
         directories = None
         async with httpx.AsyncClient(timeout=30.0) as client:
             url = (
@@ -440,57 +604,80 @@ class TemplateFetcherService:
 
         logger.info(f"Fetching AASX for {template_path} from GitHub")
 
-        # Navigate to find the AASX file
         aasx_download_url = None
         aasx_sha = None
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            contents_url = (
-                "https://api.github.com/repos/"
-                f"{self.github_repo}/contents/{template_path}"
-                f"?ref={self.github_template_ref}"
-            )
 
-            # Build request headers - add If-None-Match if we have a cached ETag
-            request_headers = dict(self.headers)
-            if cached_etag and cache_file.exists():
-                request_headers["If-None-Match"] = cached_etag
+        # Preferred: pick the newest template file from the repository listing.
+        selected = await self._select_from_repo_listing(template_path)
+        if selected is not None:
+            aasx_sha = selected.sha
+            if aasx_sha and cache_file.exists() and cached_etag == f'"{aasx_sha}"':
+                logger.debug(
+                    f"Cached AASX for {template_path} is still the newest file"
+                )
+                cache_file.touch()
+                record_template_fetch(source="github", cache_hit=True)
+                template_fetch_duration_seconds.labels(source="github").observe(
+                    time.perf_counter() - fetch_start
+                )
+                return cache_file.read_bytes()
+            aasx_download_url = self._raw_file_url(selected.path)
 
-            try:
-                response = await client.get(contents_url, headers=request_headers)
+        # Fallback: navigate directory listings to find the AASX file
+        if selected is None:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                contents_url = (
+                    "https://api.github.com/repos/"
+                    f"{self.github_repo}/contents/{template_path}"
+                    f"?ref={self.github_template_ref}"
+                )
 
-                # Handle 304 Not Modified - return cached content
-                if response.status_code == 304:
-                    logger.debug(
-                        f"ETag match for {template_path}, returning cached content"
+                # Build request headers - add If-None-Match if we have a cached ETag
+                request_headers = dict(self.headers)
+                if cached_etag and cache_file.exists():
+                    request_headers["If-None-Match"] = cached_etag
+
+                try:
+                    response = await client.get(contents_url, headers=request_headers)
+
+                    # Handle 304 Not Modified - return cached content
+                    if response.status_code == 304:
+                        logger.debug(
+                            f"ETag match for {template_path}, returning cached content"
+                        )
+                        # Touch cache file to extend TTL
+                        cache_file.touch()
+                        record_template_fetch(source="github", cache_hit=True)
+                        template_fetch_duration_seconds.labels(source="github").observe(
+                            time.perf_counter() - fetch_start
+                        )
+                        return cache_file.read_bytes()
+
+                    response.raise_for_status()
+                    items = response.json()
+                    aasx_download_url, aasx_sha = await self._find_aasx_file_with_sha(
+                        items
                     )
-                    # Touch cache file to extend TTL
-                    cache_file.touch()
-                    record_template_fetch(source="github", cache_hit=True)
-                    template_fetch_duration_seconds.labels(source="github").observe(
-                        time.perf_counter() - fetch_start
-                    )
-                    return cache_file.read_bytes()
 
-                response.raise_for_status()
-                items = response.json()
-                aasx_download_url, aasx_sha = await self._find_aasx_file_with_sha(items)
+                    # Store ETag from response if present
+                    etag = response.headers.get("ETag")
+                    if etag:
+                        self._save_etag(template_path, etag)
 
-                # Store ETag from response if present
-                etag = response.headers.get("ETag")
-                if etag:
-                    self._save_etag(template_path, etag)
-
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 403 and "rate limit" in exc.response.text.lower():
-                    logger.warning(
-                        "GitHub API rate limit hit while fetching %s, falling back to HTML listing",
-                        template_path,
-                    )
-                    aasx_download_url = await self._find_aasx_file_via_html(
-                        template_path
-                    )
-                else:
-                    raise
+                except httpx.HTTPStatusError as exc:
+                    if (
+                        exc.response.status_code == 403
+                        and "rate limit" in exc.response.text.lower()
+                    ):
+                        logger.warning(
+                            "GitHub API rate limit hit while fetching %s, falling back to HTML listing",
+                            template_path,
+                        )
+                        aasx_download_url = await self._find_aasx_file_via_html(
+                            template_path
+                        )
+                    else:
+                        raise
         if not aasx_download_url:
             raise ValueError(f"No AASX file found in {template_path}")
 
@@ -532,8 +719,23 @@ class TemplateFetcherService:
 
         return aasx_bytes
 
+    async def _select_from_repo_listing(self, template_path: str) -> TemplateFile | None:
+        """Newest template file for ``template_path`` according to the repository listing."""
+        status = template_path.split("/", 1)[0]
+        units = await self._get_template_units(status)
+        if not units:
+            return None
+        return select_file_for_path(units, template_path)
+
+    def _raw_file_url(self, path: str) -> str:
+        return (
+            "https://raw.githubusercontent.com/"
+            f"{self.github_repo}/{quote(self.github_template_ref, safe='')}/"
+            f"{quote(path, safe='/')}"
+        )
+
     async def _find_aasx_file(
-        self, items: list[dict], depth: int = 0, max_depth: int = 3
+        self, items: list[dict], depth: int = 0, max_depth: int = _MAX_TEMPLATE_DEPTH
     ) -> str | None:
         """
         Recursively find AASX file in directory listing.
@@ -543,11 +745,38 @@ class TemplateFetcherService:
         result, _ = await self._find_aasx_file_with_sha(items, depth, max_depth)
         return result
 
+    @staticmethod
+    def _order_subdirectories(names: list[str]) -> tuple[list[str], list[str]]:
+        """
+        Split directory names into version directories (newest first) and the rest.
+
+        Version directories are purely numeric (``3``, ``0``, ``12``); everything
+        else (parts, ``docs`` ...) keeps its listing order.
+        """
+        versions = sorted((n for n in names if n.isdigit()), key=int, reverse=True)
+        others = [n for n in names if not n.isdigit()]
+        return versions, others
+
+    @staticmethod
+    def _pick_template_item(items: list[dict]) -> dict | None:
+        """Pick the template among the AASX entries of one directory listing."""
+        if not items:
+            return None
+        ordered = sorted(items, key=lambda item: item.get("name", ""), reverse=True)
+        ordered.sort(key=lambda item: template_file_rank(item.get("name", "")))
+        return ordered[0]
+
     async def _find_aasx_file_with_sha(
-        self, items: list[dict], depth: int = 0, max_depth: int = 3
+        self, items: list[dict], depth: int = 0, max_depth: int = _MAX_TEMPLATE_DEPTH
     ) -> tuple[str | None, str | None]:
         """
         Recursively find AASX file in directory listing, returning both URL and SHA.
+
+        Newer versions win: numeric sub-directories are searched from the
+        highest number down before the directory's own files, because a patch
+        release lives in a sub-directory of the version it patches
+        (``1/0/3`` patches ``1/0``). Non-version directories (parts) are
+        searched last, in listing order.
 
         The SHA can be used for conditional requests (ETag) on subsequent downloads.
 
@@ -558,41 +787,52 @@ class TemplateFetcherService:
             return None, None
 
         aasx_files = []
-        subdirs = []
+        subdirs: dict[str, dict] = {}
 
         for item in items:
-            if item["type"] == "file" and item["name"].endswith(".aasx"):
+            if item["type"] == "file" and is_aasx(item["name"]):
                 aasx_files.append(item)
             elif item["type"] == "dir":
-                subdirs.append(item)
+                subdirs[item["name"]] = item
 
-        # If we found AASX files, return the download URL and SHA of the most recent one
-        if aasx_files:
-            # Sort by name to get the latest version
-            aasx_files.sort(key=lambda x: x["name"], reverse=True)
-            selected = aasx_files[0]
-            return selected.get("download_url"), selected.get("sha")
+        version_dirs, other_dirs = self._order_subdirectories(list(subdirs))
 
-        # Otherwise, search in subdirectories (version folders)
-        for subdir in subdirs:
+        async def search(name: str) -> tuple[str | None, str | None]:
+            subdir = subdirs[name]
             async with httpx.AsyncClient(timeout=30.0) as client:
                 url = self._add_ref_param(subdir["url"], self.github_template_ref)
                 response = await client.get(url, headers=self.headers)
-                if response.status_code == 200:
-                    sub_items = response.json()
-                    url, sha = await self._find_aasx_file_with_sha(
-                        sub_items, depth + 1, max_depth
-                    )
-                    if url:
-                        return url, sha
+                if response.status_code != 200:
+                    return None, None
+                return await self._find_aasx_file_with_sha(
+                    response.json(), depth + 1, max_depth
+                )
+
+        for name in version_dirs:
+            url, sha = await search(name)
+            if url:
+                return url, sha
+
+        selected = self._pick_template_item(aasx_files)
+        if selected is not None:
+            return selected.get("download_url"), selected.get("sha")
+
+        for name in other_dirs:
+            url, sha = await search(name)
+            if url:
+                return url, sha
 
         return None, None
 
     async def _find_aasx_file_via_html(
-        self, template_path: str, depth: int = 0, max_depth: int = 3
+        self, template_path: str, depth: int = 0, max_depth: int = _MAX_TEMPLATE_DEPTH
     ) -> str | None:
         """
         Fallback to GitHub HTML directory listings when API is rate-limited.
+
+        Follows the same order as the API navigation: newest version
+        directories first, then the directory's own files, then other
+        directories.
         """
         if depth > max_depth:
             return None
@@ -604,36 +844,38 @@ class TemplateFetcherService:
         aasx_files = [
             item
             for item in items
-            if item.get("contentType") == "file"
-            and item.get("name", "").endswith(".aasx")
+            if item.get("contentType") == "file" and is_aasx(item.get("name", ""))
         ]
-        subdirs = [
-            item for item in items if item.get("contentType") == "directory"
-        ]
+        subdirs = {
+            item.get("name") or (item.get("path") or "").rsplit("/", 1)[-1]: item
+            for item in items
+            if item.get("contentType") == "directory"
+        }
+        subdirs.pop("", None)
+        version_dirs, other_dirs = self._order_subdirectories(list(subdirs))
 
-        if aasx_files:
-            aasx_files.sort(key=lambda x: x.get("name", ""), reverse=True)
-            selected = aasx_files[0]
-            raw_file_path = selected.get("path")
-            filename = selected.get("name")
-            if not raw_file_path and not filename:
-                return None
-            raw_path = quote(raw_file_path or f"{template_path}/{filename}", safe="/")
-            return (
-                "https://raw.githubusercontent.com/"
-                f"{self.github_repo}/{self.github_template_ref}/{raw_path}"
-            )
-
-        for subdir in subdirs:
-            subdir_path = subdir.get("path")
-            name = subdir.get("name")
-            if not subdir_path and not name:
-                continue
-            result = await self._find_aasx_file_via_html(
-                subdir_path or f"{template_path}/{name}",
+        async def search(name: str) -> str | None:
+            subdir = subdirs[name]
+            return await self._find_aasx_file_via_html(
+                subdir.get("path") or f"{template_path}/{name}",
                 depth + 1,
                 max_depth,
             )
+
+        for name in version_dirs:
+            result = await search(name)
+            if result:
+                return result
+
+        selected = self._pick_template_item(aasx_files)
+        if selected is not None:
+            raw_file_path = selected.get("path")
+            filename = selected.get("name")
+            if raw_file_path or filename:
+                return self._raw_file_url(raw_file_path or f"{template_path}/{filename}")
+
+        for name in other_dirs:
+            result = await search(name)
             if result:
                 return result
 
@@ -690,6 +932,32 @@ class TemplateFetcherService:
             List of version metadata.
         """
         template_path = await self.resolve_template_path(template_path)
+
+        # Preferred: every released version (including patches) from the listing.
+        units = await self._get_template_units(template_path.split("/", 1)[0])
+        unit = find_unit_for_path(units, template_path) if units else None
+        if unit is not None:
+            remainder = template_path[len(unit.path) :].strip("/")
+            try:
+                candidates = unit.loadable_versions(remainder)
+            except ValueError:
+                candidates = []
+            versions = []
+            for candidate in candidates:
+                chosen = select_template_file(candidate.files)
+                if chosen is None or not candidate.version:
+                    continue
+                versions.append(
+                    {
+                        "version": candidate.relative_path,
+                        "label": candidate.label,
+                        "path": candidate.path,
+                        "sha": chosen.sha,
+                    }
+                )
+            if versions:
+                return versions
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             url = (
                 "https://api.github.com/repos/"
@@ -731,6 +999,8 @@ class TemplateFetcherService:
             etag_file.unlink()
 
         self._index_cache.clear()
+        self._repo_files_cache = None
+        self._repo_files_failed_at = None
         logger.info(f"Cleared {count} cached templates")
         return count
 

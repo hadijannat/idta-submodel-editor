@@ -156,15 +156,24 @@ export interface TemplateInfo {
   title: string | null;
   sha: string | null;
   status?: 'published' | 'deprecated';
+  /** Repository folder the template lives in. */
+  folder?: string | null;
+  /** Sub-folder of a multi-part template (e.g. one part of the battery passport). */
+  part?: string | null;
+  /** Newest released version, e.g. "3.0.3". */
+  latest_version?: string | null;
 }
 
 /**
  * Template version information.
  */
 export interface TemplateVersionInfo {
+  /** Version as a path fragment, e.g. "3/0/3". Sent back to the API as is. */
   version: string;
   path: string;
   sha: string | null;
+  /** Display form, e.g. "3.0.3". */
+  label?: string | null;
 }
 
 /**

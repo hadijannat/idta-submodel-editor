@@ -195,14 +195,25 @@ class TemplateInfo(BaseModel):
     title: str | None = None
     sha: str | None = None
     status: Literal["published", "deprecated"] | None = None
+    folder: str | None = Field(
+        default=None, description="Repository folder the template lives in"
+    )
+    part: str | None = Field(
+        default=None,
+        description="Sub-folder of a multi-part template (e.g. one part of the battery passport)",
+    )
+    latest_version: str | None = Field(
+        default=None, description="Newest released version, e.g. 3.0.3"
+    )
 
 
 class TemplateVersionInfo(BaseModel):
     """Information about a template version."""
 
-    version: str
+    version: str = Field(description="Version as a path fragment, e.g. 3/0/3")
     path: str
     sha: str | None = None
+    label: str | None = Field(default=None, description="Display form, e.g. 3.0.3")
 
 
 class TemplateListResponse(BaseModel):

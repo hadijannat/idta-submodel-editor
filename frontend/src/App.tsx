@@ -476,10 +476,14 @@ function App() {
                   value={selectedVersion ?? ''}
                   onChange={(e) => setSelectedVersion(e.target.value || null)}
                 >
-                  <option value="">Latest</option>
+                  <option value="">
+                    {templateVersions[0]?.label
+                      ? `Latest (${templateVersions[0].label})`
+                      : 'Latest'}
+                  </option>
                   {templateVersions.map((version) => (
                     <option key={version.version} value={version.version}>
-                      {version.version}
+                      {version.label ?? version.version}
                     </option>
                   ))}
                 </select>

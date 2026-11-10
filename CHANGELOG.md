@@ -5,6 +5,24 @@ All notable changes to IDTA Submodel Editor will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Template selection**: the newest release of a template is loaded, including
+  patch releases and newer minor versions. Previously the first version folder
+  that contained an AASX won, which was an older file for most templates.
+- **Multi-part templates**: every part of a multi-part folder (Digital Battery
+  Passport, Safety Instrumented Functions, ...) is listed as its own template,
+  and deeply nested templates such as Digital Product Passport Part 1 are found.
+- **Template metadata**: IDTA numbers are read from the template file names, so
+  they are filled in again for the current repository layout.
+
+### Changed
+- Templates are discovered with one repository listing instead of one request
+  per directory. The per-directory walk remains as the fallback.
+- `GET /api/templates/{name}/versions` lists every release with a display
+  `label`; template entries gain `folder`, `part` and `latest_version`.
+
 ## [1.0.0] - 2025-01-27
 
 ### Added
