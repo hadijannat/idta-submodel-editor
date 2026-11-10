@@ -21,6 +21,7 @@ from typing import Any, Literal
 from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
 
+from app.utils.aas_json_output import NormalizingAASXWriter, normalize_aas_json
 from app.utils.aasx_reader import SafeAASXReader
 from app.config import get_settings
 from app.services.pcf.activity_list import ensure_activity_list_in_submodel
@@ -251,7 +252,7 @@ class HydratorService:
         """Serialize hydrated stores to AASX bytes."""
         # Write back to AASX
         output = BytesIO()
-        with aasx.AASXWriter(output) as writer:
+        with NormalizingAASXWriter(output) as writer:
             aas_ids = [
                 obj.id for obj in object_store if isinstance(obj, model.AssetAdministrationShell)
             ]
@@ -279,7 +280,7 @@ class HydratorService:
         """Serialize hydrated stores to JSON."""
         output = BytesIO()
         aas_json.write_aas_json_file(output, object_store)
-        return output.getvalue().decode("utf-8")
+        return normalize_aas_json(output.getvalue().decode("utf-8"))
 
     def hydrate_to_json(
         self,

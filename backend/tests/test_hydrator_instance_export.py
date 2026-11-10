@@ -192,13 +192,8 @@ class TestInstanceIsTheDefault:
         assert submodel.kind == model.ModellingKind.INSTANCE
         assert [q.type for q in _all_qualifiers(submodel)] == ["unit"]
 
-    def test_output_passes_metamodel_checks(self, hydrator):
-        template = _template()
-        # The SDK serialises an entity without specific asset IDs as an empty
-        # array, which the checker rejects for templates and instances alike.
-        template.submodel_element.remove(template.get_referable("Part"))
-
-        payload = json.loads(hydrator.hydrate_to_json(_aasx(template), _form()))
+    def test_output_passes_metamodel_checks(self, hydrator, template_aasx):
+        payload = json.loads(hydrator.hydrate_to_json(template_aasx, _form()))
 
         result = aas_file.check_json_data(payload, version="3.0")
         assert result.ok(), "\n".join(result.to_lines())

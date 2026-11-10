@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (the former loaded as an empty form). All 66 published templates now open
   with every element.
 
+- **No empty arrays in exports**: the AAS library writes
+  `"specificAssetIds": []` for entities, which the JSON schema forbids. Exports
+  of templates with entities (Bills of Material, Handover Documentation,
+  Purchase Order, ...) now pass the metamodel check.
+
 ### Added
 - `readWarnings` on the UI schema and a notice above the form when part of a
   template cannot be read or a package holds more submodels than the form shows.
