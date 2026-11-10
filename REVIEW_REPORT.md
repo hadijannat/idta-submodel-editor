@@ -62,7 +62,7 @@ Use this file to record prioritized review findings and remediation status for e
 | P2 | TR-013 | Parser | `backend/app/services/parser.py` | List items were named `generated_submodel_list_hack_<id>` with an id that changed on every request. | Stable item names derived from the list. | Resolved |
 | P2 | TR-014 | Operations | `backend/app/services/fetcher.py` | Every template fetch needed several GitHub API requests (60 per hour unauthenticated) and nothing worked without GitHub. | One tree request, downloads from raw content, index saved to disk, optional local mirror (`TEMPLATE_REPO_DIR`). | Resolved |
 | P2 | TR-015 | UX | `frontend/src/components/AASRenderer` | Labels were raw idShorts, the definition of a concept was hidden whenever an element had notes, semantic controls cluttered every field, IDTA numbers and versions were not shown. | Readable labels, definition plus notes, semantic controls behind a toggle, release information in list and configuration step. | Resolved |
-| P2 | TR-016 | Repeatable elements | `frontend/src/components/AASRenderer` | Collections and properties a template allows several times (`[0..*]`, `[1..*]`) outside of lists are rendered once and cannot be added. | — | Open |
+| P2 | TR-016 | Repeatable elements | `frontend/src/components/AASRenderer` | Collections and properties a template allows several times (`[0..*]`, `[1..*]`) outside of lists are rendered once and cannot be added. | Further occurrences can be added and removed in the form (`ElementOccurrences.tsx`). They travel in the element's `occurrences` list, are validated like the element and are exported as siblings with their own idShort (`Phone`, `Phone__01__`; `backend/app/services/occurrences.py`). | Resolved |
 | P2 | TR-018 | Export | `backend/app/services/hydrator.py` | Exported AASX packages reference supplementary files by a lower-cased part name while the file is stored under its original mixed-case name (seen with Carbon Footprint 1.0.3), so `aas-test-engines` reports a relationship with a non-existing target. Present before this review. | The BaSyx `AASXWriter` (2.1.0 and 2.2.0) lower-cases the targets of supplementary file relationships. `ConformantAASXWriter` (`backend/app/utils/aasx_writer.py`) writes them with the names the parts are stored under; file names and `File` values keep their case. | Resolved |
 | P3 | TR-017 | Multi-submodel packages | `backend/app/services/parser.py` | A package with several submodels (MTP) is edited one submodel at a time. | — | Open |
 
@@ -76,7 +76,6 @@ Use this file to record prioritized review findings and remediation status for e
 
 #### Follow-ups
 
-- TR-016: support adding further occurrences of repeatable collections and properties, including idShort numbering on export.
 - TR-017: let the user choose the submodel of a multi-submodel package.
 - Specification PDFs generated from Word are read less completely than the AsciiDoc-generated ones; extraction quality per template is reported by the `specification-notes` endpoint (`matched` / `total`).
 
