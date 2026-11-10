@@ -341,6 +341,34 @@ class TestElementCounts:
         assert count_submodel_elements_in_xml(raw) == 0
         assert count_submodel_elements_in_xml(b"not xml") is None
 
+    def test_documents_declaring_entities_are_not_counted(self):
+        # Counting is advisory; expanding entities for it is not worth the risk.
+        nested = "".join(
+            f'<!ENTITY e{i} "{("&e%d;" % (i - 1)) * 10}">' for i in range(1, 9)
+        )
+        raw = (
+            '<?xml version="1.0"?><!DOCTYPE environment ['
+            f'<!ENTITY e0 "xxxxxxxxxx">{nested}]>'
+            f'<environment xmlns="{NS}"><submodels><submodel><id>urn:t</id>'
+            "<submodelElements><property><idShort>P</idShort>"
+            "<valueType>xs:string</valueType><value>&e8;</value></property>"
+            "</submodelElements></submodel></submodels></environment>"
+        )
+
+        assert count_submodel_elements_in_xml(raw.encode("utf-8")) is None
+        assert count_submodel_elements_in_xml(raw.encode("utf-16")) is None
+
+    def test_reading_a_document_with_entities_reports_no_false_loss(self):
+        raw = (
+            '<?xml version="1.0"?><!DOCTYPE environment [<!ENTITY name "value">]>'
+            + _environment_xml(PLAIN_PROPERTY).decode()
+        ).encode()
+
+        submodel, issues = _read(_package(raw))
+
+        assert [element.id_short for element in submodel.submodel_element] == ["Fine"]
+        assert issues == []
+
     def test_json_count(self):
         document = {
             "submodels": [

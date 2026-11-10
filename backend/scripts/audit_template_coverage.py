@@ -24,8 +24,12 @@ from typing import Any
 from basyx.aas import model
 
 from app.services.fetcher import TemplateFetcherService
-from app.services.hydrator import HydratorService, is_template_only_qualifier
-from app.services.parser import ParserService, iterate_elements
+from app.services.hydrator import (
+    HydratorService,
+    is_template_only_qualifier,
+    iterate_all_elements,
+)
+from app.services.parser import ParserService
 from app.services.validation import validate_form_data
 
 
@@ -829,7 +833,9 @@ def instance_export_problems(object_store: Any, template_submodel_id: str | None
     ]
     template_qualifiers = 0
     for submodel in submodels:
-        qualifiables = [submodel, *(e for e, _ in iterate_elements(submodel.submodel_element))]
+        # The same traversal the hydrator strips qualifiers with, so a
+        # qualifier it misses anywhere shows up here.
+        qualifiables = [submodel, *iterate_all_elements(submodel.submodel_element)]
         template_qualifiers += sum(
             1
             for qualifiable in qualifiables

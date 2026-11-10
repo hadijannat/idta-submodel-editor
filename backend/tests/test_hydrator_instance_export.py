@@ -317,6 +317,47 @@ class TestTemplateOnlyQualifiers:
         assert is_template_only_qualifier(qualifier)
 
 
+def _template_with_annotation() -> model.Submodel:
+    """A relationship whose annotation carries a template qualifier."""
+    template = _template()
+    name = model.ModelReference.from_referable(template.get_referable("Name"))
+    template.submodel_element.add(
+        model.AnnotatedRelationshipElement(
+            id_short="Link",
+            first=name,
+            second=name,
+            qualifier=[_cardinality("ZeroToOne")],
+            annotation=[
+                model.Property(
+                    id_short="Note", value_type=STRING, qualifier=[_cardinality("ZeroToOne")]
+                )
+            ],
+        )
+    )
+    return template
+
+
+class TestNestedInRelationships:
+    def test_qualifiers_on_annotations_are_removed(self, hydrator):
+        store, _ = hydrator.hydrate_to_stores(_aasx(_template_with_annotation()), _form())
+
+        link = _submodel(store).get_referable("Link")
+        assert list(link.qualifier) == []
+        assert [list(annotation.qualifier) for annotation in link.annotation] == [[]]
+
+    def test_audit_sees_a_qualifier_left_on_an_annotation(self, hydrator):
+        store, _ = hydrator.hydrate_to_stores(_aasx(_template_with_annotation()), _form())
+        assert instance_export_problems(store, TEMPLATE_ID) == []
+
+        # What a hydrator that missed annotations would leave behind.
+        link = _submodel(store).get_referable("Link")
+        next(iter(link.annotation)).qualifier.add(_cardinality("ZeroToOne"))
+
+        assert instance_export_problems(store, TEMPLATE_ID) == [
+            "1 template-only qualifier(s) remain"
+        ]
+
+
 class TestAuditCheck:
     def test_instance_output_has_no_problems(self, hydrator, template_aasx):
         store, _ = hydrator.hydrate_to_stores(template_aasx, _form())

@@ -88,6 +88,38 @@ def _strip_timezone_suffix(text: str) -> str:
     return _TIMEZONE_SUFFIX_RE.sub("", text)
 
 
+def iterate_all_elements(elements):
+    """
+    Yield every SubmodelElement below ``elements``, however it is nested.
+
+    Besides collections, lists and entity statements this descends into
+    relationship annotations and operation variables, so it reaches every
+    element that can carry a qualifier.
+    """
+    if elements is None:
+        return
+    for element in list(elements):
+        if not isinstance(element, model.SubmodelElement):
+            # Older SDK releases wrap operation variables in a holder object.
+            element = getattr(element, "value", None)
+            if not isinstance(element, model.SubmodelElement):
+                continue
+        yield element
+        if isinstance(element, (model.SubmodelElementCollection, model.SubmodelElementList)):
+            yield from iterate_all_elements(element.value)
+        elif isinstance(element, model.Entity):
+            yield from iterate_all_elements(element.statement)
+        elif isinstance(element, model.AnnotatedRelationshipElement):
+            yield from iterate_all_elements(element.annotation)
+        elif isinstance(element, model.Operation):
+            for variables in (
+                element.input_variable,
+                element.output_variable,
+                element.in_output_variable,
+            ):
+                yield from iterate_all_elements(variables)
+
+
 class HydratorService:
     """
     Service for hydrating AAS templates with form data.
@@ -194,7 +226,7 @@ class HydratorService:
         """
         submodel.kind = model.ModellingKind.INSTANCE
         self._strip_template_qualifiers(submodel)
-        for element in self._iterate_all_elements(submodel.submodel_element):
+        for element in iterate_all_elements(submodel.submodel_element):
             self._strip_template_qualifiers(element)
 
         if template_submodel_id:
@@ -227,36 +259,6 @@ class HydratorService:
         for qualifier in list(qualifiers):
             if is_template_only_qualifier(qualifier):
                 qualifiers.remove(qualifier)
-
-    def _iterate_all_elements(self, elements):
-        """
-        Yield every SubmodelElement below ``elements``, however it is nested.
-
-        Unlike ``_iterate_elements`` this also descends into relationship
-        annotations and operation variables.
-        """
-        if elements is None:
-            return
-        for element in list(elements):
-            if not isinstance(element, model.SubmodelElement):
-                # Older SDK releases wrap operation variables in a holder object.
-                element = getattr(element, "value", None)
-                if not isinstance(element, model.SubmodelElement):
-                    continue
-            yield element
-            if isinstance(element, (model.SubmodelElementCollection, model.SubmodelElementList)):
-                yield from self._iterate_all_elements(element.value)
-            elif isinstance(element, model.Entity):
-                yield from self._iterate_all_elements(element.statement)
-            elif isinstance(element, model.AnnotatedRelationshipElement):
-                yield from self._iterate_all_elements(element.annotation)
-            elif isinstance(element, model.Operation):
-                for variables in (
-                    element.input_variable,
-                    element.output_variable,
-                    element.in_output_variable,
-                ):
-                    yield from self._iterate_all_elements(variables)
 
     def serialize_stores_to_aasx(
         self,

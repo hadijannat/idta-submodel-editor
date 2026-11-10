@@ -69,6 +69,11 @@ _SUBMODEL_ELEMENT_NAMES = frozenset(
 
 _MAX_REPORTED_READ_ERRORS = 5
 
+# "<!ENTITY" as it appears in the encodings an XML document can be read in.
+_ENTITY_DECLARATION_MARKERS = tuple(
+    "<!ENTITY".encode(encoding) for encoding in ("ascii", "utf-16-le", "utf-16-be")
+)
+
 
 def construct_template_entity(
     id_short: Any,
@@ -199,7 +204,16 @@ def drop_duplicate_qualifiers_in_json(dct: dict) -> None:
 
 
 def count_submodel_elements_in_xml(raw: bytes) -> int | None:
-    """Number of submodel elements below ``submodels`` in an AAS XML document."""
+    """
+    Number of submodel elements below ``submodels`` in an AAS XML document.
+
+    Returns ``None`` when the document cannot be counted. That includes every
+    document that declares entities: AAS XML has no use for them, and expanding
+    them here would let a small crafted part consume a lot of memory for what
+    is only an advisory count.
+    """
+    if any(marker in raw for marker in _ENTITY_DECLARATION_MARKERS):
+        return None
     try:
         root = ElementTree.fromstring(raw)
     except ElementTree.ParseError:
