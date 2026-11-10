@@ -1,6 +1,7 @@
 """Tests for template discovery through the repository index."""
 
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -196,8 +197,12 @@ async def test_github_index_uses_one_tree_request_and_raw_downloads(tmp_path):
 
     assert [template["latest_version"] for template in templates] == ["3.0.3"]
     assert first == second == b"aasx-bytes"
-    tree_calls = [url for url in calls if "/git/trees/" in url]
-    raw_calls = [url for url in calls if "raw.githubusercontent.com" in url]
+    hosts = [urlparse(url).hostname for url in calls]
+    tree_calls = [url for url in calls if urlparse(url).hostname == "api.github.com"]
+    raw_calls = [url for url in calls if urlparse(url).hostname == "raw.githubusercontent.com"]
+    # Nothing but the GitHub API (once) and the raw content host is contacted.
+    assert set(hosts) == {"api.github.com", "raw.githubusercontent.com"}
+    assert all("/git/trees/" in url for url in tree_calls)
     assert len(tree_calls) == 1
     # The newest release is downloaded once; the second fetch is served from cache.
     assert len(raw_calls) == 1
