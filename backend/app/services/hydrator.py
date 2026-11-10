@@ -31,12 +31,24 @@ from app.services.occurrences import (
 from app.services.parser import ParserService
 from app.utils.aas_json_output import NormalizingAASXWriter, normalize_aas_json
 from app.utils.aasx_reader import SafeAASXReader
+from app.utils.aasx_writer import ConformantAASXWriter
 from app.config import get_settings
 from app.services.pcf.activity_list import ensure_activity_list_in_submodel
 
 logger = logging.getLogger(__name__)
 
 OutputKind = Literal["instance", "template"]
+
+
+class _ExportAASXWriter(ConformantAASXWriter, NormalizingAASXWriter):
+    """
+    AASX writer for exported packages.
+
+    Combines the two corrections an export needs to pass conformance checks:
+    relationships name supplementary files as they are stored, and JSON parts
+    contain no empty arrays.
+    """
+
 
 # Qualifier types that instruct template authors and form tools: how often an
 # element may occur, what a form shows for it, how its idShort may be chosen,
@@ -268,7 +280,7 @@ class HydratorService:
         """Serialize hydrated stores to AASX bytes."""
         # Write back to AASX
         output = BytesIO()
-        with NormalizingAASXWriter(output) as writer:
+        with _ExportAASXWriter(output) as writer:
             aas_ids = [
                 obj.id for obj in object_store if isinstance(obj, model.AssetAdministrationShell)
             ]

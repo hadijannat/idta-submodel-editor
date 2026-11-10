@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exports were still templates: `kind=Template`, every template qualifier and the template's own identifier. They are now submodel instances with `kind=Instance`, no template-only qualifiers, an identifier of their own and `administration.templateId` naming the template
 - Elements that only break rules for finished submodels were dropped while reading a template, without notice: self-managed entities whose asset ID is still to be entered (the Bills of Material IEC 81346 extension loaded as an empty form), lists of an abstract element type and elements with a repeated qualifier type (Capability Description)
 - Exported JSON contained `"specificAssetIds": []` for entities, which the AAS JSON schema forbids, so exports of templates with entities failed the metamodel check
+- Exported AASX packages referenced supplementary files with upper-case letters in their names by a lower-cased name, so conformance checks reported a relationship with a non-existing target
 
 ### Changed
 - `EXPORT_SUBMODEL_KIND=template` restores the previous export (the template with values filled in)
