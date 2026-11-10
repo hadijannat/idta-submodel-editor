@@ -604,6 +604,17 @@ function App() {
             )}
           </div>
 
+          {(schema.readWarnings?.length ?? 0) > 0 && (
+            <div className="template-read-warnings" role="alert">
+              <strong>This template could not be read completely.</strong>
+              <ul>
+                {schema.readWarnings?.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <PassportView schema={schema} formData={watchedValues}>
             <div className="submodel-elements">
               {schema.elements.map((element) => (

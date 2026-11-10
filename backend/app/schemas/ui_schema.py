@@ -183,6 +183,13 @@ class SubmodelUISchema(BaseModel):
     elements: list[ElementSchema]
     supplementaryFiles: list[str] = Field(default_factory=list)
     pcfActivityListInjected: bool | None = None
+    readWarnings: list[str] = Field(
+        default_factory=list,
+        description=(
+            "What could not be read from the template, for example elements "
+            "the AAS library rejected. Empty when the template was read in full."
+        ),
+    )
 
 
 class TemplateInfo(BaseModel):

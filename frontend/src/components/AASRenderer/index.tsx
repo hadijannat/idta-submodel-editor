@@ -27,6 +27,14 @@ interface AASRendererProps {
 }
 
 /**
+ * A self-managed entity is identified by its asset ID, so the ID is part of
+ * what the user has to enter (AAS constraint AASd-014).
+ */
+function isSelfManagedEntity(schema: UIElementSchema): boolean {
+  return (schema.entityType ?? '').toLowerCase().replace(/_/g, '').includes('self');
+}
+
+/**
  * Recursive renderer for SubmodelElements.
  *
  * Renders the appropriate field component based on the element's modelType.
@@ -141,7 +149,7 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
                   idShort: 'globalAssetId',
                 }}
                 label="Global Asset ID"
-                required={false}
+                required={required && isSelfManagedEntity(schema)}
                 showSemantic={false}
               />
             )}

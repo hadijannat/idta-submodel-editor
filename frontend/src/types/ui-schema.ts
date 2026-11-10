@@ -143,6 +143,8 @@ export interface SubmodelUISchema {
   elements: UIElementSchema[];
   supplementaryFiles: string[];
   pcfActivityListInjected?: boolean | null;
+  /** What could not be read from the template; empty when it was read in full. */
+  readWarnings?: string[];
 }
 
 /**

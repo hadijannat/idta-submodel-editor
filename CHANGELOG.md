@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kind=Instance`, no template-only qualifiers, an identifier of their own and
   `administration.templateId` pointing at the template.
 
+- **Templates are read in full**: Digital Product Passport Part 1 and Digital
+  Battery Passport Part 6 could not be opened, and the Bills of Material
+  IEC 81346 extension and Capability Description lost elements without notice
+  (the former loaded as an empty form). All 66 published templates now open
+  with every element.
+
+### Added
+- `readWarnings` on the UI schema and a notice above the form when part of a
+  template cannot be read or a package holds more submodels than the form shows.
+- Validation requires a global asset ID for self-managed entities.
+
 ### Changed
 - `EXPORT_SUBMODEL_KIND=template` restores the previous export (the template
   with values filled in).

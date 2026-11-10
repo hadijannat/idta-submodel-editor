@@ -254,9 +254,38 @@ def _validate_element(
                 )
 
     elif model_type == "Entity":
+        if _is_self_managed_entity(schema_elem) and not _entity_has_asset_id(
+            schema_elem, form_elem
+        ):
+            # AASd-014: a self-managed entity is identified by its asset ID.
+            issue = ValidationError(
+                field=f"{elem_path}.globalAssetId",
+                message="A self-managed entity needs a global asset ID",
+                code="required_value",
+            )
+            (errors if min_items >= 1 else warnings).append(issue)
+
         nested_schema = schema_elem.get("statements", []) or []
         nested_form = form_elem.get("statements") or {}
         _validate_elements(nested_schema, nested_form, errors, warnings, elem_path)
+
+
+def _is_self_managed_entity(schema_elem: dict[str, Any]) -> bool:
+    entity_type = str(schema_elem.get("entityType") or "")
+    return "self" in entity_type.lower().replace("_", "")
+
+
+def _entity_has_asset_id(
+    schema_elem: dict[str, Any], form_elem: dict[str, Any] | None
+) -> bool:
+    """Whether the form, or the template for an untouched field, names the asset."""
+    form_elem = form_elem or {}
+    if "globalAssetId" in form_elem:
+        if not _is_blank_value(form_elem.get("globalAssetId")):
+            return True
+    elif not _is_blank_value(schema_elem.get("globalAssetId")):
+        return True
+    return bool(schema_elem.get("specificAssetIds"))
 
 
 def _normalize_cardinality_value(value: str | None) -> str | None:

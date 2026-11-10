@@ -64,12 +64,20 @@ class ParserService:
 
         with SafeAASXReader(BytesIO(aasx_bytes)) as reader:
             reader.read_into(object_store, file_store)
+            read_warnings = list(getattr(reader, "read_issues", None) or [])
 
         # Find the AAS and submodel
         aas = self._find_aas(object_store)
         submodel = self._find_submodel(object_store, aas)
         if not submodel:
             raise ValueError("No Submodel found in AASX file")
+
+        submodel_count = sum(1 for obj in object_store if isinstance(obj, model.Submodel))
+        if submodel_count > 1:
+            read_warnings.append(
+                f"This package contains {submodel_count} submodels. The form shows "
+                f"'{submodel.id_short}' only; the others are exported unchanged."
+            )
 
         submodel_id = getattr(submodel, "id_", None) or getattr(submodel, "id", None)
         logger.info(f"Parsing submodel: {submodel.id_short} ({submodel_id})")
@@ -94,6 +102,7 @@ class ParserService:
                 for e in submodel.submodel_element
             ],
             "supplementaryFiles": list(file_store),
+            "readWarnings": read_warnings,
         }
 
     def _find_aas(

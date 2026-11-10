@@ -43,7 +43,9 @@ Min/max value pair with numeric validation.
 Reference to external AAS elements with key chain editing.
 
 ### Entity
-Entity with global/self-managed asset ID and statements collection.
+Entity with global/self-managed asset ID and statements collection. A
+self-managed entity is identified by its asset ID, so the Global Asset ID is
+required for it; templates usually leave it empty for you to fill in.
 
 ### Blob
 Editable payload and content type. Supports upload/download and `base64:` payloads for binary data.
@@ -56,3 +58,21 @@ Editable relationship references plus annotation value editing for available ann
 
 ### Operation
 Rendered as read-only metadata because invocation is runtime-dependent and not part of template value hydration.
+
+
+## Reading Templates
+
+Published templates are read as they are, including content that the AAS
+metamodel only accepts in a finished submodel:
+
+- a self-managed entity whose asset ID is still to be entered
+- a list declared with an abstract element type (`SubmodelElement`,
+  `DataElement`, `EventElement`) that holds elements of different types
+- a qualifier type that is repeated on one element (the first one is used)
+- package parts that are marked as external although they are in the package
+
+If something still cannot be read, the form says so above the first field
+("This template could not be read completely") with the number of missing
+elements and the reason. The same list is returned as `readWarnings` by the
+schema endpoints. It also notes when a package holds several submodels, of
+which the form shows one.

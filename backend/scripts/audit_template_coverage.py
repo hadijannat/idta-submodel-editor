@@ -672,7 +672,14 @@ def build_required_element(element: dict[str, Any]) -> dict[str, Any] | None:
             child_data = build_required_element(child)
             if child_data is not None:
                 statements[str(child.get("idShort"))] = child_data
-        return {"statements": statements} if required or statements else None
+        if not (required or statements):
+            return None
+        entity_data: dict[str, Any] = {"statements": statements}
+        entity_type = str(element.get("entityType") or "").lower().replace("_", "")
+        if "self" in entity_type and not element.get("globalAssetId"):
+            # A self-managed entity is identified by its asset ID (AASd-014).
+            entity_data["globalAssetId"] = "urn:example:asset"
+        return entity_data
 
     if required:
         return {}
