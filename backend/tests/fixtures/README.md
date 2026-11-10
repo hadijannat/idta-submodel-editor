@@ -20,6 +20,12 @@ These fixtures are used for CI conformance checks with `aas_test_engines`.
 Note: `aas_test_engines` may emit warnings for these fixtures about IEC61360
 dataSpecification URIs. These warnings do not fail the check.
 
+The fixtures show the export as it was when they were last regenerated. To
+check the export code itself, the CI conformance job also exports a sample
+on every run (`backend/scripts/export_conformance_sample.py`) and checks that
+file. The sample is built in memory and has supplementary files with
+upper-case letters in their names and an entity without specific asset IDs.
+
 Regenerate instructions (local):
 
 ```bash
