@@ -621,11 +621,19 @@ class HydratorService:
 
         existing_items = list(element.value)
 
-        # If we have a template, use it for new items
-        template_item = existing_items[0] if existing_items else None
-
         # Clear and rebuild the list
         element.value.clear()
+
+        # New items are cloned from the first item of the template. The clone
+        # source is taken while the item is detached from the list (a copy of
+        # an attached item would drag its parent along and could not be
+        # re-added), and its values are blanked so that a new item never
+        # inherits the template's example values.
+        template_item: model.SubmodelElement | None = None
+        if existing_items and len(items_data) > len(existing_items):
+            template_item = self._clone_element(existing_items[0])
+            self._ensure_list_item_id_short(template_item)
+            self._clear_values(template_item)
 
         for idx, item_data in enumerate(items_data):
             if idx < len(existing_items):
@@ -860,13 +868,25 @@ class HydratorService:
         if value is None or value == "":
             return None
 
-        type_str = str(value_type).lower() if value_type else "xs:string"
+        # Match on the XSD name of the type. The repr of the Python class is
+        # misleading: the duration type lives in the "dateutil" package, which
+        # would be taken for a date.
+        if isinstance(value_type, type):
+            type_str = model.datatypes.XSD_TYPE_NAMES.get(
+                value_type, str(value_type)
+            ).lower()
+        else:
+            type_str = str(value_type).lower() if value_type else "xs:string"
 
-        if "int" in type_str or "integer" in type_str:
+        if any(token in type_str for token in ("int", "long", "short", "byte")):
             number = float(value)
             if not number.is_integer():
                 raise ValueError(f"{value!r} is not an integer")
-            return int(number)
+            integer = int(number)
+            if isinstance(value_type, type) and value_type is not int:
+                # Bounded integer types (xs:unsignedByte ...) check their range.
+                return value_type(integer)
+            return integer
         if "decimal" in type_str:
             if isinstance(value, Decimal):
                 return value
@@ -891,22 +911,33 @@ class HydratorService:
             if isinstance(value, datetime):
                 return value
             return datetime.fromisoformat(str(value))
-        if type_str.endswith("date") or "date" in type_str:
+        if type_str.endswith("date"):
             from datetime import date
 
             if isinstance(value, date):
                 return value
             return date.fromisoformat(str(value))
-        if "time" in type_str:
+        if type_str.endswith(":time") or type_str in ("time", "<class 'datetime.time'>"):
             from datetime import time
 
             if isinstance(value, time):
                 return value
             return time.fromisoformat(str(value))
-        if "gyear" in type_str:
+        if "gyear" in type_str and "gyearmonth" not in type_str:
             if isinstance(value, model.datatypes.GYear):
                 return value
             return model.datatypes.GYear(int(str(value)))
+
+        # Remaining XSD types (duration, gYearMonth, anyURI, binary types ...)
+        # are parsed from their lexical form.
+        if isinstance(value, str) and isinstance(value_type, type) and value_type is not str:
+            try:
+                return model.datatypes.from_xsd(value.strip(), value_type)
+            except Exception as exc:  # noqa: BLE001 - reported as invalid value
+                raise ValueError(
+                    f"{value!r} is not a valid "
+                    f"{model.datatypes.XSD_TYPE_NAMES.get(value_type, 'value')}"
+                ) from exc
 
         return str(value)
 
@@ -1013,11 +1044,36 @@ class HydratorService:
 
     def _clone_element(self, element: model.SubmodelElement) -> model.SubmodelElement:
         """
-        Create a deep copy of a SubmodelElement.
-
-        Uses copy.deepcopy but handles special cases.
+        Create a deep copy of a SubmodelElement, detached from any parent.
         """
-        return copy.deepcopy(element)
+        parent = getattr(element, "parent", None)
+        if parent is None:
+            return copy.deepcopy(element)
+        # Copy without the parent: deep-copying an attached element would
+        # duplicate the whole containing submodel and keep the copy bound to it.
+        element.parent = None
+        try:
+            return copy.deepcopy(element)
+        finally:
+            element.parent = parent
+
+    def _clear_values(self, element: model.SubmodelElement) -> None:
+        """Remove the values of an element and of everything nested in it."""
+        if isinstance(element, (model.Property, model.MultiLanguageProperty)):
+            element.value = None
+        elif isinstance(element, model.Range):
+            element.min = None
+            element.max = None
+        elif isinstance(element, (model.File, model.Blob, model.ReferenceElement)):
+            element.value = None
+        elif isinstance(
+            element, (model.SubmodelElementCollection, model.SubmodelElementList)
+        ):
+            for child in list(element.value):
+                self._clear_values(child)
+        elif isinstance(element, model.Entity):
+            for child in list(element.statement):
+                self._clear_values(child)
 
 
 class PDFExportService:

@@ -11,6 +11,8 @@ import logging
 import pprint
 
 import io
+import re
+import zipfile
 from io import BytesIO
 from xml.parsers import expat
 
@@ -113,8 +115,76 @@ class LenientAASFromXmlDecoder(xml_deserialization.AASFromXmlDecoder):
         return object_class(collected)
 
 
+_EXTERNAL_INTERNAL_TARGET_RE = re.compile(
+    rb"<Relationship\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def _repair_internal_relationships(package: bytes) -> bytes | None:
+    """
+    Repair packages whose internal parts are declared as external targets.
+
+    Some exporters write ``TargetMode="External"`` on relationships that point
+    to parts inside the package (``Target="/aasx/aasx-origin"``). OPC readers
+    then ignore those relationships and the package looks empty. Returns a
+    corrected copy of the package, or None when nothing needs repair.
+    """
+    try:
+        with zipfile.ZipFile(BytesIO(package)) as source:
+            names = set(source.namelist())
+            patched: dict[str, bytes] = {}
+
+            def fix(match: re.Match[bytes]) -> bytes:
+                tag = match.group(0)
+                if b"External" not in tag:
+                    return tag
+                target = re.search(rb"Target\s*=\s*[\"']([^\"']*)[\"']", tag)
+                if target is None:
+                    return tag
+                target_name = target.group(1).decode("utf-8", "replace")
+                if not target_name.startswith("/") or target_name.lstrip("/") not in names:
+                    return tag
+                return re.sub(rb"\s+TargetMode\s*=\s*[\"']External[\"']", b"", tag)
+
+            for name in names:
+                if not name.lower().endswith(".rels"):
+                    continue
+                original = source.read(name)
+                if b"External" not in original:
+                    continue
+                repaired = _EXTERNAL_INTERNAL_TARGET_RE.sub(fix, original)
+                if repaired != original:
+                    patched[name] = repaired
+
+            if not patched:
+                return None
+
+            output = BytesIO()
+            with zipfile.ZipFile(output, "w") as target_zip:
+                for info in source.infolist():
+                    data = patched.get(info.filename)
+                    if data is None:
+                        data = source.read(info.filename)
+                    target_zip.writestr(info, data, compress_type=info.compress_type)
+            logger.info(
+                "Repaired %d relationship part(s) declaring internal targets as external",
+                len(patched),
+            )
+            return output.getvalue()
+    except (zipfile.BadZipFile, OSError, KeyError):
+        return None
+
+
 class SafeAASXReader(aasx.AASXReader):
     """AASXReader that skips missing supplementary files instead of raising."""
+
+    def __init__(self, file):
+        if hasattr(file, "read"):
+            data = file.read()
+            repaired = _repair_internal_relationships(data) if data else None
+            file = BytesIO(repaired if repaired is not None else data)
+        super().__init__(file)
 
     @staticmethod
     def _map_xml_namespace_to_sdk(raw: bytes) -> bytes | None:

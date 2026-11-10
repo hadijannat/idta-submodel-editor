@@ -30,6 +30,7 @@ from app.services.hydrator import HydratorService
 from app.services.parser import ParserService
 from app.services.pcf.activity_list import ensure_activity_list_schema
 from app.services.pcf.validator import is_pcf_template
+from app.services.spec_notes import get_specification_notes
 from app.services.validation import validate_form_data as run_validation
 from app.utils.aasx_reader import SafeAASXReader
 from app.utils.semantic_resolver import (
@@ -41,6 +42,17 @@ from app.utils.upload_security import FileType, UploadValidator, read_upload_fil
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/editor", tags=["editor"])
+
+
+async def _describe_template(
+    fetcher: TemplateFetcherService, template_path: str
+) -> dict | None:
+    """Resolved release and companion documents; never fails the request."""
+    try:
+        return await fetcher.describe_template(template_path)
+    except Exception:  # noqa: BLE001 - extra information only
+        logger.warning("Could not describe template %s", template_path, exc_info=True)
+        return None
 
 
 @router.get("/templates/{template_name}/schema", response_model=SubmodelUISchema)
@@ -69,6 +81,7 @@ async def get_template_schema(
             schema = ensure_activity_list_schema(schema)
         schema["templateName"] = template_name
         schema["templatePath"] = template_path
+        schema["template"] = await _describe_template(fetcher, template_path)
         return SubmodelUISchema(**schema)
     except ValueError as e:
         raise APIError(
@@ -85,6 +98,49 @@ async def get_template_schema(
             message="Failed to get template schema",
             detail={"template_name": template_name, "error": str(e)},
         )
+
+
+@router.get("/templates/{template_name}/specification-notes")
+async def get_template_specification_notes(
+    template_name: str,
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    parser: Annotated[ParserService, Depends(get_parser)],
+    status: Annotated[
+        Literal["published", "deprecated"],
+        Query(description="Template status filter"),
+    ] = "published",
+    version: Annotated[str | None, Query(description="Template version")] = None,
+) -> dict:
+    """
+    Requirements the specification PDF states for the elements of a template.
+
+    Returns notes, example values, cardinality and page number per element,
+    keyed by idShort path. The first request for a template release reads the
+    PDF (a few seconds); the result is cached. Guidance only: a missing or
+    unreadable PDF yields ``available: false`` rather than an error.
+    """
+    unavailable = {
+        "available": False,
+        "document": None,
+        "pageCount": None,
+        "matched": 0,
+        "total": 0,
+        "notes": {},
+    }
+    if not get_settings().template_spec_pdf_enabled:
+        return unavailable
+    try:
+        template_path = f"{status}/{template_name}"
+        if version:
+            template_path = f"{template_path}/{version}"
+        aasx_bytes = await fetcher.fetch_template_aasx(template_path)
+        schema = parser.parse_aasx_to_ui_schema(aasx_bytes)
+        return await get_specification_notes(fetcher, schema, template_path)
+    except Exception:  # noqa: BLE001 - guidance must never break the editor
+        logger.warning(
+            "Could not read specification notes for %s", template_name, exc_info=True
+        )
+        return unavailable
 
 
 @router.get(

@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     github_repo: str = "admin-shell-io/submodel-templates"
     github_api_version: str = "2022-11-28"
     github_template_ref: str = "main"
+    # Resolve templates from one listing of the whole repository (latest
+    # versions, template parts, specification PDF/JSON). Disable to fall back
+    # to per-directory GitHub listing.
+    template_repo_index_enabled: bool = True
+    # Optional local checkout of the template repository. When set, templates
+    # are served from this directory and GitHub is not contacted (offline and
+    # air-gapped installations).
+    template_repo_dir: Path | None = None
+    # Enrich forms with requirements read from the specification PDF.
+    template_spec_pdf_enabled: bool = True
 
     # Caching
     cache_dir: Path = Path("./cache/templates")
@@ -276,6 +286,17 @@ class Settings(BaseSettings):
     def parse_cert_paths(cls, v):
         if isinstance(v, str) and v.strip():
             return Path(v)
+        return None
+
+    @field_validator("template_repo_dir", mode="before")
+    @classmethod
+    def parse_template_repo_dir(cls, v):
+        # An empty value (e.g. an unset variable passed through docker
+        # compose) means "not configured", not the current directory.
+        if isinstance(v, Path):
+            return v
+        if isinstance(v, str) and v.strip():
+            return Path(v.strip())
         return None
 
     @model_validator(mode="after")
