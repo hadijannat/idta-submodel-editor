@@ -34,7 +34,8 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 |---|---|
 | `GET /api/templates` | List templates (`status=published|deprecated|all`) |
 | `GET /api/templates/{template_name}` | Get template metadata |
-| `GET /api/templates/{template_name}/versions` | List versions for a template |
+| `GET /api/templates/{template_name}/versions` | List releases of a template, newest first |
+| `GET /api/templates/{template_name}/documents/{kind}` | Download a document of a release (`kind=specification|json|aasx`, optional `version`) |
 | `POST /api/templates/refresh` | Refresh template cache |
 | `DELETE /api/templates/{template_name}/cache` | Clear cached template payload |
 
@@ -44,6 +45,7 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 |---|---|
 | `GET /api/editor/templates/{template_name}/schema` | Get UI schema for template |
 | `GET /api/editor/templates/{template_name}/schema?version={version}` | Get schema for explicit version (optional query parameter) |
+| `GET /api/editor/templates/{template_name}/specification-notes` | Requirements read from the specification PDF, keyed by idShort path |
 | `POST /api/editor/hydrate/{template_name}` | Hydrate to AASX |
 | `POST /api/editor/hydrate/{template_name}/json` | Hydrate to JSON |
 | `POST /api/editor/upload` | Upload and parse AASX |

@@ -54,6 +54,7 @@ Then open `http://localhost:8080`.
 
 ## Feature Overview
 
+- [Template Requirements](docs/features/template-requirements.md): forms generated from the newest template release with the constraints, format standards and specification notes of its AASX, JSON and PDF.
 - [Smart Mapper](docs/features/smart-mapper.md): CSV/XLSX profiling and mapping with reusable recipes.
 - [Magic Import](docs/features/magic-import.md): PDF extraction with LLM + OCR, confidence signals, and auditability.
 - [Template Operations](docs/features/template-ops.md): import/diff/migrate/validate template versions.
