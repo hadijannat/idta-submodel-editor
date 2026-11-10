@@ -62,6 +62,32 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 | `GET /api/export/{template_name}/preview` | Template preview |
 | `POST /api/export/batch` | Batch export ZIP |
 
+### What an export contains
+
+Exports, hydration, dataspace publication and mapper output all produce a
+submodel **instance** of the template:
+
+- `kind` is `Instance`.
+- Qualifiers that only make sense in a template are removed: every qualifier
+  of kind `TemplateQualifier`, everything below `SMT/`, and the form and
+  cardinality instructions some templates carry without that kind
+  (`Cardinality`, `Multiplicity`, `FormTitle`, `FormInfo`, `FormUrl`,
+  `FormTag`, `FormChoices`, `EditIdShort`, `EditDescription`,
+  `PresetIdShort`, `AllowedIdShort`, `ExampleValue`, `DefaultValue`,
+  `InitialValue`, `Naming`). Other qualifiers, such as `unit`, stay.
+- The submodel gets an identifier of its own. The editor proposes a
+  `urn:uuid:` identifier that can be replaced; a request that still carries
+  the template's identifier gets a new `urn:uuid:` on every call, so send
+  your own `metadata.submodelId` when the identifier has to be stable.
+- `administration.templateId` names the template, unless the request sets it.
+
+Set `EXPORT_SUBMODEL_KIND=template` to get the previous behaviour: the
+template itself, with `kind`, qualifiers and identifier unchanged and the
+values filled in.
+
+If the template package holds several submodels, only the one that is edited
+is converted; the others are exported unchanged.
+
 ## Conformance
 
 | Endpoint | Description | Auth |

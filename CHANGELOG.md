@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Specification PDF, JSON and AASX of a release can be opened from the editor
 - `TEMPLATE_REPO_DIR` serves templates from a local checkout of the template repository for offline installations
 - Fields that still hold example values from the template are marked and can be cleared at once
+- Elements that may occur several times without being a list (cardinality `ZeroToMany`/`OneToMany`) can be added and removed in the form; each further occurrence is exported as a sibling with its own idShort (`Phone`, `Phone__01__`, ...)
+- `readWarnings` on the UI schema and a notice above the form when part of a template cannot be read or a package holds more submodels than the form shows
 
 ### Fixed
 - The oldest release of a template was loaded instead of the newest
@@ -26,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `xs:duration` values could not be exported
 - Packages declaring internal parts as external relationship targets could not be opened
 - List items were named after SDK placeholders that changed on every request
+- Exports were still templates: `kind=Template`, every template qualifier and the template's own identifier. They are now submodel instances with `kind=Instance`, no template-only qualifiers, an identifier of their own and `administration.templateId` naming the template
+- Elements that only break rules for finished submodels were dropped while reading a template, without notice: self-managed entities whose asset ID is still to be entered (the Bills of Material IEC 81346 extension loaded as an empty form), lists of an abstract element type and elements with a repeated qualifier type (Capability Description)
+- Exported JSON contained `"specificAssetIds": []` for entities, which the AAS JSON schema forbids, so exports of templates with entities failed the metamodel check
+
+### Changed
+- `EXPORT_SUBMODEL_KIND=template` restores the previous export (the template with values filled in)
+- The editor proposes a `urn:uuid:` identifier for each new instance instead of pre-filling the template's identifier
+- Validation requires a global asset ID for self-managed entities
 
 ## [1.0.0] - 2025-01-27
 

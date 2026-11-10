@@ -26,6 +26,7 @@ from app.services.template_constraints import (
     normalize_cardinality,
     qualifier_family,
 )
+from app.services.occurrences import is_repeatable
 from app.utils.semantic_resolver import (
     _resolve_concept_description,
     get_unit_from_concept_description,
@@ -127,12 +128,20 @@ class ParserService:
 
         with SafeAASXReader(BytesIO(aasx_bytes)) as reader:
             reader.read_into(object_store, file_store)
+            read_warnings = list(getattr(reader, "read_issues", None) or [])
 
         # Find the AAS and submodel
         aas = self._find_aas(object_store)
         submodel = self._find_submodel(object_store, aas)
         if not submodel:
             raise ValueError("No Submodel found in AASX file")
+
+        submodel_count = sum(1 for obj in object_store if isinstance(obj, model.Submodel))
+        if submodel_count > 1:
+            read_warnings.append(
+                f"This package contains {submodel_count} submodels. The form shows "
+                f"'{submodel.id_short}' only; the others are exported unchanged."
+            )
 
         submodel_id = getattr(submodel, "id_", None) or getattr(submodel, "id", None)
         logger.info(f"Parsing submodel: {submodel.id_short} ({submodel_id})")
@@ -148,6 +157,7 @@ class ParserService:
         schema = self._build_submodel_schema(
             aas_metadata, submodel, submodel_id, object_store, semantic_index, file_store
         )
+        schema["readWarnings"] = read_warnings
         if schema.get("kind") == "Template":
             # Values in a template are illustrations from the specification,
             # not data of the user's asset.
@@ -199,7 +209,7 @@ class ParserService:
                 else None
             ),
             "elements": [
-                self._element_to_schema(e, object_store, semantic_index)
+                self._element_to_schema(e, object_store, semantic_index, in_container=True)
                 for e in submodel.submodel_element
             ],
             "supplementaryFiles": list(file_store),
@@ -355,6 +365,7 @@ class ParserService:
         object_store: model.DictObjectStore,
         semantic_index: SemanticIndex | None = None,
         item_id_short: str | None = None,
+        in_container: bool = False,
     ) -> dict[str, Any]:
         """
         Convert a SubmodelElement to UI schema.
@@ -365,6 +376,10 @@ class ParserService:
             element: SubmodelElement to convert
             object_store: Object store containing ConceptDescriptions
             semantic_index: Pre-built index for O(1) ConceptDescription lookups
+            in_container: Whether the element is a direct child of a submodel,
+                collection or entity. Only there can an element with a
+                "to many" cardinality be repeated as a sibling; list items
+                repeat through their list.
         """
         # Base schema applicable to all element types. In IDTA templates the
         # element description carries the specification notes ("Note: country
@@ -413,6 +428,10 @@ class ParserService:
             "cardinality": self._extract_cardinality(element),
             "category": getattr(element, "category", None),
         }
+        if in_container and is_repeatable(
+            base_schema["modelType"], base_schema["cardinality"]
+        ):
+            base_schema["repeatable"] = True
 
         constraints = extract_constraints(
             qualifiers,
@@ -598,7 +617,7 @@ class ParserService:
         """Generate schema for SubmodelElementCollection."""
         return {
             "elements": [
-                self._element_to_schema(e, object_store, semantic_index)
+                self._element_to_schema(e, object_store, semantic_index, in_container=True)
                 for e in element.value
             ],
         }
@@ -724,7 +743,7 @@ class ParserService:
                 else []
             ),
             "statements": [
-                self._element_to_schema(e, object_store, semantic_index)
+                self._element_to_schema(e, object_store, semantic_index, in_container=True)
                 for e in element.statement
             ],
         }

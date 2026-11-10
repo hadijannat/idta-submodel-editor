@@ -37,6 +37,9 @@ export interface ElementFormData {
   second?: string;
   annotations?: ElementFormData[];
 
+  // Further occurrences of a repeatable element; the element itself is the first
+  occurrences?: ElementFormData[];
+
   // Allow additional properties
   [key: string]: unknown;
 }

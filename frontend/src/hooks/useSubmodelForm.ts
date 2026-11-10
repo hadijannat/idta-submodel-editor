@@ -18,6 +18,7 @@ import {
   type ConformanceCheckResult,
 } from '../services/api';
 import { getListItemBounds, isRequired } from '../types/aas-elements';
+import { newInstanceId } from '../utils/instance-id';
 import { useDraftAutoSave } from './useDraftAutoSave';
 import { requirementError } from '../utils/fieldRequirements';
 
@@ -87,9 +88,23 @@ interface UseSubmodelFormReturn {
 }
 
 /**
- * Generate Zod schema from UI element schema.
+ * Zod schema for an element, including the further occurrences of a
+ * repeatable element. Each occurrence is validated like the element itself.
  */
 function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
+  const elementSchema = generateSingleElementSchema(element);
+  if (!element.repeatable || !(elementSchema instanceof z.ZodObject)) {
+    return elementSchema;
+  }
+  return elementSchema.extend({
+    occurrences: z.array(elementSchema).optional(),
+  });
+}
+
+/**
+ * Generate Zod schema for one occurrence of a UI element.
+ */
+function generateSingleElementSchema(element: UIElementSchema): z.ZodTypeAny {
   const required = isRequired(element.cardinality);
   const withSemanticFields = <T extends z.ZodRawShape>(schema: z.ZodObject<T>) =>
     schema.extend({
@@ -302,11 +317,13 @@ function generateDefaultValues(schema: SubmodelUISchema): SubmodelFormData {
     elements,
     metadata: {
       idShort: schema.idShort ?? '',
-      submodelId: schema.submodelId ?? '',
+      // The export is an instance of the template, so it gets an identifier
+      // of its own and names the template it was created from.
+      submodelId: newInstanceId(),
       administration: {
         version: schema.administration?.version ?? '',
         revision: schema.administration?.revision ?? '',
-        templateId: schema.administration?.templateId ?? '',
+        templateId: schema.administration?.templateId || schema.submodelId || '',
       },
     },
   };

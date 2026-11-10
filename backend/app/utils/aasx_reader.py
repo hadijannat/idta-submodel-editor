@@ -1,19 +1,31 @@
 """
 Safe AASX reader utilities.
 
-Provides a reader that tolerates missing supplementary file parts
-so template parsing doesn't fail on incomplete AASX packages.
+Reads submodel templates as they are published rather than as the SDK would
+like them to be:
+
+- missing supplementary file parts are skipped instead of failing the read
+- relationships that declare parts of the package as external are repaired
+- template content that only breaks rules for finished submodels is kept: a
+  self-managed entity whose asset ID is still to be filled in, and a list
+  declared with an abstract element type
+- whatever still cannot be read is reported in ``read_issues`` instead of
+  disappearing without a trace
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import pprint
+import threading
 
 import io
 import re
 import zipfile
 from io import BytesIO
+from typing import Any, Iterable
+from xml.etree import ElementTree
 from xml.parsers import expat
 
 from basyx.aas import model
@@ -24,6 +36,263 @@ from basyx.aas.adapter.xml import xml_deserialization, read_aas_xml_file
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Element types a SubmodelElementList may declare without naming one concrete
+# class. The SDK compares the declared type by identity, so no element can ever
+# match one of these.
+_ABSTRACT_ELEMENT_TYPES = (
+    model.SubmodelElement,
+    model.DataElement,
+    model.EventElement,
+)
+
+# XML tag and JSON modelType names of submodel elements (lower-cased).
+_SUBMODEL_ELEMENT_NAMES = frozenset(
+    name.lower()
+    for name in (
+        "Property",
+        "MultiLanguageProperty",
+        "SubmodelElementCollection",
+        "SubmodelElementList",
+        "File",
+        "Blob",
+        "Range",
+        "ReferenceElement",
+        "Entity",
+        "RelationshipElement",
+        "AnnotatedRelationshipElement",
+        "Operation",
+        "Capability",
+        "BasicEventElement",
+    )
+)
+
+_MAX_REPORTED_READ_ERRORS = 5
+
+# "<!ENTITY" as it appears in the encodings an XML document can be read in.
+_ENTITY_DECLARATION_MARKERS = tuple(
+    "<!ENTITY".encode(encoding) for encoding in ("ascii", "utf-16-le", "utf-16-be")
+)
+
+
+def construct_template_entity(
+    id_short: Any,
+    entity_type: model.EntityType | None,
+    global_asset_id: str | None = None,
+    specific_asset_id: Iterable[model.SpecificAssetId] = (),
+) -> model.Entity:
+    """
+    Build an Entity, accepting a self-managed entity without an asset ID.
+
+    AASd-014 demands a ``globalAssetId`` or ``specificAssetId`` for every
+    self-managed entity. In a template that ID is precisely what the user is
+    asked to enter, so the element has to survive the read without it. The
+    constraint applies again as soon as an ID is set.
+    """
+    try:
+        return model.Entity(
+            id_short=id_short,
+            entity_type=entity_type,
+            global_asset_id=global_asset_id,
+            specific_asset_id=specific_asset_id,
+        )
+    except model.AASConstraintViolation as exc:
+        if (
+            exc.constraint_id != 14
+            or entity_type != model.EntityType.SELF_MANAGED_ENTITY
+        ):
+            raise
+    entity = model.Entity(
+        id_short=id_short,
+        entity_type=None,
+        global_asset_id=global_asset_id,
+        specific_asset_id=specific_asset_id,
+    )
+    # Entity.__init__ assigns this attribute directly as well; going through
+    # the property would run the check that was just bypassed.
+    entity._entity_type = entity_type
+    return entity
+
+
+def construct_template_list(*args: Any, **kwargs: Any) -> model.SubmodelElementList:
+    """
+    Build a SubmodelElementList that accepts the items of an abstract type.
+
+    A list declared as ``typeValueListElement=SubmodelElement`` may hold any
+    submodel element, but the SDK rejects every item because no object is of
+    exactly that abstract class (AASd-108). Items that are instances of the
+    declared abstract type are let through; lists with a concrete element type
+    keep the strict check.
+    """
+    list_ = model.SubmodelElementList(*args, **kwargs)
+    declared = list_.type_value_list_element
+    if declared not in _ABSTRACT_ELEMENT_TYPES:
+        return list_
+
+    items = list_.value
+    strict_check = items._item_add_hook
+
+    def check(new: model.SubmodelElement, existing: Iterable[model.SubmodelElement]) -> None:
+        id_short = new.id_short
+        try:
+            strict_check(new, existing)
+        except model.AASConstraintViolation as exc:
+            if exc.constraint_id != 108 or not isinstance(new, declared):
+                raise
+            # The strict check clears the generated idShort before it raises.
+            new.id_short = id_short
+
+    items._item_add_hook = check
+    return list_
+
+
+def drop_duplicate_qualifiers_in_xml(element: Any) -> None:
+    """
+    Remove repeated qualifier types from an element's ``qualifiers``, keeping the first.
+
+    A qualifiable may carry each qualifier type once (AASd-021). The SDK fails
+    the whole element, children included, on a repeat; losing the extra
+    qualifier is the smaller loss.
+    """
+    for container in element:
+        if not isinstance(container.tag, str) or not container.tag.endswith("}qualifiers"):
+            continue
+        seen: set[str] = set()
+        for qualifier in list(container):
+            type_text = next(
+                (
+                    (child.text or "").strip()
+                    for child in qualifier
+                    if isinstance(child.tag, str) and child.tag.endswith("}type")
+                ),
+                None,
+            )
+            if type_text is None:
+                continue
+            if type_text in seen:
+                logger.warning(
+                    "Ignoring repeated qualifier type %r on line %s",
+                    type_text,
+                    getattr(qualifier, "sourceline", "?"),
+                )
+                container.remove(qualifier)
+            else:
+                seen.add(type_text)
+
+
+def drop_duplicate_qualifiers_in_json(dct: dict) -> None:
+    """JSON counterpart of :func:`drop_duplicate_qualifiers_in_xml`."""
+    qualifiers = dct.get("qualifiers")
+    if not isinstance(qualifiers, list):
+        return
+    seen: set[str] = set()
+    kept = []
+    for qualifier in qualifiers:
+        # The decoder builds objects bottom-up, so entries are Qualifier
+        # objects by now; plain dicts only appear if that construction failed.
+        type_text = getattr(qualifier, "type", None)
+        if type_text is None and isinstance(qualifier, dict):
+            type_text = qualifier.get("type")
+        if isinstance(type_text, str) and type_text in seen:
+            logger.warning("Ignoring repeated qualifier type %r", type_text)
+            continue
+        if isinstance(type_text, str):
+            seen.add(type_text)
+        kept.append(qualifier)
+    if len(kept) != len(qualifiers):
+        dct["qualifiers"] = kept
+
+
+def count_submodel_elements_in_xml(raw: bytes) -> int | None:
+    """
+    Number of submodel elements below ``submodels`` in an AAS XML document.
+
+    Returns ``None`` when the document cannot be counted. That includes every
+    document that declares entities: AAS XML has no use for them, and expanding
+    them here would let a small crafted part consume a lot of memory for what
+    is only an advisory count.
+    """
+    if any(marker in raw for marker in _ENTITY_DECLARATION_MARKERS):
+        return None
+    try:
+        root = ElementTree.fromstring(raw)
+    except ElementTree.ParseError:
+        return None
+    count = 0
+    for child in root:
+        if child.tag.rsplit("}", 1)[-1] != "submodels":
+            continue
+        for element in child.iter():
+            if element.tag.rsplit("}", 1)[-1].lower() in _SUBMODEL_ELEMENT_NAMES:
+                count += 1
+    return count
+
+
+def count_submodel_elements_in_json(document: Any) -> int | None:
+    """Number of submodel elements below ``submodels`` in an AAS JSON document."""
+    if not isinstance(document, dict):
+        return None
+
+    def walk(node: Any) -> int:
+        if isinstance(node, list):
+            return sum(walk(item) for item in node)
+        if not isinstance(node, dict):
+            return 0
+        own = 1 if str(node.get("modelType", "")).lower() in _SUBMODEL_ELEMENT_NAMES else 0
+        return own + sum(walk(value) for value in node.values())
+
+    return walk(document.get("submodels") or [])
+
+
+def count_submodel_elements(objects: Iterable[Any]) -> int:
+    """Number of submodel elements in the submodels among ``objects``."""
+
+    def walk(elements: Iterable[Any] | None) -> int:
+        total = 0
+        for element in elements or ():
+            if not isinstance(element, model.SubmodelElement):
+                # Older SDK releases wrap operation variables in a holder object.
+                element = getattr(element, "value", None)
+                if not isinstance(element, model.SubmodelElement):
+                    continue
+            total += 1
+            if isinstance(
+                element, (model.SubmodelElementCollection, model.SubmodelElementList)
+            ):
+                total += walk(element.value)
+            elif isinstance(element, model.Entity):
+                total += walk(element.statement)
+            elif isinstance(element, model.AnnotatedRelationshipElement):
+                total += walk(element.annotation)
+            elif isinstance(element, model.Operation):
+                total += walk(element.input_variable)
+                total += walk(element.output_variable)
+                total += walk(element.in_output_variable)
+        return total
+
+    return sum(
+        walk(obj.submodel_element) for obj in objects if isinstance(obj, model.Submodel)
+    )
+
+
+class _ReadErrorCollector(logging.Handler):
+    """Collects the SDK's error messages emitted by the current thread."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.ERROR)
+        self._thread = threading.get_ident()
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.thread != self._thread:
+            return
+        try:
+            message = record.getMessage()
+        except Exception:  # pragma: no cover - a malformed log call must not break reading
+            return
+        summary = " ".join(message.split())
+        if summary and summary not in self.messages:
+            self.messages.append(summary)
 
 _AAS_XML_NAMESPACES = (
     b"https://admin-shell.io/aas/3/0",
@@ -40,8 +309,29 @@ _LENIENT_LANG_STRING_MAX_LENGTH = {
 }
 
 
-class LenientAASFromJsonDecoder(json_deserialization.AASFromJsonDecoder):
-    """JSON decoder that truncates overlong constrained lang string values."""
+class TemplateAASFromJsonDecoder(json_deserialization.AASFromJsonDecoder):
+    """JSON decoder that keeps template content the strict model rejects."""
+
+    @classmethod
+    def _amend_abstract_attributes(cls, obj, dct):
+        drop_duplicate_qualifiers_in_json(dct)
+        super()._amend_abstract_attributes(obj, dct)
+
+    @classmethod
+    def _construct_entity(cls, dct, object_class=model.Entity):
+        if object_class is model.Entity:
+            object_class = construct_template_entity
+        return super()._construct_entity(dct, object_class)
+
+    @classmethod
+    def _construct_submodel_element_list(cls, dct, object_class=model.SubmodelElementList):
+        if object_class is model.SubmodelElementList:
+            object_class = construct_template_list
+        return super()._construct_submodel_element_list(dct, object_class)
+
+
+class LenientAASFromJsonDecoder(TemplateAASFromJsonDecoder):
+    """JSON decoder that also truncates overlong constrained lang string values."""
 
     @classmethod
     def _construct_lang_string_set(cls, lst, object_class):
@@ -79,8 +369,31 @@ class LenientAASFromJsonDecoder(json_deserialization.AASFromJsonDecoder):
         return object_class(ret)
 
 
-class LenientAASFromXmlDecoder(xml_deserialization.AASFromXmlDecoder):
-    """XML decoder that truncates overlong constrained lang string values."""
+class TemplateAASFromXmlDecoder(xml_deserialization.AASFromXmlDecoder):
+    """XML decoder that keeps template content the strict model rejects."""
+
+    @classmethod
+    def _amend_abstract_attributes(cls, obj, element):
+        drop_duplicate_qualifiers_in_xml(element)
+        super()._amend_abstract_attributes(obj, element)
+
+    @classmethod
+    def construct_entity(cls, element, object_class=model.Entity, **kwargs):
+        if object_class is model.Entity:
+            object_class = construct_template_entity
+        return super().construct_entity(element, object_class, **kwargs)
+
+    @classmethod
+    def construct_submodel_element_list(
+        cls, element, object_class=model.SubmodelElementList, **kwargs
+    ):
+        if object_class is model.SubmodelElementList:
+            object_class = construct_template_list
+        return super().construct_submodel_element_list(element, object_class, **kwargs)
+
+
+class LenientAASFromXmlDecoder(TemplateAASFromXmlDecoder):
+    """XML decoder that also truncates overlong constrained lang string values."""
 
     @classmethod
     def construct_lang_string_set(
@@ -199,7 +512,12 @@ def _repair_internal_relationships(package: bytes) -> bytes | None:
 
 
 class SafeAASXReader(aasx.AASXReader):
-    """AASXReader that skips missing supplementary files instead of raising."""
+    """
+    AASXReader for published templates.
+
+    After :meth:`read_into`, :attr:`read_issues` lists what could not be read,
+    in words meant for the person looking at the form.
+    """
 
     def __init__(self, file):
         if hasattr(file, "read"):
@@ -207,6 +525,42 @@ class SafeAASXReader(aasx.AASXReader):
             repaired = _repair_internal_relationships(data) if data else None
             file = BytesIO(repaired if repaired is not None else data)
         super().__init__(file)
+        self.read_issues: list[str] = []
+
+    def read_into(self, *args: Any, **kwargs: Any):
+        collector = _ReadErrorCollector()
+        sdk_logger = logging.getLogger("basyx.aas.adapter")
+        self._lost_elements = 0
+        self._total_elements = 0
+        sdk_logger.addHandler(collector)
+        try:
+            result = super().read_into(*args, **kwargs)
+        finally:
+            sdk_logger.removeHandler(collector)
+
+        self.read_issues = []
+        if self._lost_elements:
+            self.read_issues.append(
+                f"{self._lost_elements} of {self._total_elements} elements in this "
+                "template could not be read and are missing from the form."
+            )
+            self.read_issues.extend(collector.messages[:_MAX_REPORTED_READ_ERRORS])
+            hidden = len(collector.messages) - _MAX_REPORTED_READ_ERRORS
+            if hidden > 0:
+                self.read_issues.append(f"{hidden} more read error(s) not shown.")
+            for issue in self.read_issues:
+                logger.warning("AASX read issue: %s", issue)
+        return result
+
+    def _record_element_loss(self, expected: int | None, objects: Iterable[Any]) -> None:
+        """Compare the elements a part contains with the elements that were built."""
+        if expected is None:
+            return
+        self._total_elements = getattr(self, "_total_elements", 0) + expected
+        lost = expected - count_submodel_elements(objects)
+        if lost > 0:
+            self._lost_elements = getattr(self, "_lost_elements", 0) + lost
+
 
     @staticmethod
     def _map_xml_namespace_to_sdk(raw: bytes) -> bytes | None:
@@ -330,8 +684,10 @@ class SafeAASXReader(aasx.AASXReader):
             logger.debug("Parsing AAS objects from XML stream in OPC part %s ...", part_name)
             with self.reader.open_part(part_name) as part:
                 raw = part.read()
-            if "decoder" not in kwargs and lenient:
-                kwargs["decoder"] = LenientAASFromXmlDecoder
+            if "decoder" not in kwargs:
+                kwargs["decoder"] = (
+                    LenientAASFromXmlDecoder if lenient else TemplateAASFromXmlDecoder
+                )
             patched = self._map_xml_namespace_to_sdk(raw)
             if patched is not None:
                 logger.debug(
@@ -339,16 +695,25 @@ class SafeAASXReader(aasx.AASXReader):
                     part_name,
                     _EXPECTED_AAS_XML_NAMESPACE.decode(),
                 )
-            return read_aas_xml_file(BytesIO(patched or raw), **kwargs)
+            objects = read_aas_xml_file(BytesIO(patched or raw), **kwargs)
+            self._record_element_loss(count_submodel_elements_in_xml(raw), objects)
+            return objects
 
         if is_json:
             logger.debug("Parsing AAS objects from JSON stream in OPC part %s ...", part_name)
             with self.reader.open_part(part_name) as part:
-                if "decoder" not in kwargs and lenient:
-                    kwargs["decoder"] = LenientAASFromJsonDecoder
-                return read_aas_json_file(
-                    io.TextIOWrapper(part, encoding="utf-8-sig"), **kwargs
+                text = part.read().decode("utf-8-sig")
+            if "decoder" not in kwargs:
+                kwargs["decoder"] = (
+                    LenientAASFromJsonDecoder if lenient else TemplateAASFromJsonDecoder
                 )
+            objects = read_aas_json_file(io.StringIO(text), **kwargs)
+            try:
+                expected = count_submodel_elements_in_json(json.loads(text))
+            except ValueError:
+                expected = None
+            self._record_element_loss(expected, objects)
+            return objects
 
         logger.error(
             "Could not determine part format of AASX part %s (Content Type: %s, extension: %s)",

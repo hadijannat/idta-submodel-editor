@@ -17,6 +17,7 @@ import FileField from './FileField';
 import BlobField from './BlobField';
 import RangeField from './RangeField';
 import ReferenceField from './ReferenceField';
+import ElementOccurrences from './ElementOccurrences';
 
 interface AASRendererProps {
   /** Element schema to render */
@@ -25,6 +26,19 @@ interface AASRendererProps {
   path: string;
   /** Current nesting depth (for styling) */
   depth?: number;
+  /**
+   * Set for a further occurrence of a repeatable element, which must not
+   * offer occurrences of its own: all of them belong to the first one.
+   */
+  isOccurrence?: boolean;
+}
+
+/**
+ * A self-managed entity is identified by its asset ID, so the ID is part of
+ * what the user has to enter (AAS constraint AASd-014).
+ */
+function isSelfManagedEntity(schema: UIElementSchema): boolean {
+  return (schema.entityType ?? '').toLowerCase().replace(/_/g, '').includes('self');
 }
 
 /**
@@ -37,6 +51,7 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
   schema,
   path,
   depth = 0,
+  isOccurrence = false,
 }) => {
   const getLabel = () => elementLabel(schema);
   const required = isRequired(schema.cardinality);
@@ -142,7 +157,7 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
                   idShort: 'globalAssetId',
                 }}
                 label="Global Asset ID"
-                required={false}
+                required={required && isSelfManagedEntity(schema)}
                 showSemantic={false}
               />
             )}
@@ -264,6 +279,20 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
       data-id-short={schema.idShort}
     >
       {renderElement()}
+      {schema.repeatable && !isOccurrence && (
+        <ElementOccurrences
+          schema={schema}
+          path={path}
+          renderOccurrence={(occurrencePath) => (
+            <AASRenderer
+              schema={schema}
+              path={occurrencePath}
+              depth={depth}
+              isOccurrence
+            />
+          )}
+        />
+      )}
     </div>
   );
 };

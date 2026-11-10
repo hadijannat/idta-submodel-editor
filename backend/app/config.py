@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     local_templates_enabled: bool = True
     local_templates_dir: Path = Path("./templates/local")
 
+    # Export: "instance" turns the filled template into a submodel instance
+    # (kind=Instance, template-only qualifiers removed, own identifier);
+    # "template" keeps the template as is with the values filled in.
+    export_submodel_kind: Literal["instance", "template"] = "instance"
+
     # Semantic dictionary lookup
     semantic_enabled: bool = True
     semantic_prefer_iri: bool = True

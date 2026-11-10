@@ -21,8 +21,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from basyx.aas import model
+
 from app.services.fetcher import TemplateFetcherService
-from app.services.hydrator import HydratorService
+from app.services.hydrator import (
+    HydratorService,
+    is_template_only_qualifier,
+    iterate_all_elements,
+)
 from app.services.parser import ParserService
 from app.services.validation import validate_form_data
 
@@ -111,6 +117,7 @@ STAGES = (
     "hydratedAasx",
     "hydratedJson",
     "reparsed",
+    "instanceExported",
 )
 
 REPORT_DIR = Path("tmp/template-audit")
@@ -724,7 +731,14 @@ def build_required_element(
 
     if model_type == "Entity":
         statements = build_required_children(element.get("statements", []) or [])
-        return {"statements": statements} if required or statements else None
+        if not (required or statements):
+            return None
+        entity_data: dict[str, Any] = {"statements": statements}
+        entity_type = str(element.get("entityType") or "").lower().replace("_", "")
+        if "self" in entity_type and not element.get("globalAssetId"):
+            # A self-managed entity is identified by its asset ID (AASd-014).
+            entity_data["globalAssetId"] = "urn:example:asset"
+        return entity_data
 
     if required:
         return {}
@@ -800,6 +814,45 @@ def compare_preservation(
             original["supplementaryFiles"] == reparsed["supplementaryFiles"]
         ),
     }
+
+
+def instance_export_problems(object_store: Any, template_submodel_id: str | None) -> list[str]:
+    """
+    Reasons why a hydrated store is not a submodel instance.
+
+    An instance has ``kind=Instance``, carries no template-only qualifiers and
+    does not reuse the template's identifier.
+    """
+    try:
+        submodels = [obj for obj in object_store if isinstance(obj, model.Submodel)]
+    except TypeError:
+        return ["hydrated store is not iterable"]
+
+    template_submodels = [
+        submodel for submodel in submodels if submodel.kind != model.ModellingKind.INSTANCE
+    ]
+    template_qualifiers = 0
+    for submodel in submodels:
+        # The same traversal the hydrator strips qualifiers with, so a
+        # qualifier it misses anywhere shows up here.
+        qualifiables = [submodel, *iterate_all_elements(submodel.submodel_element)]
+        template_qualifiers += sum(
+            1
+            for qualifiable in qualifiables
+            for qualifier in (getattr(qualifiable, "qualifier", None) or ())
+            if is_template_only_qualifier(qualifier)
+        )
+
+    problems = []
+    if template_submodels:
+        problems.append(f"{len(template_submodels)} submodel(s) still have kind=Template")
+    if template_qualifiers:
+        problems.append(f"{template_qualifiers} template-only qualifier(s) remain")
+    if template_submodel_id and any(
+        str(getattr(submodel, "id", "")) == template_submodel_id for submodel in submodels
+    ):
+        problems.append("the submodel still has the template's identifier")
+    return problems
 
 
 def make_template_result(template: dict[str, Any]) -> dict[str, Any]:
@@ -1025,11 +1078,15 @@ async def _audit_template_inner(
                 ),
             )
 
+    # The round trip below checks that hydration keeps everything the template
+    # defines, so it hydrates as a template. Instance export, which removes the
+    # template-only parts on purpose, is checked separately at the end.
     try:
         hydrated_store, hydrated_files = await asyncio.to_thread(
             hydrator.hydrate_to_stores,
             aasx_bytes,
             default_form_data,
+            "template",
         )
         hydrated_aasx = await asyncio.to_thread(
             hydrator.serialize_stores_to_aasx,
@@ -1088,6 +1145,26 @@ async def _audit_template_inner(
                 stage="preservation",
                 message=f"Round-trip preservation check failed: {key}.",
             )
+
+    try:
+        instance_store, _ = await asyncio.to_thread(
+            hydrator.hydrate_to_stores,
+            aasx_bytes,
+            default_form_data,
+            "instance",
+        )
+        problems = instance_export_problems(instance_store, schema.get("submodelId"))
+    except Exception as exc:
+        problems = [f"{type(exc).__name__}: {exc}"]
+    if problems:
+        add_failure(
+            result,
+            category="instance_export",
+            stage="instance",
+            message="Export is not a submodel instance: " + "; ".join(problems) + ".",
+        )
+    else:
+        result["stages"]["instanceExported"] = True
 
     return result
 

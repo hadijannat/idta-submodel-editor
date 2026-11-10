@@ -650,6 +650,10 @@ function App() {
                   placeholder="urn:..."
                   {...form.register('metadata.submodelId')}
                 />
+                <small>
+                  Identifier of this instance. Replace the generated one with an
+                  ID from your own namespace if you have one.
+                </small>
               </label>
               <label className="form-field">
                 <span>Version</span>
@@ -674,7 +678,10 @@ function App() {
                   placeholder="template-id"
                   {...form.register('metadata.administration.templateId')}
                 />
-                <small>Copied into Administration.templateId on export.</small>
+                <small>
+                  The template this instance was created from. Copied into
+                  Administration.templateId on export.
+                </small>
               </label>
             </div>
           </div>
@@ -753,6 +760,17 @@ function App() {
               <p className="submodel-description">{schema.description.en}</p>
             )}
           </div>
+
+          {(schema.readWarnings?.length ?? 0) > 0 && (
+            <div className="template-read-warnings" role="alert">
+              <strong>This template could not be read completely.</strong>
+              <ul>
+                {schema.readWarnings?.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="form-toolbar">
             <div className="form-toolbar-info">

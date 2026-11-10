@@ -436,7 +436,9 @@ def test_hydration_round_trip_keeps_requirements_and_new_values():
     form["elements"]["IssueDate"] = {"value": "2024-05-06"}
     form["elements"]["Markings"]["items"].append({"elements": {"MarkingName": {"value": "WEEE"}}})
 
-    hydrated = HydratorService().hydrate_submodel(template, form)
+    # Requirements live in template qualifiers, which an instance export drops
+    # on purpose, so the round trip that must keep them hydrates as a template.
+    hydrated = HydratorService().hydrate_submodel(template, form, "template")
     elements = _by_id(ParserService().parse_aasx_to_ui_schema(hydrated))
 
     assert elements["CountryOfOrigin"]["value"] == "FR"

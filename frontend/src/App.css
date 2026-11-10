@@ -706,6 +706,22 @@ body {
   color: var(--color-text-light);
 }
 
+.template-read-warnings {
+  margin: var(--spacing-md) 0;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  border-radius: 6px;
+  color: #8a6d1d;
+  font-size: 0.875rem;
+}
+
+.template-read-warnings ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
 .submodel-elements {
   display: flex;
   flex-direction: column;
@@ -1195,6 +1211,34 @@ body {
 
 .aas-list-item-content {
   padding: var(--spacing-md);
+}
+
+/* Further occurrences of a repeatable element */
+.aas-occurrences {
+  margin: var(--spacing-xs) 0 var(--spacing-md);
+}
+
+.aas-occurrence {
+  border-left: 3px solid var(--color-border);
+  margin-bottom: var(--spacing-sm);
+  padding-left: var(--spacing-sm);
+}
+
+.aas-occurrence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-xs) 0;
+}
+
+.aas-occurrence-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-light);
+}
+
+.aas-btn-add-occurrence {
+  font-size: 0.8125rem;
 }
 
 /* Virtualized list styles */

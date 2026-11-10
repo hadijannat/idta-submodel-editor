@@ -47,6 +47,9 @@ class ElementFormData(BaseModel):
     second: str | None = None
     annotations: list["ElementFormData"] | None = None
 
+    # Further occurrences of a repeatable element; the element itself is the first
+    occurrences: list["ElementFormData"] | None = None
+
     class Config:
         extra = "allow"
 

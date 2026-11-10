@@ -485,7 +485,8 @@ class FakeHydrator:
     def __init__(self, error: Exception | None = None):
         self.error = error
 
-    def hydrate_to_stores(self, _aasx_bytes, _form_data):
+    def hydrate_to_stores(self, _aasx_bytes, _form_data, output_kind=None):
+        self.kinds = [*getattr(self, "kinds", []), output_kind]
         if self.error:
             raise self.error
         return {"store": True}, {"files": True}

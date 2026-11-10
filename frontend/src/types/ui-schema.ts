@@ -90,6 +90,11 @@ export interface UIElementSchema {
   qualifiers: QualifierSchema[];
   cardinality: string;
   category: string | null;
+  /**
+   * The element may occur more than once next to its siblings. Further
+   * occurrences are kept in the element's `occurrences` array in form data.
+   */
+  repeatable?: boolean;
 
   // Requirements declared by the template (qualifiers / IEC 61360)
   exampleValues?: string[] | null;
@@ -268,6 +273,8 @@ export interface SubmodelUISchema {
   elements: UIElementSchema[];
   supplementaryFiles: string[];
   pcfActivityListInjected?: boolean | null;
+  /** What could not be read from the template; empty when it was read in full. */
+  readWarnings?: string[];
 }
 
 /**
@@ -293,6 +300,7 @@ export interface TemplateInfo {
  * Template version information.
  */
 export interface TemplateVersionInfo {
+  /** Version as a path fragment, e.g. "3/0/3". Sent back to the API as is. */
   version: string;
   path: string;
   sha: string | null;
