@@ -12,10 +12,11 @@ import copy
 import json
 import logging
 import base64
+import uuid
 from decimal import Decimal, InvalidOperation
 from importlib import import_module
 from io import BytesIO
-from typing import Any
+from typing import Any, Literal
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx, json as aas_json
@@ -26,6 +27,51 @@ from app.services.pcf.activity_list import ensure_activity_list_in_submodel
 
 logger = logging.getLogger(__name__)
 
+OutputKind = Literal["instance", "template"]
+
+# Qualifier types that instruct template authors and form tools: how often an
+# element may occur, what a form shows for it, how its idShort may be chosen,
+# which values are examples or defaults. They describe the template, not the
+# asset, so they do not belong in a submodel instance. Compared
+# case-insensitively; everything below "SMT/" counts as well.
+_TEMPLATE_INSTRUCTION_QUALIFIER_TYPES = frozenset(
+    name.lower()
+    for name in (
+        "Cardinality",
+        "Multiplicity",
+        "FormTitle",
+        "FormInfo",
+        "FormUrl",
+        "FormTag",
+        "FormChoices",
+        "EditIdShort",
+        "EditDescription",
+        "PresetIdShort",
+        "AllowedIdShort",
+        "ExampleValue",
+        "DefaultValue",
+        "InitialValue",
+        "Naming",
+    )
+)
+
+
+def is_template_only_qualifier(qualifier: model.Qualifier) -> bool:
+    """
+    Whether a qualifier may only appear in a submodel template.
+
+    That is the case for every qualifier of kind ``TemplateQualifier`` (AAS
+    Part 1, constraints AASd-119 and AASd-129) and for the template-authoring
+    qualifiers that some published templates carry without that kind.
+    """
+    if qualifier.kind == model.QualifierKind.TEMPLATE_QUALIFIER:
+        return True
+    qualifier_type = (qualifier.type or "").strip().lower()
+    return (
+        qualifier_type.startswith("smt/")
+        or qualifier_type in _TEMPLATE_INSTRUCTION_QUALIFIER_TYPES
+    )
+
 
 class HydratorService:
     """
@@ -35,13 +81,18 @@ class HydratorService:
     1. Load the original template AASX
     2. Walk the element tree and merge form values
     3. Preserve all metadata not rendered in the UI
-    4. Return complete, valid AASX output
+    4. Turn the filled template into a submodel instance
+    5. Return complete, valid AASX output
+
+    Step 4 is skipped when the output kind is ``"template"``; the result is
+    then the template itself with values filled in.
     """
 
     def hydrate_submodel(
         self,
         template_aasx_bytes: bytes,
         form_data: dict[str, Any],
+        output_kind: OutputKind | None = None,
     ) -> bytes:
         """
         Hydrate a submodel template with form data.
@@ -49,17 +100,22 @@ class HydratorService:
         Args:
             template_aasx_bytes: Original template AASX as bytes
             form_data: Form data with structure matching UI schema
+            output_kind: ``"instance"`` or ``"template"``; defaults to the
+                ``EXPORT_SUBMODEL_KIND`` setting
 
         Returns:
             Hydrated AASX file as bytes
         """
-        object_store, file_store = self.hydrate_to_stores(template_aasx_bytes, form_data)
+        object_store, file_store = self.hydrate_to_stores(
+            template_aasx_bytes, form_data, output_kind
+        )
         return self.serialize_stores_to_aasx(object_store, file_store)
 
     def hydrate_to_stores(
         self,
         template_aasx_bytes: bytes,
         form_data: dict[str, Any],
+        output_kind: OutputKind | None = None,
     ) -> tuple[
         model.DictObjectStore[model.Identifiable],
         aasx.DictSupplementaryFileContainer,
@@ -79,6 +135,7 @@ class HydratorService:
             raise ValueError("No Submodel found in template")
 
         logger.info(f"Hydrating submodel: {submodel.id_short}")
+        template_submodel_id = self._get_identifiable_id(submodel)
 
         self._apply_metadata_with_reference_updates(
             object_store,
@@ -96,7 +153,95 @@ class HydratorService:
         if settings.semantic_embed_concept_descriptions:
             self._embed_concept_descriptions(object_store, submodel)
 
+        if output_kind is None:
+            output_kind = getattr(settings, "export_submodel_kind", "instance")
+        if output_kind != "template":
+            self._finalize_instance(object_store, submodel, template_submodel_id)
+
         return object_store, file_store
+
+    def _finalize_instance(
+        self,
+        object_store: model.DictObjectStore[model.Identifiable],
+        submodel: model.Submodel,
+        template_submodel_id: str,
+    ) -> None:
+        """
+        Turn the filled template into a submodel instance.
+
+        - ``kind`` becomes ``Instance``.
+        - Qualifiers that only make sense in a template are removed; an
+          instance must not carry ``TemplateQualifier`` qualifiers.
+        - The instance gets an identifier of its own when the form still
+          carries the template's: two identifiables must not share an ID.
+        - ``administration.templateId`` records which template guided the
+          instance, unless the form already set it.
+        """
+        submodel.kind = model.ModellingKind.INSTANCE
+        self._strip_template_qualifiers(submodel)
+        for element in self._iterate_all_elements(submodel.submodel_element):
+            self._strip_template_qualifiers(element)
+
+        if template_submodel_id:
+            if self._get_identifiable_id(submodel) == template_submodel_id:
+                new_id = f"urn:uuid:{uuid.uuid4()}"
+                logger.info(
+                    "Submodel still had the template's ID; assigned %s", new_id
+                )
+                self._set_identifiable_id(submodel, new_id)
+                self._rewrite_aas_submodel_references(
+                    object_store, template_submodel_id, new_id
+                )
+                self._refresh_object_store_identity(
+                    object_store, submodel, template_submodel_id
+                )
+                self._assert_aas_reference_integrity(object_store)
+
+            if submodel.administration is None:
+                submodel.administration = model.AdministrativeInformation(
+                    template_id=template_submodel_id
+                )
+            elif not submodel.administration.template_id:
+                submodel.administration.template_id = template_submodel_id
+
+    @staticmethod
+    def _strip_template_qualifiers(qualifiable: Any) -> None:
+        qualifiers = getattr(qualifiable, "qualifier", None)
+        if not qualifiers:
+            return
+        for qualifier in list(qualifiers):
+            if is_template_only_qualifier(qualifier):
+                qualifiers.remove(qualifier)
+
+    def _iterate_all_elements(self, elements):
+        """
+        Yield every SubmodelElement below ``elements``, however it is nested.
+
+        Unlike ``_iterate_elements`` this also descends into relationship
+        annotations and operation variables.
+        """
+        if elements is None:
+            return
+        for element in list(elements):
+            if not isinstance(element, model.SubmodelElement):
+                # Older SDK releases wrap operation variables in a holder object.
+                element = getattr(element, "value", None)
+                if not isinstance(element, model.SubmodelElement):
+                    continue
+            yield element
+            if isinstance(element, (model.SubmodelElementCollection, model.SubmodelElementList)):
+                yield from self._iterate_all_elements(element.value)
+            elif isinstance(element, model.Entity):
+                yield from self._iterate_all_elements(element.statement)
+            elif isinstance(element, model.AnnotatedRelationshipElement):
+                yield from self._iterate_all_elements(element.annotation)
+            elif isinstance(element, model.Operation):
+                for variables in (
+                    element.input_variable,
+                    element.output_variable,
+                    element.in_output_variable,
+                ):
+                    yield from self._iterate_all_elements(variables)
 
     def serialize_stores_to_aasx(
         self,
@@ -140,6 +285,7 @@ class HydratorService:
         self,
         template_aasx_bytes: bytes,
         form_data: dict[str, Any],
+        output_kind: OutputKind | None = None,
     ) -> str:
         """
         Hydrate a submodel and return as JSON.
@@ -147,11 +293,15 @@ class HydratorService:
         Args:
             template_aasx_bytes: Original template AASX as bytes
             form_data: Form data with structure matching UI schema
+            output_kind: ``"instance"`` or ``"template"``; defaults to the
+                ``EXPORT_SUBMODEL_KIND`` setting
 
         Returns:
             Hydrated submodel as JSON string
         """
-        object_store, _ = self.hydrate_to_stores(template_aasx_bytes, form_data)
+        object_store, _ = self.hydrate_to_stores(
+            template_aasx_bytes, form_data, output_kind
+        )
         return self.serialize_stores_to_json(object_store)
 
     def _find_submodel(
@@ -212,6 +362,14 @@ class HydratorService:
     def _get_identifiable_id(self, identifiable: model.Identifiable) -> str:
         """Return the current BaSyx identifier as a string."""
         return str(getattr(identifiable, "id", ""))
+
+    @staticmethod
+    def _set_identifiable_id(identifiable: model.Identifiable, new_id: str) -> None:
+        """Set the identifier under whichever attribute this SDK release uses."""
+        if hasattr(identifiable, "id_"):
+            setattr(identifiable, "id_", new_id)
+        else:
+            setattr(identifiable, "id", new_id)
 
     def _apply_metadata_with_reference_updates(
         self,
@@ -337,10 +495,7 @@ class HydratorService:
 
         submodel_id = normalize_text(metadata.get("submodelId"))
         if submodel_id:
-            if hasattr(submodel, "id_"):
-                setattr(submodel, "id_", submodel_id)
-            elif hasattr(submodel, "id"):
-                setattr(submodel, "id", submodel_id)
+            self._set_identifiable_id(submodel, submodel_id)
 
         admin_data = metadata.get("administration")
         if isinstance(admin_data, dict):

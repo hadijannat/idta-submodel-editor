@@ -17,7 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Template metadata**: IDTA numbers are read from the template file names, so
   they are filled in again for the current repository layout.
 
+- **Export is a submodel instance**: exports had `kind=Template`, kept every
+  template qualifier and reused the template's identifier. They now have
+  `kind=Instance`, no template-only qualifiers, an identifier of their own and
+  `administration.templateId` pointing at the template.
+
 ### Changed
+- `EXPORT_SUBMODEL_KIND=template` restores the previous export (the template
+  with values filled in).
+- The editor proposes a `urn:uuid:` identifier for each new instance instead of
+  pre-filling the template's identifier.
 - Templates are discovered with one repository listing instead of one request
   per directory. The per-directory walk remains as the fallback.
 - `GET /api/templates/{name}/versions` lists every release with a display

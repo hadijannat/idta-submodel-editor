@@ -58,7 +58,8 @@ emitted.
 ## Reported Metrics
 
 - Pipeline rates: listed, fetched, parsed, validated, hydrated AASX, hydrated
-  JSON, and reparsed.
+  JSON, reparsed, and exported as an instance (kind `Instance`, no
+  template-only qualifiers, an identifier of its own).
 - Element coverage: recursive schema node count, counts by `modelType`,
   editable renderer coverage, known read-only coverage, and unknown model
   types.
@@ -67,7 +68,9 @@ emitted.
 - Contract coverage: default form generation, backend validation, required
   synthetic form generation, and required validation.
 - Preservation checks: model type counts, semantic IDs, qualifiers,
-  supplementary files, and nested structure after hydrate/reparse.
+  supplementary files, and nested structure after hydrate/reparse. This round
+  trip hydrates as a template, because an instance drops the template-only
+  qualifiers on purpose.
 
 ## Operational Notes
 

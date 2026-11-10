@@ -19,6 +19,7 @@ For quick local startup, use the [repository README](https://github.com/hadijann
 | `CORS_ORIGINS` | Allowed CORS origins (JSON array or comma-separated string) | `http://localhost:8080,http://localhost:5173` |
 | `MAX_UPLOAD_SIZE_MB` | Upload size limit | `50` |
 | `PDF_ENABLED` | Enable PDF export | `true` |
+| `EXPORT_SUBMODEL_KIND` | What an export contains: `instance` (a submodel instance) or `template` (the template with values filled in). See [Export](api-endpoints.md#export). | `instance` |
 
 ### Template Sources and Caching
 

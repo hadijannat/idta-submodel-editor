@@ -18,6 +18,7 @@ import {
   type ConformanceCheckResult,
 } from '../services/api';
 import { getMaxItems, getMinItems, isRequired } from '../types/aas-elements';
+import { newInstanceId } from '../utils/instance-id';
 import { useDraftAutoSave } from './useDraftAutoSave';
 
 interface UseSubmodelFormOptions {
@@ -268,11 +269,13 @@ function generateDefaultValues(schema: SubmodelUISchema): SubmodelFormData {
     elements,
     metadata: {
       idShort: schema.idShort ?? '',
-      submodelId: schema.submodelId ?? '',
+      // The export is an instance of the template, so it gets an identifier
+      // of its own and names the template it was created from.
+      submodelId: newInstanceId(),
       administration: {
         version: schema.administration?.version ?? '',
         revision: schema.administration?.revision ?? '',
-        templateId: schema.administration?.templateId ?? '',
+        templateId: schema.administration?.templateId || schema.submodelId || '',
       },
     },
   };
