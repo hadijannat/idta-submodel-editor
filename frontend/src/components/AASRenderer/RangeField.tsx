@@ -43,12 +43,15 @@ export const RangeField: React.FC<RangeFieldProps> = ({
   return (
     <div className="aas-field aas-field-range">
       <label className="aas-label">
-        {label}
+        <span className="aas-label-text">{label}</span>
         {required && <span className="aas-required">*</span>}
+        {schema.idShort && schema.idShort !== label && (
+          <code className="aas-id-short">{schema.idShort}</code>
+        )}
         {unit && <span className="aas-unit">({unit})</span>}
       </label>
 
-      <DescriptionText description={schema.description} />
+      <DescriptionText description={schema.description} schema={schema} path={path} />
 
       <div className="aas-range-fields">
         <div className="aas-range-min">

@@ -27,6 +27,19 @@ PYTHONPATH=backend python backend/scripts/audit_template_coverage.py \
   --summary tmp/template-audit/smoke.md
 ```
 
+To audit without network access, or to keep GitHub rate limits out of the
+picture, point the audit at a local checkout of the template repository:
+
+```bash
+git clone --depth 1 https://github.com/admin-shell-io/submodel-templates.git /srv/submodel-templates
+TEMPLATE_REPO_DIR=/srv/submodel-templates PYTHONPATH=backend \
+  python backend/scripts/audit_template_coverage.py --statuses published deprecated
+```
+
+The generated "required" form data honours the requirements a template
+declares (allowed values, ranges, required languages, either/or groups), so
+`requiredValidationPassed` measures whether a correctly filled form validates.
+
 ## Scope And Outputs
 
 - Published and deprecated templates are included by default.

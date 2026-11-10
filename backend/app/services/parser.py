@@ -9,13 +9,25 @@ that the frontend can render without knowledge of AAS specifics.
 
 import logging
 import base64
+import re
 from io import BytesIO
 from typing import Any, Protocol
 
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 
+from app.services.format_rules import (
+    detect_format_hint,
+    find_irdi_enumeration,
+    find_referenced_standards,
+)
+from app.services.template_constraints import (
+    extract_constraints,
+    normalize_cardinality,
+    qualifier_family,
+)
 from app.utils.semantic_resolver import (
+    _resolve_concept_description,
     get_unit_from_concept_description,
     resolve_semantic_label,
     resolve_semantic_description,
@@ -29,6 +41,57 @@ from app.utils.xsd_mapping import (
 )
 
 logger = logging.getLogger(__name__)
+
+# BaSyx assigns placeholder idShorts to SubmodelElementList children, which
+# have none in the AAS metamodel. The placeholder embeds an object id that
+# changes on every parse, so it must not leak into the UI schema.
+_GENERATED_ID_SHORT_PREFIX = "generated_submodel_list_hack_"
+
+_COUNTER_SUFFIX_RE = re.compile(r"(__\d+__|\{\d+\}|__\d+)$")
+
+
+def xsd_type_name(value_type: Any) -> str | None:
+    """Return the XSD name (``xs:string``) for a BaSyx value type class."""
+    if value_type is None:
+        return None
+    if isinstance(value_type, str):
+        return value_type
+    name = model.datatypes.XSD_TYPE_NAMES.get(value_type)
+    if name:
+        return name
+    return f"xs:{getattr(value_type, '__name__', str(value_type))}"
+
+
+def serialize_xsd_value(value: Any) -> Any:
+    """Serialize a typed AAS value to its JSON form (lexical XSD for dates etc.)."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    try:
+        return model.datatypes.xsd_repr(value)
+    except Exception:  # noqa: BLE001 - never fail a schema over one value
+        return str(value)
+
+
+def humanize_id_short(id_short: str | None) -> str:
+    """Turn ``ManufacturerProductDesignation`` into ``Manufacturer Product Designation``."""
+    if not id_short:
+        return ""
+    text = _COUNTER_SUFFIX_RE.sub("", id_short)
+    text = text.replace("_", " ")
+    text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    text = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:1].upper() + text[1:] if text else id_short
+
+
+def _preferred_text(lang_map: dict[str, str] | None) -> str | None:
+    if not lang_map:
+        return None
+    for lang in ("en", "en-US", "en-GB"):
+        if lang_map.get(lang):
+            return lang_map[lang]
+    return next((text for text in lang_map.values() if text), None)
+
 
 try:  # Keep compatibility with basyx versions that moved/renamed OperationVariable.
     OperationVariableType = model.OperationVariable  # type: ignore[attr-defined]
@@ -82,6 +145,47 @@ class ParserService:
         semantic_index = SemanticIndex(object_store)
         logger.debug(f"Built semantic index with {len(semantic_index)} ConceptDescriptions")
 
+        schema = self._build_submodel_schema(
+            aas_metadata, submodel, submodel_id, object_store, semantic_index, file_store
+        )
+        if schema.get("kind") == "Template":
+            # Values in a template are illustrations from the specification,
+            # not data of the user's asset.
+            for element_schema in schema["elements"]:
+                self._mark_template_values_as_examples(element_schema)
+        return schema
+
+    def _mark_template_values_as_examples(self, schema: dict[str, Any]) -> None:
+        """Record the values a template ships with as example values."""
+        model_type = schema.get("modelType")
+        examples: list[str] = []
+        if model_type == "Property":
+            value = schema.get("value")
+            if value is not None and not isinstance(value, bool) and str(value).strip():
+                examples.append(str(value).strip())
+        elif model_type == "MultiLanguageProperty":
+            for text in (schema.get("value") or {}).values():
+                if text and str(text).strip():
+                    examples.append(str(text).strip())
+        if examples:
+            existing = list(schema.get("exampleValues") or [])
+            schema["exampleValues"] = existing + [e for e in examples if e not in existing]
+
+        for key in ("elements", "statements", "items", "annotations"):
+            for child in schema.get(key) or []:
+                self._mark_template_values_as_examples(child)
+        if schema.get("itemTemplate"):
+            self._mark_template_values_as_examples(schema["itemTemplate"])
+
+    def _build_submodel_schema(
+        self,
+        aas_metadata: dict[str, Any] | None,
+        submodel: model.Submodel,
+        submodel_id: str | None,
+        object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex,
+        file_store,
+    ) -> dict[str, Any]:
         return {
             "aas": aas_metadata,
             "submodelId": submodel_id,
@@ -89,11 +193,26 @@ class ParserService:
             "semanticId": self._serialize_reference(submodel.semantic_id),
             "description": dict(submodel.description) if submodel.description else None,
             "administration": self._serialize_administration(submodel.administration),
+            "kind": (
+                submodel.kind.name.capitalize()
+                if getattr(submodel, "kind", None) is not None
+                else None
+            ),
             "elements": [
                 self._element_to_schema(e, object_store, semantic_index)
                 for e in submodel.submodel_element
             ],
             "supplementaryFiles": list(file_store),
+            **self._submodel_form_metadata(submodel),
+        }
+
+    def _submodel_form_metadata(self, submodel: model.Submodel) -> dict[str, Any]:
+        """Form title/info/URL declared as qualifiers on the Submodel."""
+        constraints = extract_constraints(self._serialize_qualifiers(submodel))
+        return {
+            key: constraints[key]
+            for key in ("formTitle", "formInfo", "formUrl")
+            if constraints.get(key)
         }
 
     def _find_aas(
@@ -235,6 +354,7 @@ class ParserService:
         element: model.SubmodelElement,
         object_store: model.DictObjectStore,
         semantic_index: SemanticIndex | None = None,
+        item_id_short: str | None = None,
     ) -> dict[str, Any]:
         """
         Convert a SubmodelElement to UI schema.
@@ -246,31 +366,63 @@ class ParserService:
             object_store: Object store containing ConceptDescriptions
             semantic_index: Pre-built index for O(1) ConceptDescription lookups
         """
-        # Base schema applicable to all element types
-        description = dict(element.description) if element.description else None
-        if not description:
-            semantic_description = resolve_semantic_description(
-                element, object_store, semantic_index
-            )
-            if semantic_description:
-                description = semantic_description
+        # Base schema applicable to all element types. In IDTA templates the
+        # element description carries the specification notes ("Note: country
+        # codes accord. to ISO 3166-1 ...") while the ConceptDescription holds
+        # the definition of the concept, so both are exposed.
+        own_description = dict(element.description) if element.description else None
+        definition = resolve_semantic_description(element, object_store, semantic_index)
+        description = own_description or definition
+        if definition and own_description and _preferred_text(definition) == _preferred_text(
+            own_description
+        ):
+            definition = None
+        if not own_description:
+            definition = None
+
+        id_short = element.id_short or ""
+        generated_id_short = id_short.startswith(_GENERATED_ID_SHORT_PREFIX)
+        if generated_id_short:
+            id_short = item_id_short or "Item"
+
+        semantic_label = resolve_semantic_label(
+            element, object_store, semantic_index=semantic_index
+        )
+        qualifiers = self._serialize_qualifiers(element)
+        iec61360 = self._iec61360_content(element, object_store, semantic_index)
 
         base_schema: dict[str, Any] = {
-            "idShort": element.id_short,
+            "idShort": id_short,
             "modelType": type(element).__name__,
             "semanticId": self._serialize_reference(
                 getattr(element, "semantic_id", None)
             ),
-            "semanticLabel": resolve_semantic_label(
-                element, object_store, semantic_index=semantic_index
-            ),
-            "description": (
-                description
-            ),
-            "qualifiers": self._serialize_qualifiers(element),
+            "supplementalSemanticIds": [
+                value
+                for value in (
+                    self._serialize_reference(ref)
+                    for ref in (getattr(element, "supplemental_semantic_id", None) or [])
+                )
+                if value
+            ],
+            "semanticLabel": semantic_label,
+            "label": self._display_label(element, id_short, semantic_label),
+            "description": description,
+            "definition": definition,
+            "qualifiers": qualifiers,
             "cardinality": self._extract_cardinality(element),
             "category": getattr(element, "category", None),
         }
+
+        constraints = extract_constraints(
+            qualifiers,
+            value_list=iec61360.get("valueList"),
+            value_format=iec61360.get("valueFormat"),
+        )
+        qualifier_unit = constraints.pop("qualifierUnit", None)
+        base_schema.update(constraints)
+        if iec61360.get("sourceOfDefinition"):
+            base_schema["sourceOfDefinition"] = iec61360["sourceOfDefinition"]
 
         # Type-specific schema extensions
         if isinstance(element, model.Property):
@@ -315,7 +467,109 @@ class ParserService:
         elif isinstance(element, model.BasicEventElement):
             base_schema.update(self._event_schema(element))
 
+        if qualifier_unit and not base_schema.get("unit"):
+            base_schema["unit"] = qualifier_unit
+
+        self._apply_text_requirements(base_schema)
         return base_schema
+
+    def _display_label(
+        self,
+        element: model.SubmodelElement,
+        id_short: str,
+        semantic_label: str | None,
+    ) -> str:
+        """Human-readable field label: displayName, preferred name, or idShort."""
+        display_name = _preferred_text(
+            dict(element.display_name) if getattr(element, "display_name", None) else None
+        )
+        if display_name:
+            return display_name
+
+        def key(text: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", _COUNTER_SUFFIX_RE.sub("", text).lower())
+
+        if (
+            semantic_label
+            and len(semantic_label) <= 64
+            and key(semantic_label) != key(id_short)
+        ):
+            return semantic_label[:1].upper() + semantic_label[1:]
+        return humanize_id_short(id_short) or id_short
+
+    def _iec61360_content(
+        self,
+        element: model.SubmodelElement,
+        object_store: model.DictObjectStore,
+        semantic_index: SemanticIndex | None,
+    ) -> dict[str, Any]:
+        """IEC 61360 attributes of the element's ConceptDescription, if any."""
+        semantic_ref = getattr(element, "semantic_id", None)
+        if semantic_ref is None:
+            return {}
+        concept_description = _resolve_concept_description(
+            semantic_ref, object_store, semantic_index
+        )
+        if concept_description is None:
+            return {}
+        for eds in concept_description.embedded_data_specifications or []:
+            content = eds.data_specification_content
+            if not isinstance(content, model.DataSpecificationIEC61360):
+                continue
+            value_list = [
+                {
+                    "value": pair.value,
+                    "valueId": self._serialize_reference(pair.value_id),
+                }
+                for pair in (content.value_list or [])
+            ]
+            value_list.sort(key=lambda pair: str(pair["value"]))
+            return {
+                "valueList": value_list,
+                "valueFormat": content.value_format,
+                "sourceOfDefinition": content.source_of_definition,
+            }
+        return {}
+
+    def _apply_text_requirements(self, schema: dict[str, Any]) -> None:
+        """
+        Derive format hints, enumerations and referenced standards from the
+        specification text attached to an element.
+        """
+        texts: list[str] = []
+        for key in ("description", "definition"):
+            text = _preferred_text(schema.get(key))
+            if text:
+                texts.append(text)
+        texts.extend(schema.get("notes") or [])
+        if schema.get("formInfo"):
+            texts.append(schema["formInfo"])
+        if not texts and schema.get("modelType") != "Property":
+            return
+
+        standards = find_referenced_standards(texts)
+        if standards:
+            schema["standards"] = standards
+
+        if schema.get("modelType") != "Property":
+            return
+
+        if not schema.get("allowedValues"):
+            enumeration = find_irdi_enumeration(texts)
+            if enumeration:
+                schema["allowedValues"] = enumeration
+                schema["allowedValuesStrict"] = False
+
+        if schema.get("allowedValues") or schema.get("pattern"):
+            return
+        hint = detect_format_hint(
+            id_short=schema.get("idShort"),
+            model_type=schema.get("modelType"),
+            value_type=schema.get("valueType"),
+            texts=texts,
+        )
+        if hint is not None:
+            schema["formatHint"] = hint.to_dict()
 
     def _property_schema(
         self,
@@ -324,10 +578,10 @@ class ParserService:
         semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for Property element."""
-        value_type = str(element.value_type) if element.value_type else "xs:string"
+        value_type = xsd_type_name(element.value_type) or "xs:string"
         return {
             "valueType": value_type,
-            "value": element.value,
+            "value": serialize_xsd_value(element.value),
             "inputType": get_input_type(value_type),
             "step": get_step_attribute(value_type),
             "constraints": get_range_constraints(value_type),
@@ -356,23 +610,21 @@ class ParserService:
         semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for SubmodelElementList."""
+        list_element_type = element.type_value_list_element
+        item_id_short = f"{element.id_short}Item" if element.id_short else "Item"
         schema: dict[str, Any] = {
             "typeValueListElement": (
-                type(element.type_value_list_element).__name__
-                if element.type_value_list_element
+                getattr(list_element_type, "__name__", None)
+                if list_element_type
                 else None
             ),
             "orderRelevant": element.order_relevant,
-            "valueTypeListElement": (
-                str(element.value_type_list_element)
-                if element.value_type_list_element
-                else None
-            ),
+            "valueTypeListElement": xsd_type_name(element.value_type_list_element),
             "semanticIdListElement": self._serialize_reference(
                 element.semantic_id_list_element
             ),
             "items": [
-                self._element_to_schema(e, object_store, semantic_index)
+                self._element_to_schema(e, object_store, semantic_index, item_id_short)
                 for e in element.value
             ],
         }
@@ -380,13 +632,15 @@ class ParserService:
         # Create item template from first item or type specification
         if element.value:
             schema["itemTemplate"] = self._element_to_schema(
-                element.value[0], object_store, semantic_index
+                element.value[0], object_store, semantic_index, item_id_short
             )
         elif element.type_value_list_element:
             schema["itemTemplate"] = self._create_template_from_type(
                 element.type_value_list_element,
-                element.value_type_list_element,
+                xsd_type_name(element.value_type_list_element),
             )
+            schema["itemTemplate"]["idShort"] = item_id_short
+            schema["itemTemplate"]["label"] = humanize_id_short(item_id_short)
 
         return schema
 
@@ -435,11 +689,11 @@ class ParserService:
         semantic_index: SemanticIndex | None = None,
     ) -> dict[str, Any]:
         """Generate schema for Range element."""
-        value_type = str(element.value_type) if element.value_type else "xs:double"
+        value_type = xsd_type_name(element.value_type) or "xs:double"
         return {
             "valueType": value_type,
-            "min": element.min,
-            "max": element.max,
+            "min": serialize_xsd_value(element.min),
+            "max": serialize_xsd_value(element.max),
             "inputType": get_input_type(value_type),
             "step": get_step_attribute(value_type),
             "unit": get_unit_from_concept_description(element, object_store, semantic_index),
@@ -562,9 +816,9 @@ class ParserService:
             "state": str(element.state),
             "messageTopic": element.message_topic,
             "messageBroker": self._serialize_reference(element.message_broker),
-            "lastUpdate": element.last_update,
-            "minInterval": element.min_interval,
-            "maxInterval": element.max_interval,
+            "lastUpdate": serialize_xsd_value(element.last_update),
+            "minInterval": serialize_xsd_value(element.min_interval),
+            "maxInterval": serialize_xsd_value(element.max_interval),
         }
 
     def _extract_cardinality(self, element: model.SubmodelElement) -> str:
@@ -579,12 +833,9 @@ class ParserService:
         """
         for q in getattr(element, "qualifier", []) or []:
             q_type = getattr(q, "type_", None) or getattr(q, "type", None)
-            if q_type in (
-                "Multiplicity",
-                "cardinality",
-                "Cardinality",
-                "SMT/Cardinality",
-            ):
+            # Published templates spell the type as SMT/Cardinality,
+            # Cardinality, Multiplicity and even SMT/SMT/Cardinality.
+            if qualifier_family(q_type) in ("cardinality", "multiplicity"):
                 normalized = self._normalize_cardinality_value(q.value)
                 if normalized:
                     return normalized
@@ -593,32 +844,7 @@ class ParserService:
     @staticmethod
     def _normalize_cardinality_value(value: str | None) -> str | None:
         """Normalize common cardinality encodings to bracket format."""
-        if value is None:
-            return None
-        value = str(value).strip()
-        if not value:
-            return None
-
-        mapping = {
-            "ZeroToOne": "[0..1]",
-            "ZeroToMany": "[0..*]",
-            "OneToMany": "[1..*]",
-            "One": "[1]",
-            "Zero": "[0]",
-        }
-        if value in mapping:
-            return mapping[value]
-
-        if value.startswith("[") and value.endswith("]"):
-            return value
-
-        if ".." in value:
-            return f"[{value}]"
-
-        if value.isdigit():
-            return f"[{value}]"
-
-        return value
+        return normalize_cardinality(value)
 
     def _serialize_qualifiers(
         self, element: model.SubmodelElement
@@ -629,8 +855,8 @@ class ParserService:
             qualifiers.append(
                 {
                     "type": getattr(q, "type_", None) or getattr(q, "type", None),
-                    "value": q.value,
-                    "valueType": str(q.value_type) if q.value_type else None,
+                    "value": serialize_xsd_value(q.value),
+                    "valueType": xsd_type_name(q.value_type),
                     "semanticId": self._serialize_reference(
                         getattr(q, "semantic_id", None)
                     ),
@@ -675,8 +901,11 @@ class ParserService:
             "idShort": "",
             "modelType": type_name,
             "semanticId": None,
+            "supplementalSemanticIds": [],
             "semanticLabel": None,
+            "label": None,
             "description": None,
+            "definition": None,
             "qualifiers": [],
             "cardinality": "[1]",
             "category": None,
@@ -705,7 +934,7 @@ class ParserService:
                 }
             )
         elif type_name == "Range":
-            value_type_str = str(value_type or model.datatypes.Double)
+            value_type_str = str(value_type or "xs:double")
             template.update(
                 {
                     "valueType": value_type_str,

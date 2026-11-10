@@ -45,6 +45,31 @@ export interface ConstraintSchema {
 }
 
 /**
+ * One entry of an enumeration the template defines for a value.
+ */
+export interface AllowedValueSchema {
+  value: string;
+  label?: string | null;
+  valueId?: string | null;
+}
+
+/**
+ * Format standard recognised in the specification text of an element,
+ * e.g. an ISO 3166-1 alpha-2 country code. Advisory: mismatches are warnings.
+ */
+export interface FormatHintSchema {
+  id: string;
+  label: string;
+  description: string;
+  pattern?: string | null;
+  example?: string | null;
+  /** Named code list the UI can offer: country | currency | language */
+  options?: string | null;
+  transform?: 'uppercase' | 'lowercase' | null;
+  source?: string;
+}
+
+/**
  * Schema for a single SubmodelElement.
  *
  * This is a recursive structure - collections and lists contain
@@ -55,11 +80,44 @@ export interface UIElementSchema {
   idShort: string;
   modelType: ElementModelType;
   semanticId: string | null;
+  supplementalSemanticIds?: string[];
   semanticLabel: string | null;
+  /** Human-readable label (displayName, preferred name or humanized idShort) */
+  label?: string | null;
   description: Record<string, string> | null;
+  /** Definition from the ConceptDescription (description then holds spec notes) */
+  definition?: Record<string, string> | null;
   qualifiers: QualifierSchema[];
   cardinality: string;
   category: string | null;
+
+  // Requirements declared by the template (qualifiers / IEC 61360)
+  exampleValues?: string[] | null;
+  defaultValue?: string | null;
+  initialValue?: string | null;
+  allowedValues?: AllowedValueSchema[] | null;
+  allowedValuesStrict?: boolean | null;
+  pattern?: string | null;
+  allowedRange?: ConstraintSchema | null;
+  requiredLanguages?: string[] | null;
+  eitherOr?: string | null;
+  allowedIdShort?: string | null;
+  editIdShort?: boolean | null;
+  accessMode?: string | null;
+  readOnly?: boolean | null;
+  formTitle?: string | null;
+  formInfo?: string | null;
+  formUrl?: string | null;
+  notes?: string[] | null;
+  valueFormat?: string | null;
+  valueFormatDescription?: string | null;
+  maxLength?: number | null;
+  minLength?: number | null;
+  sourceOfDefinition?: string | null;
+
+  // Requirements recognised in the specification text
+  formatHint?: FormatHintSchema | null;
+  standards?: string[] | null;
 
   // Property-specific
   valueType?: string;
@@ -130,11 +188,78 @@ export interface AdministrationSchema {
 }
 
 /**
+ * A file that belongs to a template release (AASX, JSON, PDF, README).
+ */
+export interface TemplateDocument {
+  name: string;
+  path?: string | null;
+  url?: string | null;
+  downloadUrl?: string | null;
+  size?: number | null;
+}
+
+/**
+ * Which template release a schema was generated from.
+ */
+export interface TemplateSource {
+  name: string;
+  title?: string | null;
+  status?: string | null;
+  idtaNumber?: string | null;
+  group?: string | null;
+  part?: string | null;
+  version?: string | null;
+  latestVersion?: string | null;
+  isLatest?: boolean | null;
+  source?: string | null;
+  stale?: boolean | null;
+  browseUrl?: string | null;
+  documents?: {
+    aasx?: TemplateDocument | null;
+    json?: TemplateDocument | null;
+    specification?: TemplateDocument | null;
+    readme?: TemplateDocument | null;
+  } | null;
+  variants?: string[];
+}
+
+/**
+ * Requirements read from the specification PDF for one element.
+ */
+export interface SpecificationNote {
+  idShort: string;
+  cardinality?: string | null;
+  templateCardinality?: string | null;
+  notes: string[];
+  example?: string | null;
+  description?: string | null;
+  page?: number | null;
+}
+
+/**
+ * Per-element requirements extracted from the specification PDF, keyed by
+ * the idShort path of the element (list items share the path of their list).
+ */
+export interface SpecificationNotes {
+  available: boolean;
+  document?: TemplateDocument | null;
+  pageCount?: number | null;
+  matched?: number;
+  total?: number;
+  notes: Record<string, SpecificationNote>;
+}
+
+/**
  * Complete UI schema for a Submodel.
  */
 export interface SubmodelUISchema {
   templateName?: string | null;
   templatePath?: string | null;
+  template?: TemplateSource | null;
+  kind?: string | null;
+  formTitle?: string | null;
+  formInfo?: string | null;
+  formUrl?: string | null;
   submodelId: string;
   idShort: string;
   semanticId: string | null;
@@ -156,6 +281,12 @@ export interface TemplateInfo {
   title: string | null;
   sha: string | null;
   status?: 'published' | 'deprecated';
+  /** Multi-part templates list one entry per part; group is the parent. */
+  group?: string | null;
+  part?: string | null;
+  latest_version?: string | null;
+  versions?: string[];
+  has_specification?: boolean | null;
 }
 
 /**
@@ -165,6 +296,10 @@ export interface TemplateVersionInfo {
   version: string;
   path: string;
   sha: string | null;
+  file?: string | null;
+  latest?: boolean | null;
+  has_specification?: boolean | null;
+  sample_only?: boolean | null;
 }
 
 /**

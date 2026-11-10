@@ -7,8 +7,11 @@ Provides API endpoints for browsing available IDTA submodel templates.
 import logging
 from typing import Annotated, Literal
 
+from urllib.parse import quote
+
 import httpx
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 
 from app.dependencies import get_fetcher
 from app.errors import APIError, ErrorCode
@@ -217,6 +220,87 @@ async def get_template_versions(
             message="Failed to fetch template versions",
             detail={"template_name": template_name, "error": str(e)},
         )
+
+
+_DOCUMENT_MEDIA_TYPES = {
+    "specification": "application/pdf",
+    "json": "application/json",
+    "aasx": "application/asset-administration-shell-package+xml",
+}
+
+
+@router.get("/{template_name}/documents/{kind}")
+async def get_template_document(
+    template_name: str,
+    kind: Literal["specification", "json", "aasx"],
+    fetcher: Annotated[TemplateFetcherService, Depends(get_fetcher)],
+    status: Annotated[
+        Literal["published", "deprecated"],
+        Query(description="Template status filter"),
+    ] = "published",
+    version: Annotated[str | None, Query(description="Template version")] = None,
+) -> Response:
+    """
+    Download a document that belongs to a template release: the
+    specification PDF, the JSON serialization or the AASX package.
+
+    Served through the backend so that it also works for local mirrors of
+    the template repository and behind restrictive firewalls.
+    """
+    template_path = f"{status}/{template_name}"
+    try:
+        if kind == "aasx":
+            content = await fetcher.fetch_template_aasx(template_path, version)
+            description = await fetcher.describe_template(template_path, version)
+            filename = (
+                ((description or {}).get("documents") or {}).get("aasx") or {}
+            ).get("name") or f"{template_name}.aasx"
+        else:
+            document = await fetcher.fetch_template_document(template_path, kind, version)
+            if document is None:
+                raise APIError(
+                    code=ErrorCode.RESOURCE_NOT_FOUND,
+                    message="Document is not available for this template",
+                    detail={"template_name": template_name, "kind": kind},
+                )
+            file, content = document
+            filename = file.name
+    except APIError:
+        raise
+    except ValueError as e:
+        raise APIError(
+            code=ErrorCode.RESOURCE_NOT_FOUND,
+            message=str(e),
+            detail={"template_name": template_name, "kind": kind},
+        )
+    except httpx.HTTPStatusError as e:
+        raise _map_upstream_http_error(
+            e,
+            fallback_message="Failed to fetch template document",
+            detail={"template_name": template_name, "kind": kind},
+        )
+    except Exception as e:
+        logger.exception("Failed to fetch %s for %s", kind, template_name)
+        raise APIError(
+            code=ErrorCode.UPSTREAM_ERROR,
+            message="Failed to fetch template document",
+            detail={"template_name": template_name, "kind": kind, "error": str(e)},
+        )
+
+    disposition = "inline" if kind == "specification" else "attachment"
+    safe_name = filename.replace('"', "").replace("\r", "").replace("\n", "")
+    ascii_name = safe_name.encode("ascii", "ignore").decode() or f"document.{kind}"
+    return Response(
+        content=content,
+        media_type=_DOCUMENT_MEDIA_TYPES[kind],
+        headers={
+            "Content-Disposition": (
+                f"{disposition}; filename=\"{ascii_name}\"; "
+                f"filename*=UTF-8''{quote(safe_name)}"
+            ),
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
 
 
 @router.post("/refresh")

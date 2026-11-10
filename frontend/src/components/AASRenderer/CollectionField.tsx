@@ -4,6 +4,9 @@
 
 import React, { useState } from 'react';
 import type { UIElementSchema } from '../../types/ui-schema';
+import { isRequired } from '../../types/aas-elements';
+import { elementLabel } from '../../utils/fieldRequirements';
+import FieldGuidance from './FieldGuidance';
 
 interface CollectionFieldProps {
   /** Form path for the collection */
@@ -22,6 +25,7 @@ interface CollectionFieldProps {
  * Renders a collapsible section for SubmodelElementCollection.
  */
 export const CollectionField: React.FC<CollectionFieldProps> = ({
+  path,
   schema,
   depth,
   title,
@@ -29,9 +33,9 @@ export const CollectionField: React.FC<CollectionFieldProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(depth < 2); // Auto-expand first 2 levels
 
-  const displayTitle = title || schema.semanticLabel || schema.idShort;
-  const childCount = schema.elements?.length || 0;
-  const hasDescription = schema.description?.en;
+  const displayTitle = title || elementLabel(schema);
+  const childCount = schema.elements?.length || schema.statements?.length || 0;
+  const required = isRequired(schema.cardinality);
 
   return (
     <div
@@ -55,15 +59,23 @@ export const CollectionField: React.FC<CollectionFieldProps> = ({
           {isExpanded ? '▼' : '▶'}
         </span>
         <span className="aas-collection-title">{displayTitle}</span>
-        <span className="aas-collection-count">({childCount} items)</span>
+        {required && (
+          <span className="aas-required" title="Required by the template">
+            *
+          </span>
+        )}
+        {schema.idShort && schema.idShort !== displayTitle && (
+          <code className="aas-id-short">{schema.idShort}</code>
+        )}
+        <span className="aas-collection-count">
+          ({childCount} {childCount === 1 ? 'field' : 'fields'})
+        </span>
         {schema.cardinality !== '[1]' && (
           <span className="aas-cardinality">{schema.cardinality}</span>
         )}
       </div>
 
-      {hasDescription && isExpanded && (
-        <p className="aas-collection-description">{schema.description?.en}</p>
-      )}
+      {isExpanded && <FieldGuidance schema={schema} path={path} hideExample />}
 
       <div
         className={`aas-collection-content ${isExpanded ? 'expanded' : 'collapsed'}`}

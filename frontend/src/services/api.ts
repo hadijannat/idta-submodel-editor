@@ -3,6 +3,7 @@
  */
 
 import type {
+  SpecificationNotes,
   SubmodelUISchema,
   TemplateInfo,
   TemplateListResponse,
@@ -204,6 +205,44 @@ export async function getTemplateSchema(
   const query = params.toString();
   return apiFetch<SubmodelUISchema>(
     `/api/editor/templates/${encodeURIComponent(templateName)}/schema${
+      query ? `?${query}` : ''
+    }`
+  );
+}
+
+/**
+ * URL of a document that belongs to a template release (served by the
+ * backend, so it also works for local mirrors of the template repository).
+ */
+export function templateDocumentUrl(
+  templateName: string,
+  kind: 'specification' | 'json' | 'aasx',
+  status?: 'published' | 'deprecated',
+  version?: string | null
+): string {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
+  const query = params.toString();
+  return `${API_BASE_URL}/api/templates/${encodeURIComponent(templateName)}/documents/${kind}${
+    query ? `?${query}` : ''
+  }`;
+}
+
+/**
+ * Requirements the specification PDF states for the elements of a template.
+ */
+export async function getSpecificationNotes(
+  templateName: string,
+  status?: 'published' | 'deprecated',
+  version?: string | null
+): Promise<SpecificationNotes> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (version) params.set('version', version);
+  const query = params.toString();
+  return apiFetch<SpecificationNotes>(
+    `/api/editor/templates/${encodeURIComponent(templateName)}/specification-notes${
       query ? `?${query}` : ''
     }`
   );

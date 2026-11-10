@@ -6,6 +6,7 @@ This directory contains detailed documentation for each major feature of the IDT
 
 | Feature | Description |
 |---------|-------------|
+| [Template Requirements](template-requirements.md) | How forms are generated from the template package, JSON and specification PDF: releases, constraints, format standards, example values |
 | [Semantic Lookup](semantic-lookup.md) | Search ECLASS/IEC CDD dictionaries and attach semantic identifiers |
 | [Smart Mapper](smart-mapper.md) | CSV/XLSX bulk import with column profiling and recipe management |
 | [PCF Calculator](pcf-calculator.md) | Carbon footprint calculation and IDTA 02023 validation |

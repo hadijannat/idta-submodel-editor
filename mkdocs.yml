@@ -30,6 +30,7 @@ nav:
   - Home: index.md
   - Features:
       - Overview: features/README.md
+      - Template Requirements: features/template-requirements.md
       - Semantic Lookup: features/semantic-lookup.md
       - Smart Mapper: features/smart-mapper.md
       - PCF Calculator: features/pcf-calculator.md

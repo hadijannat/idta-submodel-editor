@@ -6,7 +6,11 @@
 
 import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
 import { FormProvider, useWatch } from 'react-hook-form';
-import type { TemplateInfo, TemplateVersionInfo } from './types/ui-schema';
+import type {
+  SpecificationNote,
+  TemplateInfo,
+  TemplateVersionInfo,
+} from './types/ui-schema';
 import type { SubmodelFormData } from './types/aas-elements';
 import { useSubmodelForm } from './hooks/useSubmodelForm';
 import TemplateSelector from './components/TemplateSelector';
@@ -16,7 +20,15 @@ import PCFPanel from './components/PCFPanel';
 import { isPCFTemplate } from './components/PCFPanel/pcfUtils';
 import { PassportView } from './components/PassportMode';
 import { MnestixBrowser } from './components/MnestixBrowser';
-import { getTemplateVersions, getPublicSettings, type PublicSettings } from './services/api';
+import {
+  getTemplateVersions,
+  getPublicSettings,
+  getSpecificationNotes,
+  templateDocumentUrl,
+  type PublicSettings,
+} from './services/api';
+import { FormOptionsContext } from './components/AASRenderer/FormOptionsContext';
+import { findExampleFields } from './utils/exampleValues';
 import { updateFeatureFlags } from './services/settingsApi';
 import { computeCompletion } from './utils/completion';
 import { useTools } from './tools/hooks/useTools';
@@ -36,6 +48,17 @@ function App() {
   const [wizardStep, setWizardStep] = useState(1);
   const [showAASBrowser, setShowAASBrowser] = useState(false);
   const [publicSettings, setPublicSettings] = useState<PublicSettings | null>(null);
+  const [showSemantic, setShowSemantic] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('idta-editor:show-semantic') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [specNotes, setSpecNotes] = useState<Record<string, SpecificationNote>>({});
+  const [specNotesState, setSpecNotesState] = useState<
+    'idle' | 'loading' | 'ready' | 'unavailable'
+  >('idle');
   const templateStatus = selectedTemplate?.status ?? 'published';
 
   // Load tool registry
@@ -89,6 +112,78 @@ function App() {
   const completion = useMemo(
     () => computeCompletion(schema, watchedValues),
     [schema, watchedValues]
+  );
+
+  const exampleFields = useMemo(
+    () => findExampleFields(schema, watchedValues),
+    [schema, watchedValues]
+  );
+
+  const clearExampleValues = useCallback(() => {
+    for (const field of findExampleFields(schema, form.getValues())) {
+      form.setValue(field.path as never, field.emptyValue as never, {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+    }
+  }, [schema, form]);
+
+  const toggleSemantic = useCallback(() => {
+    setShowSemantic((current) => !current);
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('idta-editor:show-semantic', String(showSemantic));
+    } catch {
+      // Preference is not persisted when storage is unavailable.
+    }
+  }, [showSemantic]);
+
+  const templateSource = schema?.template ?? null;
+  const hasSpecification = Boolean(templateSource?.documents?.specification);
+  const specificationUrl =
+    selectedTemplate && hasSpecification
+      ? templateDocumentUrl(
+          selectedTemplate.name,
+          'specification',
+          templateStatus === 'deprecated' ? 'deprecated' : 'published',
+          selectedVersion
+        )
+      : null;
+
+  // Requirements stated in the specification PDF are loaded in the
+  // background: extracting them can take a few seconds the first time.
+  const specTemplateName = selectedTemplate?.name;
+  useEffect(() => {
+    setSpecNotes({});
+    if (!specTemplateName || !hasSpecification) {
+      setSpecNotesState(specTemplateName ? 'unavailable' : 'idle');
+      return;
+    }
+    let active = true;
+    setSpecNotesState('loading');
+    getSpecificationNotes(
+      specTemplateName,
+      templateStatus === 'deprecated' ? 'deprecated' : 'published',
+      selectedVersion
+    )
+      .then((result) => {
+        if (!active) return;
+        setSpecNotes(result.notes ?? {});
+        setSpecNotesState(result.available ? 'ready' : 'unavailable');
+      })
+      .catch(() => {
+        if (active) setSpecNotesState('unavailable');
+      });
+    return () => {
+      active = false;
+    };
+  }, [specTemplateName, hasSpecification, templateStatus, selectedVersion]);
+
+  const formOptions = useMemo(
+    () => ({ showSemantic, specNotes, specificationUrl }),
+    [showSemantic, specNotes, specificationUrl]
   );
 
   const requiredRemaining = Math.max(completion.required - completion.completed, 0);
@@ -476,14 +571,64 @@ function App() {
                   value={selectedVersion ?? ''}
                   onChange={(e) => setSelectedVersion(e.target.value || null)}
                 >
-                  <option value="">Latest</option>
+                  <option value="">
+                    Latest
+                    {templateSource?.latestVersion
+                      ? ` (${templateSource.latestVersion})`
+                      : ''}
+                  </option>
                   {templateVersions.map((version) => (
                     <option key={version.version} value={version.version}>
                       {version.version}
+                      {version.latest ? ' — latest' : ''}
+                      {version.sample_only ? ' — sample only' : ''}
                     </option>
                   ))}
                 </select>
               </div>
+            )}
+
+            {templateSource && (
+              <dl className="template-source">
+                <div>
+                  <dt>Release in use</dt>
+                  <dd>
+                    <span className="template-version">v{templateSource.version}</span>
+                    {templateSource.isLatest === false && (
+                      <span className="template-source-warning">
+                        A newer release (v{templateSource.latestVersion}) is available.
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                {templateSource.documents?.aasx && (
+                  <div>
+                    <dt>Template file</dt>
+                    <dd>{templateSource.documents.aasx.name}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Specification</dt>
+                  <dd>
+                    {specificationUrl ? (
+                      <a href={specificationUrl} target="_blank" rel="noopener noreferrer">
+                        {templateSource.documents?.specification?.name ?? 'Open PDF'}
+                      </a>
+                    ) : (
+                      'No specification PDF published for this release'
+                    )}
+                  </dd>
+                </div>
+                {templateSource.stale && (
+                  <div>
+                    <dt>Note</dt>
+                    <dd className="template-source-warning">
+                      The template repository could not be reached; showing the last
+                      known template list.
+                    </dd>
+                  </div>
+                )}
+              </dl>
             )}
           </div>
 
@@ -574,7 +719,23 @@ function App() {
           <div className="submodel-header">
             <h2>{headerIdShort}</h2>
             <p className="submodel-template-id">
-              Template ID: <span>{headerTemplateName}</span>
+              Template: <span>{templateSource?.title || headerTemplateName}</span>
+              {templateSource?.idtaNumber && (
+                <span className="template-idta-number">IDTA {templateSource.idtaNumber}</span>
+              )}
+              {templateSource?.version && (
+                <span className="template-version">v{templateSource.version}</span>
+              )}
+              {specificationUrl && (
+                <a
+                  className="submodel-spec-link"
+                  href={specificationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Specification (PDF)
+                </a>
+              )}
             </p>
             {selectedTemplate.status === 'deprecated' && (
               <p className="submodel-template-status">
@@ -592,6 +753,44 @@ function App() {
               <p className="submodel-description">{schema.description.en}</p>
             )}
           </div>
+
+          <div className="form-toolbar">
+            <div className="form-toolbar-info">
+              <span>
+                <strong>{completion.completed}</strong> of {completion.required} required
+                fields filled
+              </span>
+              {specNotesState === 'loading' && (
+                <span className="form-toolbar-muted">Reading specification PDF…</span>
+              )}
+              {specNotesState === 'ready' && Object.keys(specNotes).length > 0 && (
+                <span className="form-toolbar-muted">
+                  Guidance from the specification PDF added to{' '}
+                  {Object.keys(specNotes).length} fields
+                </span>
+              )}
+            </div>
+            <label className="form-toolbar-toggle">
+              <input type="checkbox" checked={showSemantic} onChange={toggleSemantic} />
+              Show semantic IDs
+            </label>
+          </div>
+
+          {exampleFields.length > 0 && (
+            <div className="example-banner" role="status">
+              <div>
+                <strong>
+                  {exampleFields.length} field{exampleFields.length === 1 ? '' : 's'} still
+                  contain example values from the template.
+                </strong>{' '}
+                They illustrate the expected format and are not data about your product.
+                Replace them, or clear them all and start from an empty form.
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={clearExampleValues}>
+                Clear example values
+              </button>
+            </div>
+          )}
 
           <PassportView schema={schema} formData={watchedValues}>
             <div className="submodel-elements">
@@ -659,9 +858,17 @@ function App() {
           <div className="review-summary-item">
             <h4>Validation</h4>
             <p>
-              {validationResult?.valid
-                ? 'No blocking errors'
-                : 'Run validation to check for errors'}
+              {!validationResult
+                ? 'Run validation to check for errors'
+                : validationResult.valid
+                  ? validationResult.warnings.length > 0
+                    ? `No blocking errors, ${validationResult.warnings.length} warning${
+                        validationResult.warnings.length === 1 ? '' : 's'
+                      } to review`
+                    : 'No blocking errors'
+                  : `${validationResult.errors.length} blocking error${
+                      validationResult.errors.length === 1 ? '' : 's'
+                    } must be fixed before export`}
             </p>
             <div className="review-summary-actions">
               <button
@@ -705,6 +912,29 @@ function App() {
               </div>
             )}
           </div>
+          {exampleFields.length > 0 && (
+            <div className="review-summary-item">
+              <h4>Example values</h4>
+              <p>
+                {exampleFields.length} field{exampleFields.length === 1 ? '' : 's'} still
+                contain example values from the template (
+                {Array.from(new Set(exampleFields.map((field) => field.idShort)))
+                  .slice(0, 6)
+                  .join(', ')}
+                {new Set(exampleFields.map((field) => field.idShort)).size > 6 ? ', …' : ''}).
+                Check them before exporting.
+              </p>
+              <div className="review-summary-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={clearExampleValues}
+                >
+                  Clear example values
+                </button>
+              </div>
+            </div>
+          )}
           <div className="review-summary-item">
             <h4>Export readiness</h4>
             <p>Export actions are available in the panel on the right.</p>
@@ -919,9 +1149,11 @@ function App() {
         <main className="app-main wizard-main">
           {schema ? (
             <FormProvider {...form}>
-              <form className="submodel-form" onSubmit={form.handleSubmit(() => {})}>
-                {renderStepContent()}
-              </form>
+              <FormOptionsContext.Provider value={formOptions}>
+                <form className="submodel-form" onSubmit={form.handleSubmit(() => {})}>
+                  {renderStepContent()}
+                </form>
+              </FormOptionsContext.Provider>
             </FormProvider>
           ) : (
             renderStepContent()

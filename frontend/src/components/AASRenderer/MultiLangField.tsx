@@ -9,6 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useFormContext, Controller, useWatch } from 'react-hook-form';
 import type { UIElementSchema } from '../../types/ui-schema';
 import DescriptionText from './DescriptionText';
+import { useFormOptions } from './FormOptionsContext';
 import SemanticChip from '../semantic/SemanticChip';
 import SemanticLookupModal from '../semantic/SemanticLookupModal';
 import {
@@ -43,12 +44,25 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
   schema,
   label,
   required,
-  requiredLanguages = ['en'],
+  requiredLanguages: requiredLanguagesProp,
 }) => {
   const { control, watch, setValue } = useFormContext();
-  const languages = schema.supportedLanguages || ['en', 'de'];
+  // Languages the template requires (SMT/RequiredLang) come first, followed
+  // by the languages the template already uses, then the remaining defaults.
+  const templateRequired = schema.requiredLanguages ?? [];
+  const requiredLanguages =
+    requiredLanguagesProp ?? (templateRequired.length > 0 ? templateRequired : ['en']);
+  const templateLanguages = Object.keys((schema.value as Record<string, string>) ?? {});
+  const languages = Array.from(
+    new Set([
+      ...templateRequired,
+      ...(schema.supportedLanguages || ['en', 'de']),
+      ...templateLanguages,
+    ])
+  );
   const [activeTab, setActiveTab] = useState(0);
   const [isSemanticOpen, setSemanticOpen] = useState(false);
+  const { showSemantic: semanticEnabled } = useFormOptions();
   const basePath = path.replace(/\.value$/, '');
   const semanticId = useWatch({
     control,
@@ -94,8 +108,11 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
     <div className="aas-field aas-field-multilang">
       <div className="aas-multilang-header">
         <label className="aas-label">
-          {label}
+          <span className="aas-label-text">{label}</span>
           {required && <span className="aas-required">*</span>}
+          {schema.idShort && schema.idShort !== label && (
+            <code className="aas-id-short">{schema.idShort}</code>
+          )}
         </label>
         <span className="aas-multilang-count">
           {filledCount}/{languages.length} translations
@@ -107,16 +124,18 @@ export const MultiLangField: React.FC<MultiLangFieldProps> = ({
         </span>
       </div>
 
-      <div className="semantic-row">
-        <span className="aas-sublabel">Semantic</span>
-        <SemanticChip
-          semanticId={semanticId}
-          onOpen={() => setSemanticOpen(true)}
-          onClear={() => setValue(`${basePath}.semanticId`, null, { shouldDirty: true })}
-        />
-      </div>
+      {semanticEnabled && (
+        <div className="semantic-row">
+          <span className="aas-sublabel">Semantic</span>
+          <SemanticChip
+            semanticId={semanticId}
+            onOpen={() => setSemanticOpen(true)}
+            onClear={() => setValue(`${basePath}.semanticId`, null, { shouldDirty: true })}
+          />
+        </div>
+      )}
 
-      <DescriptionText description={schema.description} />
+      <DescriptionText description={schema.description} schema={schema} path={path} />
 
       <div className="aas-multilang-tabs" role="tablist">
         {languages.map((lang, index) => {

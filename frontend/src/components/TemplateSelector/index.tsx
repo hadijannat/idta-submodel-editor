@@ -77,9 +77,11 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
         </div>
       )}
 
-      {cached && !loading && (
+      {!loading && !error && templates.length > 0 && (
         <p className="template-selector-cache-notice">
-          Showing cached templates
+          {templates.length} template{templates.length === 1 ? '' : 's'}
+          {cached ? ' (cached list)' : ''} · the newest release of each template is used
+          unless you pick another version in the next step
         </p>
       )}
 
@@ -95,10 +97,23 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
             {search && <p>Try adjusting your search</p>}
           </div>
         ) : (
-          templates.map((template) => (
+          templates.map((template, index) => (
+            <React.Fragment key={`${template.status ?? 'published'}:${template.name}`}>
+            {template.group && templates[index - 1]?.group !== template.group && (
+              <div className="template-group-heading">
+                {template.group}
+                <span className="template-group-count">
+                  {(() => {
+                    const count = templates.filter(
+                      (entry) => entry.group === template.group
+                    ).length;
+                    return `${count} ${count === 1 ? 'part' : 'parts'}`;
+                  })()}
+                </span>
+              </div>
+            )}
             <div
-              key={template.name}
-              className={`template-item ${selectedTemplate === template.name ? 'selected' : ''}`}
+              className={`template-item ${template.group ? 'template-item-part' : ''} ${selectedTemplate === template.name ? 'selected' : ''}`}
               role="option"
               aria-selected={selectedTemplate === template.name}
               onClick={() => onSelect(template)}
@@ -122,11 +137,25 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                   </span>
                 )}
                 <span className="template-title">
-                  {template.title || template.name}
+                  {template.group && template.part
+                    ? template.part
+                    : template.title || template.name}
                 </span>
+                {template.latest_version && (
+                  <span className="template-version" title="Latest published release">
+                    v{template.latest_version}
+                  </span>
+                )}
               </div>
               <div className="template-item-name">{template.name}</div>
+              <div className="template-item-meta">
+                {template.versions && template.versions.length > 1 && (
+                  <span>{template.versions.length} releases</span>
+                )}
+                {template.has_specification && <span>Specification PDF</span>}
+              </div>
             </div>
+            </React.Fragment>
           ))
         )}
       </div>

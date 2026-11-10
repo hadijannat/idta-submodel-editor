@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -572,6 +573,10 @@ def sample_value(value_type: str | None, *, high: bool = False) -> Any:
         return 2 if high else 1
     if any(token in value_type_lower for token in ("float", "double", "decimal")):
         return 2.0 if high else 1.0
+    if "duration" in value_type_lower:
+        return "P2D" if high else "P1D"
+    if "gyearmonth" in value_type_lower:
+        return "2024-02" if high else "2024-01"
     if "datetime" in value_type_lower:
         return "2024-01-02T00:00:00" if high else "2024-01-01T00:00:00"
     if "date" in value_type_lower:
@@ -585,26 +590,77 @@ def sample_value(value_type: str | None, *, high: bool = False) -> Any:
     return "Example B" if high else "Example"
 
 
+def sample_property_value(element: dict[str, Any]) -> Any:
+    """Sample value that satisfies the requirements the template declares."""
+    value_type = element.get("valueType")
+    is_bool = "bool" in str(value_type or "").lower()
+
+    allowed = [
+        option.get("value")
+        for option in element.get("allowedValues") or []
+        if isinstance(option, dict) and option.get("value") is not None
+    ]
+    if allowed and element.get("allowedValuesStrict"):
+        first = str(allowed[0])
+        return first.strip().lower() == "true" if is_bool else first
+
+    pattern = element.get("pattern")
+    if pattern:
+        candidates = [element.get("value"), *(element.get("exampleValues") or [])]
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                if re.fullmatch(pattern, str(candidate)):
+                    return candidate
+            except re.error:
+                break
+
+    value = sample_value(value_type)
+    bounds = element.get("allowedRange") or element.get("constraints") or {}
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        low, high = bounds.get("min"), bounds.get("max")
+        if low is not None and value < low:
+            value = low
+        if high is not None and value > high:
+            value = high
+    return value
+
+
+def build_required_children(children: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build required data for sibling elements, honouring SMT/EitherOr groups."""
+    data: dict[str, Any] = {}
+    for child in children:
+        child_data = build_required_element(child)
+        if child_data is not None:
+            data[str(child.get("idShort"))] = child_data
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for child in children:
+        if child.get("eitherOr"):
+            groups.setdefault(str(child["eitherOr"]), []).append(child)
+    for members in groups.values():
+        if len(members) < 2 or any(str(m.get("idShort")) in data for m in members):
+            continue
+        forced = build_required_element(members[0], force=True)
+        if forced is not None:
+            data[str(members[0].get("idShort"))] = forced
+    return data
+
+
 def generate_required_form_data(schema: dict[str, Any]) -> dict[str, Any]:
-    elements: dict[str, Any] = {}
-    for element in schema.get("elements", []) or []:
-        data = build_required_element(element)
-        if data is not None:
-            elements[str(element.get("idShort"))] = data
-    return {"elements": elements}
+    return {"elements": build_required_children(schema.get("elements", []) or [])}
 
 
-def build_required_element(element: dict[str, Any]) -> dict[str, Any] | None:
+def build_required_element(
+    element: dict[str, Any], *, force: bool = False
+) -> dict[str, Any] | None:
     model_type = element.get("modelType")
     min_items, _ = parse_cardinality(element.get("cardinality"))
-    required = min_items >= 1
+    required = min_items >= 1 or force
 
     if model_type == "SubmodelElementCollection":
-        elements: dict[str, Any] = {}
-        for child in element.get("elements", []) or []:
-            child_data = build_required_element(child)
-            if child_data is not None:
-                elements[str(child.get("idShort"))] = child_data
+        elements = build_required_children(element.get("elements", []) or [])
         return {"elements": elements} if required or elements else None
 
     if model_type == "SubmodelElementList":
@@ -615,10 +671,13 @@ def build_required_element(element: dict[str, Any]) -> dict[str, Any] | None:
         return {"items": items} if required or items else None
 
     if model_type == "Property":
-        return {"value": sample_value(element.get("valueType"))} if required else None
+        return {"value": sample_property_value(element)} if required else None
 
     if model_type == "MultiLanguageProperty":
-        return {"value": {"en": "Example"}} if required else None
+        if not required:
+            return None
+        languages = element.get("requiredLanguages") or ["en"]
+        return {"value": {str(lang): "Example" for lang in languages}}
 
     if model_type == "Range":
         if not required:
@@ -664,11 +723,7 @@ def build_required_element(element: dict[str, Any]) -> dict[str, Any] | None:
         return data
 
     if model_type == "Entity":
-        statements: dict[str, Any] = {}
-        for child in element.get("statements", []) or []:
-            child_data = build_required_element(child)
-            if child_data is not None:
-                statements[str(child.get("idShort"))] = child_data
+        statements = build_required_children(element.get("statements", []) or [])
         return {"statements": statements} if required or statements else None
 
     if required:

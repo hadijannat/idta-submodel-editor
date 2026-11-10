@@ -100,7 +100,13 @@ export class TemplateSelectorPage {
    * Get a template card by name.
    */
   getTemplateCard(name: string): Locator {
-    return this.page.locator('.template-item', { hasText: name });
+    // Match the template name or title exactly (ignoring case). A substring
+    // match would also select parts of multi-part templates, e.g. "Digital
+    // Battery Passport – Part 1: Digital Nameplate" for "Digital Nameplate".
+    const exact = new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
+    return this.page.locator('.template-item').filter({
+      has: this.page.locator('.template-item-name, .template-title', { hasText: exact }),
+    });
   }
 
   /**

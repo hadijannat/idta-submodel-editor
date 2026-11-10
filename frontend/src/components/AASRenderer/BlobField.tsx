@@ -123,10 +123,13 @@ export const BlobField: React.FC<BlobFieldProps> = ({
   return (
     <div className="aas-field aas-field-blob">
       <label className="aas-label" htmlFor={`${path}.value`}>
-        {label}
+        <span className="aas-label-text">{label}</span>
         {required && <span className="aas-required">*</span>}
+        {schema.idShort && schema.idShort !== label && (
+          <code className="aas-id-short">{schema.idShort}</code>
+        )}
       </label>
-      <DescriptionText description={schema.description} />
+      <DescriptionText description={schema.description} schema={schema} path={path} />
 
       <div className="aas-file-fields">
         <div className="aas-file-content-type">

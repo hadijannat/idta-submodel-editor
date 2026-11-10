@@ -49,11 +49,14 @@ export const FileField: React.FC<FileFieldProps> = ({
   return (
     <div className="aas-field aas-field-file">
       <label className="aas-label">
-        {label}
+        <span className="aas-label-text">{label}</span>
         {required && <span className="aas-required">*</span>}
+        {schema.idShort && schema.idShort !== label && (
+          <code className="aas-id-short">{schema.idShort}</code>
+        )}
       </label>
 
-      <DescriptionText description={schema.description} />
+      <DescriptionText description={schema.description} schema={schema} path={path} />
 
       <div className="aas-file-fields">
         <div className="aas-file-path">

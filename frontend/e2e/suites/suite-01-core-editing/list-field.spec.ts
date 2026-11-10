@@ -19,16 +19,22 @@ const LIST_FIELD_SELECTOR =
 const REQUIRED_LIST_FIELD_SELECTOR =
   '.aas-list[data-required="true"], .aas-list[data-cardinality*="[1"], .list-field[data-required="true"]';
 const LIST_ITEM_SELECTOR = '.aas-list-item, .list-item, [data-testid="list-item"]';
+const VIRTUAL_ROW_SELECTOR = ':scope > div > [data-index]';
 const ADD_ITEM_BUTTON_SELECTOR = 'button.aas-btn-add[aria-label="Add item"], button[aria-label="Add item"]';
 const REMOVE_ITEM_BUTTON_SELECTOR =
   'button[aria-label="Remove item"], .remove-item, [data-testid="remove-item"], button[aria-label*="remove"], button[aria-label*="delete"]';
 
-function getIndexedListItemSelector(index: number): string {
-  return [
-    `.aas-list-item[data-index="${index}"]`,
-    `.list-item[data-index="${index}"]`,
-    `[data-testid="list-item"][data-index="${index}"]`,
-  ].join(', ');
+/** Rows the virtualizer mounted for a list (not items of nested lists). */
+function virtualRows(listField: Locator): Locator {
+  return listField.locator('.virtualized-list-container').first().locator(VIRTUAL_ROW_SELECTOR);
+}
+
+/** The mounted row of a virtualized list at a given item index. */
+function virtualRow(listField: Locator, index: number): Locator {
+  return listField
+    .locator('.virtualized-list-container')
+    .first()
+    .locator(`:scope > div > [data-index="${index}"]`);
 }
 
 async function openExpandableListTemplate(
@@ -68,7 +74,9 @@ async function openExpandableListTemplate(
 async function findLastVisibleEditableListItem(
   listField: Locator
 ): Promise<{ control: Locator; index: number } | null> {
-  const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+  // Only rows of this list: items of lists nested inside a row have their
+  // own indexes and would be mistaken for rows of the outer list.
+  const visibleItems = virtualRows(listField);
   const visibleItemCount = await visibleItems.count();
 
   for (let i = visibleItemCount - 1; i >= 0; i--) {
@@ -83,10 +91,7 @@ async function findLastVisibleEditableListItem(
     const index = Number((await candidate.getAttribute('data-index')) ?? '-1');
     if (index >= 0) {
       return {
-        control: listField
-          .locator(getIndexedListItemSelector(index))
-          .locator('input, textarea')
-          .first(),
+        control: virtualRow(listField, index).locator('input, textarea').first(),
         index,
       };
     }
@@ -99,10 +104,7 @@ async function getVisibleTextControlValueAtIndex(
   listField: Locator,
   targetIndex: number
 ): Promise<string | null> {
-  const control = listField
-    .locator(getIndexedListItemSelector(targetIndex))
-    .locator('input, textarea')
-    .first();
+  const control = virtualRow(listField, targetIndex).locator('input, textarea').first();
   const isVisible = await control.isVisible().catch(() => false);
   if (!isVisible) {
     return null;
@@ -329,7 +331,7 @@ test.describe('List Fields', () => {
         await addButton.click();
       }
 
-      const listCountText = (await listField.locator('.aas-list-count').textContent()) ?? '';
+      const listCountText = (await listField.locator('.aas-list-count').first().textContent()) ?? '';
       const totalItems = Number(listCountText.match(/\d+/)?.[0] ?? '0');
 
       if (totalItems <= 20) {
@@ -340,7 +342,9 @@ test.describe('List Fields', () => {
       const virtualizedContainer = listField.locator('.virtualized-list-container');
       await expect(virtualizedContainer).toBeVisible();
 
-      const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+      // Count the rows the virtualizer mounted for this list. Items of lists
+      // nested inside a row carry the same class and must not be counted.
+      const visibleItems = virtualRows(listField);
       const visibleItemCount = await visibleItems.count();
       expect(visibleItemCount).toBeGreaterThan(0);
       expect(visibleItemCount).toBeLessThan(totalItems);
@@ -371,7 +375,7 @@ test.describe('List Fields', () => {
         await addButton.click();
       }
 
-      const listCountText = (await listField.locator('.aas-list-count').textContent()) ?? '';
+      const listCountText = (await listField.locator('.aas-list-count').first().textContent()) ?? '';
       const totalItems = Number(listCountText.match(/\d+/)?.[0] ?? '0');
 
       if (totalItems <= 20) {
@@ -386,7 +390,9 @@ test.describe('List Fields', () => {
         element.scrollTop = element.scrollHeight;
       });
 
-      const visibleItems = listField.locator(LIST_ITEM_SELECTOR);
+      // Count the rows the virtualizer mounted for this list. Items of lists
+      // nested inside a row carry the same class and must not be counted.
+      const visibleItems = virtualRows(listField);
       const visibleItemCount = await visibleItems.count();
       expect(visibleItemCount).toBeGreaterThan(0);
       expect(visibleItemCount).toBeLessThan(totalItems);
@@ -404,7 +410,7 @@ test.describe('List Fields', () => {
       await expect(tailControl).toHaveValue(sentinelValue);
 
       await addButton.click();
-      await expect(listField.locator('.aas-list-count')).toContainText(`(${totalItems + 1} items)`);
+      await expect(listField.locator('.aas-list-count').first()).toContainText(`(${totalItems + 1} items)`);
 
       await virtualizedContainer.evaluate(
         (element, scrollTop) => {
