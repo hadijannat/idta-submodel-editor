@@ -130,6 +130,16 @@ test.describe('Client-Side Validation', () => {
       }
 
       const input = field.locator('input').first();
+      if ((await input.getAttribute('type')) === 'date') {
+        // xs:date properties are rendered as date pickers: the browser only
+        // accepts well-formed dates, so malformed text cannot be entered.
+        await input.fill('2024-02-29');
+        await input.blur();
+        await expect(input).toHaveValue('2024-02-29');
+        expect(await formEditor.getFieldError('DateOfManufacture')).toBeNull();
+        return;
+      }
+
       await input.fill('invalid-date');
       await input.blur();
 

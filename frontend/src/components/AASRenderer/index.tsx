@@ -8,6 +8,7 @@
 import React from 'react';
 import type { UIElementSchema } from '../../types/ui-schema';
 import { isRequired } from '../../types/aas-elements';
+import { elementLabel } from '../../utils/fieldRequirements';
 import PropertyField from './PropertyField';
 import CollectionField from './CollectionField';
 import ListField from './ListField';
@@ -45,7 +46,7 @@ export const AASRenderer: React.FC<AASRendererProps> = ({
   path,
   depth = 0,
 }) => {
-  const getLabel = () => schema.semanticLabel || schema.idShort;
+  const getLabel = () => elementLabel(schema);
   const required = isRequired(schema.cardinality);
 
   const renderElement = () => {

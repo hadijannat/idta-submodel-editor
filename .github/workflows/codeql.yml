@@ -36,6 +36,17 @@ jobs:
         with:
           languages: ${{ matrix.language }}
 
+      # The PLC4X bridge relies on Lombok. JDK 23 and later no longer run
+      # annotation processors found on the class path by default, so the
+      # runner's default JDK cannot compile it. Use the JDK the CI build uses.
+      - name: Set up Java
+        if: matrix.language == 'java'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
       - name: Autobuild
         uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
 

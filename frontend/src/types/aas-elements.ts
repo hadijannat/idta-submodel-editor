@@ -121,6 +121,29 @@ export function getMaxItems(cardinality: string): number | undefined {
   return parseCardinality(cardinality).max;
 }
 
+/**
+ * Bounds on the number of items of a SubmodelElementList.
+ *
+ * The cardinality qualifier of a list states how often the list itself
+ * occurs (`[1]`, `[0..1]`), not how many items it holds; a list that occurs
+ * once can hold any number of items unless its item declares a bound. Lists
+ * that carry a multi-valued cardinality themselves keep it as item bound.
+ */
+export function getListItemBounds(schema: {
+  cardinality: string;
+  itemTemplate?: { cardinality: string } | null;
+}): { min: number; max?: number } {
+  const list = parseCardinality(schema.cardinality);
+  if (list.max === undefined || list.max > 1) {
+    return list;
+  }
+  const item = schema.itemTemplate
+    ? parseCardinality(schema.itemTemplate.cardinality)
+    : undefined;
+  const max = item?.max !== undefined && item.max > 1 ? item.max : undefined;
+  return { min: list.min, max };
+}
+
 export function parseCardinality(
   cardinality: string
 ): { min: number; max?: number } {

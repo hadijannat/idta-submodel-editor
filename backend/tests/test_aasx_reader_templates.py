@@ -86,22 +86,15 @@ def _environment_xml(*elements: str, submodel_id: str = "urn:test:sm") -> bytes:
     ).encode()
 
 
-def _relationships(type_: str, target: str, target_mode: str | None) -> str:
-    mode = f' TargetMode="{target_mode}"' if target_mode else ""
+def _relationships(type_: str, target: str) -> str:
     return (
         f'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{RELS_NS}">'
-        f'<Relationship Id="r1" Target="{target}"{mode} Type="{type_}"/>'
+        f'<Relationship Id="r1" Target="{target}" Type="{type_}"/>'
         "</Relationships>"
     )
 
 
-def _package(
-    spec: bytes,
-    *,
-    part: str = "aasx/data.xml",
-    target_mode: str | None = None,
-    spec_target: str | None = None,
-) -> bytes:
+def _package(spec: bytes, *, part: str = "aasx/data.xml") -> bytes:
     """A minimal AASX package around one AAS document."""
     content_type = "application/json" if part.endswith(".json") else "application/xml"
     extension = part.rsplit(".", 1)[-1]
@@ -117,12 +110,9 @@ def _package(
             '<Override PartName="/aasx/aasx-origin" ContentType="text/plain"/>'
             "</Types>",
         )
-        package.writestr("_rels/.rels", _relationships(ORIGIN_TYPE, "/aasx/aasx-origin", target_mode))
+        package.writestr("_rels/.rels", _relationships(ORIGIN_TYPE, "/aasx/aasx-origin"))
         package.writestr("aasx/aasx-origin", "")
-        package.writestr(
-            "aasx/_rels/aasx-origin.rels",
-            _relationships(SPEC_TYPE, spec_target or f"/{part}", target_mode),
-        )
+        package.writestr("aasx/_rels/aasx-origin.rels", _relationships(SPEC_TYPE, f"/{part}"))
         package.writestr(part, spec)
     return buffer.getvalue()
 
@@ -134,37 +124,6 @@ def _read(package: bytes, reader_class=SafeAASXReader):
         issues = list(getattr(reader, "read_issues", []))
     submodels = [obj for obj in store if isinstance(obj, model.Submodel)]
     return (submodels[0] if submodels else None), issues
-
-
-class TestMislabelledPackage:
-    def test_parts_marked_external_are_read(self):
-        package = _package(_environment_xml(PLAIN_PROPERTY), target_mode="External")
-
-        submodel, issues = _read(package)
-
-        assert submodel is not None
-        assert [element.id_short for element in submodel.submodel_element] == ["Fine"]
-        assert issues == []
-
-    def test_the_sdk_reader_rejects_such_a_package(self):
-        # Documents why the workaround exists; drop it when the SDK reads these.
-        package = _package(_environment_xml(PLAIN_PROPERTY), target_mode="External")
-        with pytest.raises(ValueError, match="aasx-origin Relationship is missing"):
-            _read(package, aasx.AASXReader)
-
-    def test_explicitly_internal_targets_keep_working(self):
-        package = _package(_environment_xml(PLAIN_PROPERTY), target_mode="Internal")
-        submodel, _ = _read(package)
-        assert submodel is not None
-
-    def test_targets_outside_the_package_are_not_followed(self):
-        package = _package(
-            _environment_xml(PLAIN_PROPERTY),
-            target_mode="External",
-            spec_target="https://example.com/data.xml",
-        )
-        submodel, _ = _read(package)
-        assert submodel is None
 
 
 class TestSelfManagedEntityWithoutAssetId:

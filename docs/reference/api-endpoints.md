@@ -34,30 +34,10 @@ Security note: these endpoints should be treated as operational surfaces, not pu
 |---|---|
 | `GET /api/templates` | List templates (`status=published|deprecated|all`) |
 | `GET /api/templates/{template_name}` | Get template metadata |
-| `GET /api/templates/{template_name}/versions` | List versions for a template |
+| `GET /api/templates/{template_name}/versions` | List releases of a template, newest first |
+| `GET /api/templates/{template_name}/documents/{kind}` | Download a document of a release (`kind=specification\|json\|aasx`, optional `version`) |
 | `POST /api/templates/refresh` | Refresh template cache |
 | `DELETE /api/templates/{template_name}/cache` | Clear cached template payload |
-
-### Template names, parts and versions
-
-Templates are discovered from one listing of the template repository
-(`GITHUB_REPO` at `GITHUB_TEMPLATE_REF`). If that listing is unavailable the
-service falls back to per-directory requests, which only know folders.
-
-- A folder that holds several templates is listed once per part. The part's
-  `name` joins folder and part with ` - `, for example
-  `Digital Battery Passport - 6_Material Composition`; `folder` and `part`
-  carry the two halves and `path` is the repository directory.
-- The folder name alone still resolves: to the folder's own template when it
-  has one, otherwise to its first part.
-- Without a `version`, the newest release is loaded, including patch releases
-  (`3/0/3` rather than `3/0`). `latest_version` reports which one that is.
-- `GET /api/templates/{template_name}/versions` returns every release, newest
-  first. `version` is the value to send back (`3/0/3`), `label` the display
-  form (`3.0.3`). A version that is named exactly is loaded as is; a prefix
-  such as `3` loads the newest release below it.
-- Within a release, the template file wins over examples, samples and variants
-  such as `..._forAASMetamodelV3.1.aasx`.
 
 ## Editor
 
@@ -65,6 +45,7 @@ service falls back to per-directory requests, which only know folders.
 |---|---|
 | `GET /api/editor/templates/{template_name}/schema` | Get UI schema for template |
 | `GET /api/editor/templates/{template_name}/schema?version={version}` | Get schema for explicit version (optional query parameter) |
+| `GET /api/editor/templates/{template_name}/specification-notes` | Requirements read from the specification PDF, keyed by idShort path |
 | `POST /api/editor/hydrate/{template_name}` | Hydrate to AASX |
 | `POST /api/editor/hydrate/{template_name}/json` | Hydrate to JSON |
 | `POST /api/editor/upload` | Upload and parse AASX |

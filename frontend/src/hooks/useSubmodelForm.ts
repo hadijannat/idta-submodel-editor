@@ -17,9 +17,10 @@ import {
   checkConformanceForTemplate,
   type ConformanceCheckResult,
 } from '../services/api';
-import { getMaxItems, getMinItems, isRequired } from '../types/aas-elements';
+import { getListItemBounds, isRequired } from '../types/aas-elements';
 import { newInstanceId } from '../utils/instance-id';
 import { useDraftAutoSave } from './useDraftAutoSave';
+import { requirementError } from '../utils/fieldRequirements';
 
 interface UseSubmodelFormOptions {
   /** Template name to load */
@@ -101,9 +102,9 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
   switch (element.modelType) {
     case 'Property': {
       let propSchema: z.ZodTypeAny;
-      const valueType = element.valueType || 'xs:string';
+      const valueType = (element.valueType || 'xs:string').toLowerCase();
 
-      if (valueType.includes('int') || valueType.includes('Integer')) {
+      if (/(int|integer|long|short|byte)(['>]*)$/.test(valueType)) {
         propSchema = z.coerce.number().int();
       } else if (
         valueType.includes('float') ||
@@ -113,37 +114,71 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
         propSchema = z.coerce.number();
       } else if (valueType.includes('bool')) {
         propSchema = z.boolean();
-      } else if (valueType.includes('date')) {
-        propSchema = z.string();
       } else {
         propSchema = z.string();
       }
 
       const valueSchema =
         required && propSchema instanceof z.ZodString
-          ? propSchema.min(1)
+          ? propSchema.min(1, 'This field is required by the template')
           : propSchema;
+
+      // Requirements the template declares for the value (enumeration,
+      // pattern, range) are checked on the raw input before type coercion.
+      const requirements = z.unknown().superRefine((raw, ctx) => {
+        const message = requirementError(element, raw);
+        if (message) {
+          ctx.addIssue({ code: 'custom', message });
+        }
+      });
 
       return withSemanticFields(
         z.object({
-          value: required ? valueSchema : valueSchema.optional().nullable(),
+          value: requirements.pipe(
+            required ? valueSchema : valueSchema.optional().nullable()
+          ),
         })
       );
     }
 
     case 'MultiLanguageProperty': {
+      const requiredLanguages = element.requiredLanguages ?? [];
+      const baseLanguage = (lang: string) => lang.toLowerCase().split('-')[0];
+      const hasText = (value: Record<string, string>) =>
+        Object.values(value).some((entry) => (entry ?? '').trim().length > 0);
+      const missingLanguages = (value: Record<string, string>) => {
+        const provided = new Set(
+          Object.entries(value)
+            .filter(([, text]) => (text ?? '').trim().length > 0)
+            .map(([lang]) => baseLanguage(lang))
+        );
+        return requiredLanguages.filter((lang) => !provided.has(baseLanguage(lang)));
+      };
+      const withRequiredLanguages = (schema: z.ZodType<Record<string, string>>) =>
+        requiredLanguages.length === 0
+          ? schema
+          : schema.superRefine((value, ctx) => {
+              if (!value || !hasText(value)) return;
+              const missing = missingLanguages(value);
+              if (missing.length > 0) {
+                ctx.addIssue({
+                  code: 'custom',
+                  message: `The template requires a translation for: ${missing.join(', ')}`,
+                });
+              }
+            });
+
       const translationsSchema = z.record(z.string(), z.string());
       const valueSchema = z
         .record(z.string(), z.string())
-        .refine(
-          (value) => Object.values(value).some((entry) => entry.trim().length > 0),
-          {
-            message: 'At least one translation is required',
-          }
-        );
+        .refine((value) => hasText(value), {
+          message: 'At least one translation is required',
+        });
       return withSemanticFields(
         z.object({
-          value: required ? valueSchema : translationsSchema.optional(),
+          value: required
+            ? withRequiredLanguages(valueSchema)
+            : withRequiredLanguages(translationsSchema).optional(),
         })
       );
     }
@@ -164,8 +199,7 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
       const itemSchema = element.itemTemplate
         ? generateZodSchema(element.itemTemplate)
         : z.any();
-      const minItems = getMinItems(element.cardinality);
-      const maxItems = getMaxItems(element.cardinality);
+      const { min: minItems, max: maxItems } = getListItemBounds(element);
       const itemsSchema = maxItems
         ? z.array(itemSchema).min(minItems).max(maxItems)
         : z.array(itemSchema).min(minItems);
@@ -197,8 +231,8 @@ function generateZodSchema(element: UIElementSchema): z.ZodTypeAny {
     }
 
     case 'Range': {
-      const valueType = element.valueType || 'xs:double';
-      const numSchema = valueType.includes('int')
+      const valueType = (element.valueType || 'xs:double').toLowerCase();
+      const numSchema = /(int|integer|long|short|byte)(['>]*)$/.test(valueType)
         ? z.coerce.number().int()
         : z.coerce.number();
 

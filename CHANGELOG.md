@@ -7,46 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Template selection**: the newest release of a template is loaded, including
-  patch releases and newer minor versions. Previously the first version folder
-  that contained an AASX won, which was an older file for most templates.
-- **Multi-part templates**: every part of a multi-part folder (Digital Battery
-  Passport, Safety Instrumented Functions, ...) is listed as its own template,
-  and deeply nested templates such as Digital Product Passport Part 1 are found.
-- **Template metadata**: IDTA numbers are read from the template file names, so
-  they are filled in again for the current repository layout.
-
-- **Export is a submodel instance**: exports had `kind=Template`, kept every
-  template qualifier and reused the template's identifier. They now have
-  `kind=Instance`, no template-only qualifiers, an identifier of their own and
-  `administration.templateId` pointing at the template.
-
-- **Templates are read in full**: Digital Product Passport Part 1 and Digital
-  Battery Passport Part 6 could not be opened, and the Bills of Material
-  IEC 81346 extension and Capability Description lost elements without notice
-  (the former loaded as an empty form). All 66 published templates now open
-  with every element.
-
-- **No empty arrays in exports**: the AAS library writes
-  `"specificAssetIds": []` for entities, which the JSON schema forbids. Exports
-  of templates with entities (Bills of Material, Handover Documentation,
-  Purchase Order, ...) now pass the metamodel check.
-
 ### Added
-- `readWarnings` on the UI schema and a notice above the form when part of a
-  template cannot be read or a package holds more submodels than the form shows.
-- Validation requires a global asset ID for self-managed entities.
+- Forms show the requirements of the template: enumerations as dropdowns, allowed ranges, patterns, required languages, either/or groups, value formats, definitions and specification notes
+- Format standards named in the specification text (ISO 3166-1, ISO 639, ISO 4217, ISO 8601, IEC 61406, RFC 2046 …) are recognised and checked as warnings
+- Notes, examples and page references from the specification PDF are added to the fields
+- Template list shows IDTA number, newest release and every part of multi-part templates; a release can be selected by full version
+- Specification PDF, JSON and AASX of a release can be opened from the editor
+- `TEMPLATE_REPO_DIR` serves templates from a local checkout of the template repository for offline installations
+- Fields that still hold example values from the template are marked and can be cleared at once
+- `readWarnings` on the UI schema and a notice above the form when part of a template cannot be read or a package holds more submodels than the form shows
+
+### Fixed
+- The oldest release of a template was loaded instead of the newest
+- Only the first part of multi-part templates could be opened
+- Value types were emitted as Python class names, so date, number and boolean fields were rendered as text inputs
+- `SMT/SMT/Cardinality` qualifiers were ignored, making optional elements mandatory
+- Lists declared `[0..1]` or `[1]` could hold only one item
+- Export failed after adding an item to a list of collections
+- `xs:duration` values could not be exported
+- Packages declaring internal parts as external relationship targets could not be opened
+- List items were named after SDK placeholders that changed on every request
+- Exports were still templates: `kind=Template`, every template qualifier and the template's own identifier. They are now submodel instances with `kind=Instance`, no template-only qualifiers, an identifier of their own and `administration.templateId` naming the template
+- Elements that only break rules for finished submodels were dropped while reading a template, without notice: self-managed entities whose asset ID is still to be entered (the Bills of Material IEC 81346 extension loaded as an empty form), lists of an abstract element type and elements with a repeated qualifier type (Capability Description)
+- Exported JSON contained `"specificAssetIds": []` for entities, which the AAS JSON schema forbids, so exports of templates with entities failed the metamodel check
 
 ### Changed
-- `EXPORT_SUBMODEL_KIND=template` restores the previous export (the template
-  with values filled in).
-- The editor proposes a `urn:uuid:` identifier for each new instance instead of
-  pre-filling the template's identifier.
-- Templates are discovered with one repository listing instead of one request
-  per directory. The per-directory walk remains as the fallback.
-- `GET /api/templates/{name}/versions` lists every release with a display
-  `label`; template entries gain `folder`, `part` and `latest_version`.
+- `EXPORT_SUBMODEL_KIND=template` restores the previous export (the template with values filled in)
+- The editor proposes a `urn:uuid:` identifier for each new instance instead of pre-filling the template's identifier
+- Validation requires a global asset ID for self-managed entities
 
 ## [1.0.0] - 2025-01-27
 

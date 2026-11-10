@@ -364,7 +364,8 @@ export class FormEditorPage {
    * Get a multi-language field by its label text.
    */
   getMultiLangField(labelText: string): Locator {
-    return this.page.locator(`.aas-field-multilang:has(.aas-label:text("${labelText}"))`);
+    // The label holds the readable name and the idShort; match either.
+    return this.page.locator(`.aas-field-multilang:has(.aas-label:has-text("${labelText}"))`);
   }
 
   /**

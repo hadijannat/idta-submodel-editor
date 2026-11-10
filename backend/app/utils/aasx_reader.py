@@ -5,8 +5,7 @@ Reads submodel templates as they are published rather than as the SDK would
 like them to be:
 
 - missing supplementary file parts are skipped instead of failing the read
-- package parts that are declared as external but ship inside the package are
-  found
+- relationships that declare parts of the package as external are repaired
 - template content that only breaks rules for finished submodels is kept: a
   self-managed entity whose asset ID is still to be filled in, and a list
   declared with an abstract element type
@@ -22,17 +21,17 @@ import pprint
 import threading
 
 import io
+import re
+import zipfile
 from io import BytesIO
 from typing import Any, Iterable
 from xml.etree import ElementTree
 from xml.parsers import expat
 
-import pyecma376_2
 from basyx.aas import model
 from basyx.aas.adapter import aasx
 from basyx.aas.adapter.json import json_deserialization, read_aas_json_file
 from basyx.aas.adapter.xml import xml_deserialization, read_aas_xml_file
-from pyecma376_2.package_model import normalize_part_name, part_realpath
 
 from app.config import get_settings
 
@@ -415,6 +414,89 @@ class LenientAASFromXmlDecoder(TemplateAASFromXmlDecoder):
         return object_class(collected)
 
 
+# Bounds on what the relationship repair reads into memory. Upload limits
+# apply to the compressed package only; a small archive can declare members
+# that expand to gigabytes.
+_MAX_RELS_PART_BYTES = 1024 * 1024
+_MAX_REPAIR_EXPANDED_BYTES = 512 * 1024 * 1024
+
+_EXTERNAL_INTERNAL_TARGET_RE = re.compile(
+    rb"<Relationship\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def _repair_internal_relationships(package: bytes) -> bytes | None:
+    """
+    Repair packages whose internal parts are declared as external targets.
+
+    Some exporters write ``TargetMode="External"`` on relationships that point
+    to parts inside the package (``Target="/aasx/aasx-origin"``). OPC readers
+    then ignore those relationships and the package looks empty. Returns a
+    corrected copy of the package, or None when nothing needs repair.
+    """
+    try:
+        with zipfile.ZipFile(BytesIO(package)) as source:
+            names = set(source.namelist())
+            patched: dict[str, bytes] = {}
+
+            def fix(match: re.Match[bytes]) -> bytes:
+                tag = match.group(0)
+                if b"External" not in tag:
+                    return tag
+                target = re.search(rb"Target\s*=\s*[\"']([^\"']*)[\"']", tag)
+                if target is None:
+                    return tag
+                target_name = target.group(1).decode("utf-8", "replace")
+                if not target_name.startswith("/") or target_name.lstrip("/") not in names:
+                    return tag
+                return re.sub(rb"\s+TargetMode\s*=\s*[\"']External[\"']", b"", tag)
+
+            rels_members = [
+                info for info in source.infolist() if info.filename.lower().endswith(".rels")
+            ]
+            for info in rels_members:
+                if info.file_size > _MAX_RELS_PART_BYTES:
+                    raise ValueError(
+                        "Not a valid AASX file: relationship part "
+                        f"{info.filename} is too large"
+                    )
+
+            for info in rels_members:
+                name = info.filename
+                original = source.read(name)
+                if b"External" not in original:
+                    continue
+                repaired = _EXTERNAL_INTERNAL_TARGET_RE.sub(fix, original)
+                if repaired != original:
+                    patched[name] = repaired
+
+            if not patched:
+                return None
+
+            expanded = sum(info.file_size for info in source.infolist())
+            if expanded > _MAX_REPAIR_EXPANDED_BYTES:
+                raise ValueError(
+                    "Not a valid AASX file: the package is too large to repair "
+                    "its relationships"
+                )
+
+            output = BytesIO()
+            with zipfile.ZipFile(output, "w") as target_zip:
+                for info in source.infolist():
+                    data = patched.get(info.filename)
+                    if data is None:
+                        data = source.read(info.filename)
+                    target_zip.writestr(info, data, compress_type=info.compress_type)
+            logger.info(
+                "Repaired %d relationship part(s) declaring internal targets as external",
+                len(patched),
+            )
+            return output.getvalue()
+    except (zipfile.BadZipFile, OSError, KeyError):
+        return None
+
+
 class SafeAASXReader(aasx.AASXReader):
     """
     AASXReader for published templates.
@@ -423,53 +505,13 @@ class SafeAASXReader(aasx.AASXReader):
     in words meant for the person looking at the form.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, file):
+        if hasattr(file, "read"):
+            data = file.read()
+            repaired = _repair_internal_relationships(data) if data else None
+            file = BytesIO(repaired if repaired is not None else data)
+        super().__init__(file)
         self.read_issues: list[str] = []
-        self._accept_internal_targets_declared_external()
-
-    def _accept_internal_targets_declared_external(self) -> None:
-        """
-        Follow relationships marked ``TargetMode="External"`` to parts in the package.
-
-        Some authoring tools mark every relationship as external, including the
-        ones to the AAS files inside the package. The package reader skips
-        external relationships, so such a package looks empty ("aasx-origin
-        Relationship is missing"). A target that exists as a part of this
-        package is internal whatever the attribute says.
-        """
-        reader = self.reader
-        related_parts = reader.get_related_parts_by_type
-        known_parts = {normalize_part_name(name) for name, _ in reader.list_parts()}
-        patched: set[str] = set()
-
-        def related_parts_including_mislabelled(part_name: str = "/"):
-            result = related_parts(part_name)
-            source = normalize_part_name(part_name)
-            if source in patched:
-                return result
-            patched.add(source)
-            for relationship in reader.get_raw_relationships(source):
-                if relationship.target_mode == pyecma376_2.OPCTargetMode.INTERNAL:
-                    continue
-                target = relationship.target
-                if not target or "://" in target:
-                    continue
-                resolved = part_realpath(target, source)
-                if (
-                    normalize_part_name(resolved) in known_parts
-                    and resolved not in result[relationship.type]
-                ):
-                    logger.warning(
-                        "Relationship from %s to %s is marked external but the "
-                        "part is in the package; reading it",
-                        part_name,
-                        resolved,
-                    )
-                    result[relationship.type].append(resolved)
-            return result
-
-        reader.get_related_parts_by_type = related_parts_including_mislabelled
 
     def read_into(self, *args: Any, **kwargs: Any):
         collector = _ReadErrorCollector()
@@ -504,6 +546,7 @@ class SafeAASXReader(aasx.AASXReader):
         lost = expected - count_submodel_elements(objects)
         if lost > 0:
             self._lost_elements = getattr(self, "_lost_elements", 0) + lost
+
 
     @staticmethod
     def _map_xml_namespace_to_sdk(raw: bytes) -> bytes | None:

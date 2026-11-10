@@ -7,7 +7,7 @@ for form rendering.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class QualifierSchema(BaseModel):
@@ -30,6 +30,37 @@ class ConstraintSchema(BaseModel):
     max: int | float | None = None
 
 
+class AllowedValueSchema(BaseModel):
+    """One entry of an enumeration a template defines for a value."""
+
+    value: str
+    label: str | None = None
+    valueId: str | None = None
+
+
+class AllowedRangeSchema(BaseModel):
+    """Numeric range declared with an SMT/AllowedRange qualifier."""
+
+    min: int | float | None = None
+    max: int | float | None = None
+
+
+class FormatHintSchema(BaseModel):
+    """
+    Format standard recognised in the specification text of an element
+    (e.g. ISO 3166-1 alpha-2 country code). Advisory: mismatches are warnings.
+    """
+
+    id: str
+    label: str
+    description: str
+    pattern: str | None = None
+    example: str | None = None
+    options: str | None = None
+    transform: str | None = None
+    source: str = "description"
+
+
 class ElementSchema(BaseModel):
     """
     Schema for a SubmodelElement.
@@ -41,11 +72,49 @@ class ElementSchema(BaseModel):
     idShort: str
     modelType: str
     semanticId: str | None = None
+    supplementalSemanticIds: list[str] = Field(default_factory=list)
     semanticLabel: str | None = None
+    # Human-readable field label (displayName, preferred name or idShort)
+    label: str | None = None
     description: dict[str, str] | None = None
+    # Definition from the ConceptDescription, when the element also carries
+    # its own description (which in IDTA templates holds the spec notes)
+    definition: dict[str, str] | None = None
     qualifiers: list[QualifierSchema] = Field(default_factory=list)
     cardinality: str = "[1]"
     category: str | None = None
+
+    # Requirements declared by the template (qualifiers / IEC 61360)
+    exampleValues: list[str] | None = None
+    defaultValue: str | None = None
+    initialValue: str | None = None
+    allowedValues: list[AllowedValueSchema] | None = None
+    allowedValuesStrict: bool | None = None
+    pattern: str | None = None
+    allowedRange: AllowedRangeSchema | None = None
+    requiredLanguages: list[str] | None = None
+    eitherOr: str | None = None
+    allowedIdShort: str | None = None
+    editIdShort: bool | None = None
+    accessMode: str | None = None
+    readOnly: bool | None = None
+    formTitle: str | None = None
+    formInfo: str | None = None
+    formUrl: str | None = None
+    notes: list[str] | None = None
+    valueFormat: str | None = None
+    valueFormatDescription: str | None = None
+    maxLength: int | None = None
+    minLength: int | None = None
+    sourceOfDefinition: str | None = None
+
+    # Requirements recognised in the specification text
+    formatHint: FormatHintSchema | None = None
+    standards: list[str] | None = None
+    # Requirements read from the specification PDF
+    specNotes: list[str] | None = None
+    specCardinality: str | None = None
+    specPage: int | None = None
 
     # Property-specific fields
     valueType: str | None = None
@@ -165,6 +234,46 @@ class AASMetadataSchema(BaseModel):
     administration: AdministrationSchema | None = None
 
 
+class TemplateDocumentSchema(BaseModel):
+    """A file that belongs to a template version (AASX, JSON, PDF, README)."""
+
+    name: str
+    path: str | None = None
+    url: str | None = None
+    downloadUrl: str | None = None
+    size: int | None = None
+
+
+class TemplateDocumentsSchema(BaseModel):
+    """Companion documents of the resolved template version."""
+
+    aasx: TemplateDocumentSchema | None = None
+    json_: TemplateDocumentSchema | None = Field(default=None, alias="json")
+    specification: TemplateDocumentSchema | None = None
+    readme: TemplateDocumentSchema | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TemplateSourceSchema(BaseModel):
+    """Which template release a schema was generated from."""
+
+    name: str
+    title: str | None = None
+    status: str | None = None
+    idtaNumber: str | None = None
+    group: str | None = None
+    part: str | None = None
+    version: str | None = None
+    latestVersion: str | None = None
+    isLatest: bool | None = None
+    source: str | None = None
+    stale: bool | None = None
+    browseUrl: str | None = None
+    documents: TemplateDocumentsSchema | None = None
+    variants: list[str] = Field(default_factory=list)
+
+
 class SubmodelUISchema(BaseModel):
     """
     Complete UI schema for a Submodel.
@@ -175,6 +284,12 @@ class SubmodelUISchema(BaseModel):
     aas: AASMetadataSchema | None = None
     templateName: str | None = None
     templatePath: str | None = None
+    # Resolved release of the template and its companion documents
+    template: TemplateSourceSchema | None = None
+    kind: str | None = None
+    formTitle: str | None = None
+    formInfo: str | None = None
+    formUrl: str | None = None
     submodelId: str
     idShort: str
     semanticId: str | None = None
@@ -202,25 +317,25 @@ class TemplateInfo(BaseModel):
     title: str | None = None
     sha: str | None = None
     status: Literal["published", "deprecated"] | None = None
-    folder: str | None = Field(
-        default=None, description="Repository folder the template lives in"
-    )
-    part: str | None = Field(
-        default=None,
-        description="Sub-folder of a multi-part template (e.g. one part of the battery passport)",
-    )
-    latest_version: str | None = Field(
-        default=None, description="Newest released version, e.g. 3.0.3"
-    )
+    # Multi-part templates (e.g. Digital Battery Passport) list one entry per
+    # part; ``group`` is the template they belong to.
+    group: str | None = None
+    part: str | None = None
+    latest_version: str | None = None
+    versions: list[str] = Field(default_factory=list)
+    has_specification: bool | None = None
 
 
 class TemplateVersionInfo(BaseModel):
     """Information about a template version."""
 
-    version: str = Field(description="Version as a path fragment, e.g. 3/0/3")
+    version: str
     path: str
     sha: str | None = None
-    label: str | None = Field(default=None, description="Display form, e.g. 3.0.3")
+    file: str | None = None
+    latest: bool | None = None
+    has_specification: bool | None = None
+    sample_only: bool | None = None
 
 
 class TemplateListResponse(BaseModel):
