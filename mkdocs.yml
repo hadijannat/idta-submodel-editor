@@ -53,6 +53,7 @@ nav:
       - Conformance Specification: planning/04-conformance-specification.md
       - Roadmap: planning/05-roadmap.md
       - Frontend Design Specification: planning/06-frontend-design-specification.md
+      - Implementation Plan: planning/07-implementation-plan.md
 
 markdown_extensions:
   - pymdownx.highlight:

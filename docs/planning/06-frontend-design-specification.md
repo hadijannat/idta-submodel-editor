@@ -389,6 +389,7 @@ request. The existing field components are kept and moved, not rewritten.
    would confirm or correct the rows marked as vendor claims.
 4. **Design assets.** This document specifies behaviour, not visuals.
    Wireframes for Workspace, Review and Batch are the next artefact.
-5. **Order of work.** Proposed mapping to the roadmap: Workspace outline,
-   identity header, review and drafts in M2; collections in M3; batch, compare,
-   routes for import and the repository upload in M4.
+5. **Order of work.** The mapping to phases is in document 7: identity header
+   in phase 1; Workspace, review, drafts and import in phase 2; collections and
+   the release picker in phase 3; batch, the full compare view and the
+   repository upload in phase 4.
