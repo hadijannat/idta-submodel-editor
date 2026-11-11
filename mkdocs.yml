@@ -45,6 +45,13 @@ nav:
       - Element Types: reference/element-types.md
       - Template Coverage Audit: reference/template-coverage-audit.md
       - Review Playbook: reference/review-playbook.md
+  - Planning:
+      - Overview: planning/README.md
+      - Product Scope: planning/01-product-scope.md
+      - Core Requirements: planning/02-core-requirements.md
+      - Architecture Decisions: planning/03-architecture-decisions.md
+      - Conformance Specification: planning/04-conformance-specification.md
+      - Roadmap: planning/05-roadmap.md
 
 markdown_extensions:
   - pymdownx.highlight:
