@@ -1,8 +1,8 @@
 # Planning Documents
 
-These five documents define what the editor is meant to be, what "done" means for
+These six documents define what the editor is meant to be, what "done" means for
 its core, which design decisions the refactoring depends on, how correctness is
-proven, and in which order the work ships.
+proven, in which order the work ships, and how the interface is built.
 
 | # | Document | Settles |
 |---|---|---|
@@ -11,10 +11,11 @@ proven, and in which order the work ships.
 | 3 | [Architecture decisions](03-architecture-decisions.md) | The design choices that shape the refactoring |
 | 4 | [Conformance specification](04-conformance-specification.md) | What is checked per template and how CI publishes the result |
 | 5 | [Roadmap and release plan](05-roadmap.md) | Milestones, release cadence and exit criteria |
+| 6 | [Frontend design specification](06-frontend-design-specification.md) | Screens, field behaviour, competitor capability decisions, accessibility and the compliance matrix |
 
 ## Status
 
-All five are **drafts for maintainer review**. Decisions in document 3 are marked
+All six are **drafts for maintainer review**. Decisions in document 3 are marked
 *Proposed* until accepted. Dates in document 5 are proposals.
 
 ## Baseline
