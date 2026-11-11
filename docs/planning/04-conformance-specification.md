@@ -29,8 +29,8 @@ maintainers which upstream files have defects.
 | 5 | Validate the form data | Accepted or rejected with messages |
 | 6 | Export AASX (XML payload), AASX (JSON payload) and JSON | HTTP status; duration |
 | 7 | Check every export with the engine | Pass or fail with messages |
-| 8 | Read each export back and compare with the form data | Values lost or changed; concept description count against upstream |
-| 9 | Check identity | No identifier of the template in the export; kind `Instance` |
+| 8 | Read each export back and compare with the form data | Values lost or changed; concept description identifiers and contents against upstream |
+| 9 | Check identity | Shell, asset and submodel identifiers differ from the template's and equal the entered values; kind `Instance` |
 
 Steps 5 to 7 run through the HTTP API, not by calling services directly, so the
 routers are under test as well (requirement TEST-1).
@@ -47,7 +47,10 @@ The generator is deterministic: the same snapshot and seed give the same data.
 
 ## Engine
 
-- `aas-test-engines`, at the version pinned in `backend/requirements.txt`.
+- `aas-test-engines`, at one exact version that this job installs from a
+  constraints file. `backend/requirements.txt` allows a range, so the job pins
+  its own version, and a change of that version is a reviewed change with the
+  new result attached. The baseline used 1.0.3.
 - Known limits, stated in the published table:
   - The engine checks metamodel 3.0. A file in the 3.1 XML namespace is reported
     as failing for that reason alone; such results are classed `engine-limit`.
@@ -62,12 +65,18 @@ The generator is deterministic: the same snapshot and seed give the same data.
 | Class | Meaning | Effect in CI |
 |---|---|---|
 | `pass` | Export passes the engine and the read-back comparison | — |
-| `upstream-defect` | The upstream file fails the engine, and the export fails with the same message | Allowed; listed with a link to the upstream issue |
+| `upstream-defect` | Every engine message on the export also occurs on the upstream file | Allowed; listed with a link to the upstream issue |
 | `engine-limit` | Failure caused by a documented limit of the engine | Allowed; listed |
-| `editor-defect` | The upstream file passes or fails differently, and the export fails | **Blocks the merge** |
-| `not-exportable` | Validation accepts the data and export fails, or no valid data can be generated | **Blocks the merge** |
+| `editor-defect` | The export has at least one engine message that the upstream file does not have | **Blocks the merge** |
+| `validation-reject` | The validator rejects generated data that satisfies the template's rules | **Blocks the merge** |
+| `not-exportable` | Validation accepts the data and export fails | **Blocks the merge** |
 | `data-loss` | Read-back differs from the form data, or concept descriptions are missing | **Blocks the merge** |
-| `identity` | An identifier of the template appears in the export | **Blocks the merge** |
+| `identity` | The shell, asset or submodel identifier is the template's or differs from the entered value, or the submodel kind is not `Instance` | **Blocks the merge** |
+
+Messages are compared one by one. An export whose messages include both
+inherited and new ones is an `editor-defect`: the job blocks on every message
+that cannot be attributed to the upstream file. A template can carry several
+classes, and any blocking class blocks.
 
 During the transition, known failures of a blocking class are listed in an
 allow-list file with the requirement that will remove them. The job fails on

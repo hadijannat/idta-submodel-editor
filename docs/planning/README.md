@@ -21,8 +21,9 @@ All five are **drafts for maintainer review**. Decisions in document 3 are marke
 
 Figures quoted as "baseline" come from an audit of commit `15a9bc4` on 2026-11-10
 against the IDTA template repository in its state of 2026-10-29 (66 published and
-8 deprecated template entries). The audit exported every template with generated
-required-only data and checked the results with `aas-test-engines` 1.0.3.
+8 deprecated template entries). The audit read all 74 entries and filled each
+with generated required-only data. 70 of them could be exported; 4 could not.
+The 70 exports were checked with `aas-test-engines` 1.0.3.
 
 One fix has landed since: #391 corrects the relationship targets of supplementary
 files in exported AASX packages, the cause of 13 of the 17 AASX failures in the

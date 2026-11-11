@@ -139,8 +139,10 @@ Local mirror only as an option: already exists and is not the default.
 
 ## ADR-006: Publishing and SAMM
 
-**Context.** The dataspace publishing path does not execute, has no identity
-handling, and targets connector versions that the Catena-X network has since
+**Context.** The dataspace publishing path does not execute. It checks the
+logged-in user and the owner of a connection, but it has no dataspace identity:
+no wallet, no credentials and no participant identifier handling, which the
+Catena-X network requires. It targets connector versions that the Catena-X network has since
 replaced. Applications that exchange data in that network need certification
 per ecosystem release. The Tractus-X Industry Core Hub already automates twin
 and connector registration. The SAMM converter fails on 65 of 66 templates,

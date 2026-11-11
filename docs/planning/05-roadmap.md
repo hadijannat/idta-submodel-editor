@@ -79,8 +79,8 @@ container; a user can move a filled part from one bug-fix release to the next.
 
 ### M4 — Building blocks (v2.0, second quarter of 2027)
 
-Requirements: API-1, API-2, API-3, API-5, EXP-7, MAP-1 to MAP-3, MIG-3, OPS-2
-to OPS-4. Decisions: ADR-006, ADR-007, ADR-008.
+Requirements: API-1, API-2, API-3, API-5, EXP-7, MAP-1 to MAP-3, MIG-3 (the
+diff recognises renamed and moved elements), OPS-2 to OPS-4. Decisions: ADR-006, ADR-007, ADR-008.
 
 - Core library on PyPI, command-line tool, CI action.
 - Versioned form schema with its own specification page.
@@ -94,7 +94,8 @@ project consumes the form schema; batch export of 100 rows passes the engine.
 ### Later, not scheduled
 
 - Magic Import as Stable, after TEST-8 gives it a measured accuracy figure.
-- Migration across major releases (MIG-3, MIG-5).
+- Migration of filled data across major releases, which builds on the diff of
+  MIG-3 from M4 and needs MIG-5.
 - Interface in German (UX-6), accessibility to WCAG 2.1 AA (UX-4).
 - Derivation of the DPP value-only JSON from a filled IDTA 02099-1 submodel.
 - Support for metamodel 3.1 and 3.2 packages once the engine checks them.
@@ -106,7 +107,9 @@ project consumes the form schema; batch export of 100 rows passes the engine.
 - Versioning: semantic. A change of the form schema format or of the library
   interface is a major or minor change and is named in the notes.
 - Each release attaches the conformance result and names the template snapshot.
-- Release checklist: conformance job green on all profiles; docs walkthrough
+- Release checklist: conformance green on every profile that exists at that
+  milestone (M0: the existing `aas-conformance` job; M1: profile `required`;
+  from M2 on: all profiles); docs walkthrough
   (DOC-1); changelog; tag; container images; PyPI from M4 on.
 
 ## Adoption steps tied to milestones
@@ -116,7 +119,7 @@ project consumes the form schema; batch export of 100 rows passes the engine.
 | M0 | Consolidate related repositories into this one or link them from one place |
 | M1 | Report every `upstream-defect` to the template repository, with the generated text block |
 | M1 | Offer the reader's package repairs to the BaSyx Python SDK |
-| M2 | List the tool in the IDTA AAS Solutions Hub; put a public demo instance online |
+| M2 | List the tool in the IDTA AAS Solutions Hub; put a public demo instance online. The demo keeps no visitor data on the server: template upload, local templates, server-side jobs and every add-on that stores files are switched off, and drafts stay in the visitor's browser. Authentication in M4 does not separate visitors, so these functions stay off in the demo after M4 as well |
 | M2 | Label starter issues; document the architecture for contributors |
 | M3 | Publish the battery passport worked example as a tutorial |
 | M4 | Submit a tool paper; propose the form schema to the BaSyx and Mnestix projects as an input format |

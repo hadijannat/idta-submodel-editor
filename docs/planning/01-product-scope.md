@@ -31,7 +31,9 @@ submodel is right before it gets there.
 5. Reopen that file later, change it, export again.
 6. Carry the data forward when the template gets a new release.
 
-Steps 1 to 4 work today for JSON. Steps 5 and 6 do not; see document 2.
+Steps 1 to 4 work today for JSON export on most templates, not all: in the
+baseline 70 of 74 templates exported and 63 of those 70 passed the conformance
+check. Steps 5 and 6 do not work; see document 2.
 
 ## In scope
 
